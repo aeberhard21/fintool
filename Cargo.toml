@@ -6,3 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+chrono = "0.4"
+inquire = { version = "0.6.2", features = ["date"] }
+file = "1.0.0"
+savefile = "0.16.2"
