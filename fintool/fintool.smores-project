@@ -1,9 +1,9 @@
 {
     "idBase": 10000,
     "maxContributors": 100,
-    "gitInUse": false,
-    "repoPathspec": "",
-    "repoRoot": "",
+    "gitInUse": true,
+    "repoPathspec": "fintool",
+    "repoRoot": "/Users/Andrew/Documents/Projects/fintool",
     "knownContributors": [],
     "uniqueIds": [],
     "documentIds": []
