@@ -1,1 +1,1 @@
-The Fintool shall provide a default set of expense categories for the implementation of a budget. 
+The Fintool shall provide a default set of expense categories in the implementation of a budget. 
