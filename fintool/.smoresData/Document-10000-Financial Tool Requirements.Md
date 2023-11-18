@@ -27,6 +27,10 @@ Fintool is intended to be a tool that integrates many available products into a 
 # User Requirements    
 The following requirements will establish the data managed by the tool and its user interface.    
 
+| _Requirement 12000_         | New functional requirement. |    
+|-----------------------------|-----------------------------|    
+| ___Translation rationale___ | __undefined__               |    
+
 | _Requirement 11800_         | New functional requirement. |    
 |-----------------------------|-----------------------------|    
 | ___Translation rationale___ | __undefined__               |    
