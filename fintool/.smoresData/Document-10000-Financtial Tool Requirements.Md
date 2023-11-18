@@ -1,7 +1,7 @@
 # User Requirements Specification - Financtial Tool Requirements
 # Introduction    
 ## Purpose    
-This document defines the system requirements for a financial planner tool. This tool is intended to be a one-stop shop that allows a user, or users, to track multiple facets of their financial portfolio.    
+This document defines the system requirements for a financial planner tool. This tool is intended to be a one-stop shop that allows a user, or users, to track multiple facets of their financial portfolio. Herein, this financial tool shall be referred to as the name "fintool."    
 
 ## Scope    
 The scope of this document is the fintool software system.    
