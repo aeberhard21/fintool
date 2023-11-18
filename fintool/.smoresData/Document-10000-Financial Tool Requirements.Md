@@ -39,3 +39,7 @@ The following requirements will establish the data managed by the tool and its u
 |-----------------------------|---------------------------------------------------------------------------------------------------|    
 | ___Translation rationale___ | __This is intended to help a user create a budget.__                                              |    
 
+| _Requirement 12100_         | New functional requirement. |    
+|-----------------------------|-----------------------------|    
+| ___Translation rationale___ | __undefined__               |    
+
