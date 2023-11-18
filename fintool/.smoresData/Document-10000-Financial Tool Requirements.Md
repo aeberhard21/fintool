@@ -24,7 +24,7 @@ Defined terms are capitalized in this document. These terms are defined in the t
 # Overall description    
 Fintool is intended to be a tool that integrates many available products into a single product. Namely, this includes a way for a user to set and manage a budget, balance their checkbook, estimate taxes owed, track growth within investment portfolios and summarize ther net worth.    
 
-# User Requirements    
+## User Requirements    
 The following requirements will establish the data managed by the tool and its user interface.    
 
 | _Requirement 11800_         | New functional requirement. |    
