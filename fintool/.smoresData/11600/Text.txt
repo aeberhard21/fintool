@@ -1,1 +1,1 @@
-If you plan on breaking requirements down into categories, explain that. Then get down to it.
+The following requirements will establish the data managed by the tool and its user interface.
