@@ -1,1 +1,1 @@
-New functional requirement.
+Fintool shall define an implementation of a budget.
