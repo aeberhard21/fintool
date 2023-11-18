@@ -1,0 +1,10 @@
+{
+    "id": 10300,
+    "parent": 10200,
+    "category": "Comment",
+    "traces": {
+        "traceIds": [],
+        "suspectIds": []
+    },
+    "children": []
+}

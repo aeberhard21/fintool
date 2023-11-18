@@ -4,7 +4,29 @@
     "gitInUse": true,
     "repoPathspec": "fintool",
     "repoRoot": "/Users/Andrew/Documents/Projects/fintool",
-    "knownContributors": [],
-    "uniqueIds": [],
-    "documentIds": []
+    "knownContributors": [
+        "0d3854b88224682848067179cfaa7f4ef4a48ff8ea71e4a6b6d07d78542aaed2"
+    ],
+    "uniqueIds": [
+        10000,
+        10100,
+        10200,
+        10300,
+        10400,
+        10500,
+        10600,
+        10700,
+        10800,
+        10900,
+        11000,
+        11100,
+        11200,
+        11300,
+        11400,
+        11500,
+        11600
+    ],
+    "documentIds": [
+        10000
+    ]
 }

@@ -1,0 +1,12 @@
+{
+    "id": 10200,
+    "parent": 10100,
+    "category": "Heading",
+    "traces": {
+        "traceIds": [],
+        "suspectIds": []
+    },
+    "children": [
+        10300
+    ]
+}

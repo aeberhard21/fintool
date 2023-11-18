@@ -1,0 +1,19 @@
+{
+    "id": 10000,
+    "category": "Document",
+    "parent": 0,
+    "children": [
+        10100,
+        11300,
+        11500
+    ],
+    "traces": {
+        "traceIds": [],
+        "suspectIds": []
+    },
+    "documentData": {
+        "documentType": "User Requirements Specification",
+        "revisionHistory": [],
+        "traceReportRevisionHistory": []
+    }
+}
