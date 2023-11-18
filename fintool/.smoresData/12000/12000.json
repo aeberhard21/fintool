@@ -6,5 +6,8 @@
         "traceIds": [],
         "suspectIds": []
     },
-    "children": []
+    "children": [],
+    "requirementData": {
+        "translationRationale": "This is intended to help a user create a budget."
+    }
 }

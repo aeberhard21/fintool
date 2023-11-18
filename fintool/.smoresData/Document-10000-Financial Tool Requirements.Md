@@ -35,7 +35,7 @@ The following requirements will establish the data managed by the tool and its u
 |-----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|    
 | ___Translation rationale___ | __A budget is a useful tool for creating a planned set of expenditure amongst a list of expense categories for a user. It allows a user to work towards a goal of spending a certain amount in a given period of time and provides the user guidelines depicting how they can spend their income.__ |    
 
-| _Requirement 12000_         | New functional requirement. |    
-|-----------------------------|-----------------------------|    
-| ___Translation rationale___ | __undefined__               |    
+| _Requirement 12000_         | The Fintool shall provide a default set of expense categories for the implementation of a budget.  |    
+|-----------------------------|----------------------------------------------------------------------------------------------------|    
+| ___Translation rationale___ | __This is intended to help a user create a budget.__                                               |    
 

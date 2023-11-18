@@ -1,1 +1,1 @@
-New functional requirement.
+The Fintool shall provide a default set of expense categories for the implementation of a budget. 
