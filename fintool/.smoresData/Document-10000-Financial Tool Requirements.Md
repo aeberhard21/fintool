@@ -27,9 +27,9 @@ Fintool is intended to be a tool that integrates many available products into a 
 # User Requirements    
 The following requirements will establish the data managed by the tool and its user interface.    
 
-| _Requirement 11800_         | New functional requirement. |    
-|-----------------------------|-----------------------------|    
-| ___Translation rationale___ | __undefined__               |    
+| _Requirement 11800_         | Fintool shall be written in the Rust programming language.                                                                                                       |    
+|-----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------|    
+| ___Translation rationale___ | __Rust is a strongly typed compiled language that provides features for safe memory access and class-like definition of implementations and associated traits.__ |    
 
 | _Requirement 11900_         | New functional requirement. |    
 |-----------------------------|-----------------------------|    

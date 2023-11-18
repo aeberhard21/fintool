@@ -6,5 +6,8 @@
         "traceIds": [],
         "suspectIds": []
     },
-    "children": []
+    "children": [],
+    "requirementData": {
+        "translationRationale": "Rust is a strongly typed compiled language that provides features for safe memory access and class-like definition of implementations and associated traits."
+    }
 }
