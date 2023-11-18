@@ -31,3 +31,7 @@ The following requirements will establish the data managed by the tool and its u
 |-----------------------------|-----------------------------|    
 | ___Translation rationale___ | __undefined__               |    
 
+| _Requirement 11900_         | New functional requirement. |    
+|-----------------------------|-----------------------------|    
+| ___Translation rationale___ | __undefined__               |    
+
