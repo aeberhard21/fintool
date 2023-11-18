@@ -27,7 +27,3 @@ Defined terms are capitalized in this document. These terms are defined in the t
 # User Requirements    
 If you plan on breaking requirements down into categories, explain that. Then get down to it.    
 
-| _Requirement 11700_         | New functional requirement. |    
-|-----------------------------|-----------------------------|    
-| ___Translation rationale___ | __undefined__               |    
-
