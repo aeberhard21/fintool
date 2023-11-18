@@ -1,0 +1,1 @@
+This document is intended for developers of the fintool software system.

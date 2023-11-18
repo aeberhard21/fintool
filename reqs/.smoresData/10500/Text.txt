@@ -1,0 +1,1 @@
+The scope of this document is the fintool software system.

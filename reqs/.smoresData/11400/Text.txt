@@ -1,0 +1,1 @@
+Fintool is intended to be a tool that integrates many available products into a single product. Namely, this includes a way for a user to set and manage a budget, balance their checkbook, estimate taxes owed, track growth within investment portfolios and summarize ther net worth.
