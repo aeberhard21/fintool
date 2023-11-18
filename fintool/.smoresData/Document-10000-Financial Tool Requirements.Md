@@ -1,4 +1,4 @@
-# User Requirements Specification - Financtial Tool Requirements
+# User Requirements Specification - Financial Tool Requirements
 # Introduction    
 ## Purpose    
 This document defines the system requirements for a financial planner tool. This tool is intended to be a one-stop shop that allows a user, or users, to track multiple facets of their financial portfolio. Herein, this financial tool shall be referred to as the name "fintool."    
@@ -22,7 +22,7 @@ Defined terms are capitalized in this document. These terms are defined in the t
 | TERM | The definition for TERM|    
 
 # Overall description    
-*Give an overview of what this software should do / how it fits into any larger system (i.e. if this is one component of a planned system, show how it fits into the larger scheme).*    
+Fintool is intended to be a tool that integrates many available products into a single product. Namely, this includes a way for a user to set and manage a budget, balance their checkbook, estimate taxes owed, track growth within investment portfolios and summarize ther net worth.    
 
 # User Requirements    
 If you plan on breaking requirements down into categories, explain that. Then get down to it.    
