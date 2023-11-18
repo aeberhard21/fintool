@@ -1,1 +1,0 @@
-Fintool shall define an implementation of a budget.

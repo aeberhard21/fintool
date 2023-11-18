@@ -1,3 +1,0 @@
-| Term | Definition             |
-|------|------------------------|
-| TERM | The definition for TERM|

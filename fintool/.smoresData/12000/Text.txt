@@ -1,1 +1,0 @@
-Fintool shall provide a default set of expense categories in the implementation of a budget. 

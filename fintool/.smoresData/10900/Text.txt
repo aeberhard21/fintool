@@ -1,3 +1,0 @@
-| ID | Reference Name | Title          |
-|----|----------------|----------------|
-| [1]| doc1           | Document title |
