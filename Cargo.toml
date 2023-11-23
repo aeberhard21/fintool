@@ -10,3 +10,4 @@ chrono = "0.4"
 inquire = { version = "0.6.2", features = ["date"] }
 file = "1.0.0"
 savefile = "0.16.2"
+rusqlite = "0.30.0"
