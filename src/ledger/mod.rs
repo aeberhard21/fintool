@@ -1,5 +1,4 @@
 // LedgerEntry.rs
-
 pub struct LedgerEntry { 
     pub date: String, 
     pub amount: f32, 
