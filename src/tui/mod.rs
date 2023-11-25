@@ -1,12 +1,13 @@
 // use core::panic;
 use crate::ledger::Ledger;
 use crate::tui::tui_ledger::*;
+use crate::database::DbConn;
 use chrono::{NaiveDate, Weekday};
 use inquire::*;
 
 mod tui_ledger;
 
-pub fn menu(_ledger: &mut Ledger) {
+pub fn menu(_db: &mut DbConn, _ledger: &mut Ledger) {
     println!("Welcome to FinTool!");
     loop {
         let commands: Vec<&str>= vec!["create", "add", "report", "view", "exit"];
@@ -20,7 +21,7 @@ pub fn menu(_ledger: &mut Ledger) {
                 tui_create();
             }
             "add" => {
-                tui_add(_ledger);
+                tui_add(_db, _ledger);
             }
             "view" => {
                 tui_view(_ledger);
@@ -40,10 +41,6 @@ pub fn menu(_ledger: &mut Ledger) {
 }
 
 fn tui_create() {
-    println!("Not implemented!");
-}
-
-fn tui_add(_ledger: &mut Ledger) {
     let commands: Vec<&str> = vec!["ledger", "investment", "none"];
     let command : String = Select::new("\nWhat would you like to add:", commands)
         .prompt()
@@ -52,9 +49,26 @@ fn tui_add(_ledger: &mut Ledger) {
 
     match command.as_str() {
         "ledger" => {
-            println!("Adding ledger...\n");
+            let name : String = Text::new("Enter ledger name:").prompt().unwrap().to_string();
+            // create_ledger(name);
+        }
+        _ => {
+            panic!("Invalid command");
+        }
+    }
+}
+
+fn tui_add(_db: &mut DbConn, _ledger: &mut Ledger) {
+    let commands: Vec<&str> = vec!["ledger", "investment", "none"];
+    let command : String = Select::new("\nWhat would you like to add:", commands)
+        .prompt()
+        .unwrap()
+        .to_string();
+
+    match command.as_str() {
+        "ledger" => {
             loop {
-                add_ledger(_ledger);
+                add_ledger(_db,_ledger);
 
                 let another : bool = Confirm::new("Add another entry?")
                 .with_default(false)
@@ -86,7 +100,7 @@ fn tui_report(_ledger: &mut Ledger) {
 
     match command.as_str() {
         "ledger" => {
-            println!("Balance of account: {}", _ledger.sum());
+            // println!("Balance of account: {}", _ledger.sum());
         }
         _ => {
             panic!("Invalid command!");
@@ -103,7 +117,7 @@ fn tui_view(_ledger: &mut Ledger) {
 
     match command.as_str() {
         "ledger" => {
-            _ledger.print();
+            // _ledger.print();
         }
         _ => {
             panic!("Invalid command!");

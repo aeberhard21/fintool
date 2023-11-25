@@ -1,8 +1,13 @@
 use chrono::{NaiveDate, Weekday};
 use inquire::*;
 use crate::ledger::*;
+use crate::database::DbConn;
 
-pub fn add_ledger(_ledger: &mut Ledger) {
+// pub fn create_ledger(name: String) {
+//     crate::database::create_ledger(name);
+// }
+
+pub fn add_ledger(_db: &mut DbConn, _ledger: &mut Ledger) {
     let deposit_options: Vec<&str>= vec!["Credit", "Debit"];
 
     // this function returns either "Ok" or "Err". "Ok" indicates that the type T in Result<T, E>
@@ -49,6 +54,7 @@ pub fn add_ledger(_ledger: &mut Ledger) {
         payee: payee,
         description: description_input
     };
-    _ledger.add(entry);
+    // _ledger.add(entry);
+    _db.add_ledger_entry(_ledger, entry);
 
 }
