@@ -1,14 +1,26 @@
 // use core::panic;
-use crate::ledger::Ledger;
-use crate::tui::tui_ledger::*;
-use crate::database::DbConn;
 use chrono::{NaiveDate, Weekday};
 use inquire::*;
+use crate::ledger::Ledger;
+use crate::tui::tui_ledger::*;
+use crate::tui::tui_user::*;
+use crate::database::DbConn;
+use crate::user::User;
 
 mod tui_ledger;
+pub mod tui_user;
 
-pub fn menu(_db: &mut DbConn, _ledger: &mut Ledger) {
-    println!("Welcome to FinTool!");
+// pub fn login(_users: &mut Vec<User>) -> User {
+//     let selected_user: User;
+//     let mut users: Vec<&str> = Vec::new();
+//     for user in _users.iter() {
+//         users.push(user.get_name());
+//     }
+//     // let selected_user : String::new("User:");
+//     return selected_user;
+// }
+
+pub fn menu(_user: &mut User) {
     loop {
         let commands: Vec<&str>= vec!["create", "add", "report", "view", "exit"];
         let command : String = Select::new("What would you like to do:", commands)
@@ -18,16 +30,19 @@ pub fn menu(_db: &mut DbConn, _ledger: &mut Ledger) {
 
         match command.as_str() {
             "create" => {
-                tui_create();
+                tui_create(_user);
             }
+            // "login" => {
+            //     current_user = tui_change(_users);
+            // }
             "add" => {
-                tui_add(_db, _ledger);
+                tui_add(_user);
             }
             "view" => {
-                tui_view(_ledger);
+                tui_view(_user);
             }
             "report" => {
-                tui_report(_ledger);
+                tui_report(_user);
             }
             "exit" => {
                 println!("Exiting...");
@@ -40,8 +55,8 @@ pub fn menu(_db: &mut DbConn, _ledger: &mut Ledger) {
     }
 }
 
-fn tui_create() {
-    let commands: Vec<&str> = vec!["ledger", "investment", "none"];
+fn tui_create(_user: &mut User) {
+    let commands: Vec<&str> = vec!["ledger", "none"];
     let command : String = Select::new("\nWhat would you like to add:", commands)
         .prompt()
         .unwrap()
@@ -49,8 +64,10 @@ fn tui_create() {
 
     match command.as_str() {
         "ledger" => {
-            let name : String = Text::new("Enter ledger name:").prompt().unwrap().to_string();
-            // create_ledger(name);
+            create_ledger(_user);
+        }
+        "none" =>  {
+            return
         }
         _ => {
             panic!("Invalid command");
@@ -58,7 +75,11 @@ fn tui_create() {
     }
 }
 
-fn tui_add(_db: &mut DbConn, _ledger: &mut Ledger) {
+// fn tui_login() {
+
+// }
+
+fn tui_add(_user: &mut User) {
     let commands: Vec<&str> = vec!["ledger", "investment", "none"];
     let command : String = Select::new("\nWhat would you like to add:", commands)
         .prompt()
@@ -68,12 +89,12 @@ fn tui_add(_db: &mut DbConn, _ledger: &mut Ledger) {
     match command.as_str() {
         "ledger" => {
             loop {
-                add_ledger(_db,_ledger);
+                add_ledger(_user);
 
                 let another : bool = Confirm::new("Add another entry?")
-                .with_default(false)
-                .prompt()
-                .unwrap();
+                    .with_default(false)
+                    .prompt()
+                    .unwrap();
                 if !another {
                     break;
                 }
@@ -91,7 +112,7 @@ fn tui_add(_db: &mut DbConn, _ledger: &mut Ledger) {
     }
 }
 
-fn tui_report(_ledger: &mut Ledger) {
+fn tui_report(_user: &mut User) {
     let commands: Vec<&str> = vec!["ledger"];
     let command : String = Select::new("What would you like to report:", commands)
         .prompt()
@@ -108,7 +129,7 @@ fn tui_report(_ledger: &mut Ledger) {
     }
 }
 
-fn tui_view(_ledger: &mut Ledger) {
+fn tui_view(_user: &mut User) {
     let commands: Vec<&str> = vec!["ledger", "portfolio", "none"];
     let command : String = Select::new("What would you like to view:", commands)
         .prompt()

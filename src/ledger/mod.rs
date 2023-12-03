@@ -15,7 +15,7 @@ pub struct Ledger {
 
 impl Ledger { 
     // public methods
-    pub fn new(ledger_name: &str, db: &mut DbConn) -> Self {
+    pub fn new(db: &mut DbConn, ledger_name: &str) -> Self {
         db.create_ledger(ledger_name.to_string());
         // let name = ledger_name;
         Self {

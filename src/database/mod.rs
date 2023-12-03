@@ -18,7 +18,7 @@ impl DbConn {
         let rs = Connection::open(db_path);
         let conn : Connection = match rs {
             Ok(conn) => conn,
-            Err(_) => { panic!("unable to open db")}
+            Err(error) => { panic!("unable to open db: {}", error)}
         };
         Ok(Self { conn: conn })
     } 

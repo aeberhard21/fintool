@@ -25,32 +25,29 @@ impl DbConn {
         let rs = self.conn.execute(sql.as_str(), ());
         match rs {
             Ok(_) => { println!("created") }
-            Err(_) => {panic!("unable to create")}
+            Err(Error) => {panic!("unable to create: {}", Error)}
         }
         Ok(())
     }
 
-    pub fn add_ledger_entry(&mut self, ledger: &mut Ledger, entry: LedgerEntry) -> Result<()> {
+    pub fn add_ledger_entry(&mut self, ledger: String, entry: LedgerEntry) -> Result<()> {
         let sql : String;
         sql = format!(
             "INSERT INTO {} 
                 ( date, amount, deposit, payee, desc )
                 VALUES ( ?1, ?2, ?3, ?4, ?5)
             ", 
-            ledger.name
+            ledger
         );
-        println!("{}", sql);
         let rs = self.conn.execute(sql.as_str(), (entry.date.to_string(), entry.amount, entry.deposit, entry.payee, entry.description));   
         match rs {
             Ok(usize) => {
-                println!("added");
+                println!("Added statement");
             }
             Err(Error) => {
-                println!("{}", Error);
-                println!("unable to add");
+                println!("Unable to add ledger: {}", Error);
             }
         }     
-        println!("Added statement");
         Ok(())
     }
 
