@@ -20,7 +20,10 @@ pub mod tui_user;
 //     return selected_user;
 // }
 
-pub fn menu(_user: &mut User) {
+pub fn menu(_user: &mut User, _db : &mut DbConn) {
+
+    println!("Welcome {}!", _user.get_name());
+
     loop {
         let commands: Vec<&str>= vec!["create", "add", "report", "view", "exit"];
         let command : String = Select::new("What would you like to do:", commands)
@@ -30,19 +33,19 @@ pub fn menu(_user: &mut User) {
 
         match command.as_str() {
             "create" => {
-                tui_create(_user);
+                tui_create(_user, _db);
             }
             // "login" => {
             //     current_user = tui_change(_users);
             // }
             "add" => {
-                tui_add(_user);
+                tui_add(_user, _db);
             }
             "view" => {
-                tui_view(_user);
+                tui_view(_user, _db);
             }
             "report" => {
-                tui_report(_user);
+                tui_report(_user, _db);
             }
             "exit" => {
                 println!("Exiting...");
@@ -55,7 +58,7 @@ pub fn menu(_user: &mut User) {
     }
 }
 
-fn tui_create(_user: &mut User) {
+fn tui_create(_user: &mut User, _db: &mut DbConn) {
     let commands: Vec<&str> = vec!["ledger", "none"];
     let command : String = Select::new("\nWhat would you like to add:", commands)
         .prompt()
@@ -64,7 +67,7 @@ fn tui_create(_user: &mut User) {
 
     match command.as_str() {
         "ledger" => {
-            create_ledger(_user);
+            create_ledger(_user, _db);
         }
         "none" =>  {
             return
@@ -79,7 +82,7 @@ fn tui_create(_user: &mut User) {
 
 // }
 
-fn tui_add(_user: &mut User) {
+fn tui_add(_user: &mut User, _db: &mut DbConn) {
     let commands: Vec<&str> = vec!["ledger", "investment", "none"];
     let command : String = Select::new("\nWhat would you like to add:", commands)
         .prompt()
@@ -89,7 +92,7 @@ fn tui_add(_user: &mut User) {
     match command.as_str() {
         "ledger" => {
             loop {
-                add_ledger(_user);
+                add_ledger(_user, _db);
 
                 let another : bool = Confirm::new("Add another entry?")
                     .with_default(false)
@@ -112,7 +115,7 @@ fn tui_add(_user: &mut User) {
     }
 }
 
-fn tui_report(_user: &mut User) {
+fn tui_report(_user: &mut User, _db: &mut DbConn) {
     let commands: Vec<&str> = vec!["ledger"];
     let command : String = Select::new("What would you like to report:", commands)
         .prompt()
@@ -129,7 +132,7 @@ fn tui_report(_user: &mut User) {
     }
 }
 
-fn tui_view(_user: &mut User) {
+fn tui_view(_user: &mut User, _db: &mut DbConn) {
     let commands: Vec<&str> = vec!["ledger", "portfolio", "none"];
     let command : String = Select::new("What would you like to view:", commands)
         .prompt()
@@ -138,7 +141,7 @@ fn tui_view(_user: &mut User) {
 
     match command.as_str() {
         "ledger" => {
-            // _ledger.print();
+            print_ledger(_user, _db);
         }
         _ => {
             panic!("Invalid command!");

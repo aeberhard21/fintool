@@ -1,10 +1,11 @@
 use rusqlite::{Connection, Error};
 use std::path::{Path, PathBuf};
 
-use crate::ledger::Ledger;
+use crate::{ledger::Ledger, tui::tui_user::create_user};
 
 mod statements;
 mod db_ledger;
+mod db_user;
 
 const CURRENT_DATABASE_SCHEMA_VERSION: i32 = 0;
 
@@ -16,24 +17,24 @@ impl DbConn {
     pub fn new(db_path: impl AsRef<Path>) -> Result<Self, rusqlite::Error> {
         // the ? returns early if error, otherwise ok
         let rs = Connection::open(db_path);
-        let conn : Connection = match rs {
-            Ok(conn) => conn,
+        let mut conn;
+        match rs {
+            Ok(rs_conn) => {
+                conn = Self{ conn : rs_conn };
+                conn.initialize_database();
+            }
             Err(error) => { panic!("unable to open db: {}", error)}
         };
-        Ok(Self { conn: conn })
+        Ok(conn)
     } 
 
-    fn initialize_database(&self) -> Result<(), rusqlite::Error>{
+    fn initialize_database(&mut self) -> Result<(), rusqlite::Error>{
         // self.conn.execute(statements::CREATE_LEDGER, ())?;
-
+        Self::create_user_table(self);
         Self::set_schema_version(&self.conn, CURRENT_DATABASE_SCHEMA_VERSION);
         Ok(())
     }
-
-    fn save_ledger(_ledger: &mut Ledger) {
-        
-    }
-
+    
     fn get_schema_version(conn: &Connection) -> rusqlite::Result<i32> {
         conn.pragma_query_value(None, "user_version", |row| row.get::<_, i32>(0))
     }

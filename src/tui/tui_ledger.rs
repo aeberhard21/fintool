@@ -1,14 +1,16 @@
 use chrono::{NaiveDate, Weekday};
 use inquire::*;
+use rusqlite::config::DbConfig;
 use crate::ledger::*;
 use crate::user::*;
+use crate::database::*;
 
-pub fn create_ledger(_user: &mut User) {
+pub fn create_ledger(_user: &mut User, _db: &mut DbConn) {
     let name : String = Text::new("Enter ledger name:").prompt().unwrap().to_string();
-    _user.create_ledger(name);
+    _user.create_ledger(_db, name);
 }
 
-pub fn add_ledger(_user: &mut User) {
+pub fn add_ledger(_user: &mut User, _db : &mut DbConn) {
 
     let ledger_options: Vec<String> = _user.get_ledgers();
     let _ledger : String = Select::new("Select which ledger to add to:", ledger_options).prompt().unwrap().to_string();
@@ -60,6 +62,12 @@ pub fn add_ledger(_user: &mut User) {
         description: description_input
     };
     // _ledger.add(entry);
-    _user.add_ledger_entry(_ledger, entry);
+    _user.add_ledger_entry(_ledger, _db, entry);
 
+}
+
+pub fn print_ledger(_user: &mut User, _db: &mut DbConn) {
+    let ledger_options: Vec<String> = _user.get_ledgers();
+    let _ledger : String = Select::new("Select which ledger to view:", ledger_options).prompt().unwrap().to_string();
+    _user.print_ledger(_db, _ledger);
 }
