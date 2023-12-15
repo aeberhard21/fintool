@@ -1,9 +1,9 @@
 // LedgerEntry.rs
 use crate::database::DbConn;
 
-pub struct LedgerEntry { 
-    pub date: String, 
-    pub amount: f32, 
+pub struct LedgerEntry {
+    pub date: String,
+    pub amount: f32,
     pub deposit: bool,
     pub payee: String,
     pub description: String,
@@ -11,16 +11,16 @@ pub struct LedgerEntry {
 
 pub struct Ledger {
     pub name: String,
-    pub entries: Vec<LedgerEntry>
+    pub entries: Vec<LedgerEntry>,
 }
 
-impl Ledger { 
+impl Ledger {
     // public methods
     pub fn new(ledger_name: &str) -> Self {
         // let name = ledger_name;
         Self {
-            name : ledger_name.to_string(),
-            entries : Vec::new()
+            name: ledger_name.to_string(),
+            entries: Vec::new(),
         }
     }
     pub fn add(&mut self, entry: LedgerEntry) {
@@ -34,13 +34,22 @@ impl Ledger {
     pub fn print(&self) {
         let width = 16;
         let precision = 2;
-        println!("{:width$}| +/-| {:width$}| {:width$}| {:width$}", "Date", "Payee", "Amount", "Description");
+        println!(
+            "{:width$}| +/-| {:width$}| {:width$}| {:width$}",
+            "Date", "Payee", "Amount", "Description"
+        );
         println!("-------------------------------------------------");
         for entry in &self.entries {
-            if entry.deposit { 
-                println!("{:width$}|   +| {:width$}| {:width$.precision$}| {:width$}",  entry.date, entry.payee, entry.amount, entry.description);
+            if entry.deposit {
+                println!(
+                    "{:width$}|   +| {:width$}| {:width$.precision$}| {:width$}",
+                    entry.date, entry.payee, entry.amount, entry.description
+                );
             } else {
-                println!("{:width$}|   -| {:width$}| {:width$.precision$}| {:width$}",  entry.date, entry.payee, entry.amount, entry.description);
+                println!(
+                    "{:width$}|   -| {:width$}| {:width$.precision$}| {:width$}",
+                    entry.date, entry.payee, entry.amount, entry.description
+                );
             }
         }
     }
@@ -49,7 +58,7 @@ impl Ledger {
     // fn update_sum(&mut self) {
     //     let mut sum : f32 = 0.0;
     //     for entry in &self.entries {
-    //         if entry.deposit { 
+    //         if entry.deposit {
     //             sum += entry.amount;
     //         } else {
     //             sum -= entry.amount;

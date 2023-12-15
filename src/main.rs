@@ -1,25 +1,23 @@
 use rusqlite::Error;
-use std::path::{Path, PathBuf};
 use std::fs::{self, create_dir};
+use std::path::{Path, PathBuf};
 
-use crate::ledger::Ledger;
 use crate::database::DbConn;
-use crate::user::User;
+use crate::ledger::Ledger;
 use crate::tui::tui_user;
+use crate::user::User;
 
+mod database;
 mod ledger;
 mod tui;
-mod database;
 mod user;
 
 fn main() {
-
     let db_dir: String = String::from("./db");
-   
-    let mut _db : DbConn;
+
+    let mut _db: DbConn;
     match Path::new(&db_dir).try_exists() {
-        Ok(true) => {
-        }
+        Ok(true) => {}
         Ok(false) => {
             fs::create_dir(&db_dir);
         }
@@ -42,13 +40,13 @@ fn main() {
         }
     }
 
-    let mut _users: Vec<User>= Vec::new();
+    let mut _users: Vec<User> = Vec::new();
     _users = _db.restore_users().unwrap();
     println!("number of users: {}", _users.len());
 
     println!("Welcome to FinTool!");
-    let mut _user : User;
-    let next_id : u32 = 0;
+    let mut _user: User;
+    let next_id: u32 = 0;
     if _users.is_empty() {
         _user = tui::tui_user::create_user(next_id);
         // _db.add_user(_user);
@@ -58,7 +56,8 @@ fn main() {
     //     _user = tui::login(_users);
     // }
     tui::menu(&mut _users[next_id as usize], &mut _db);
-    
+    println!("Size of users before store: {}", _users.len());
     _db.store_users(&mut _users);
+    println!("Size of users after store: {}", _users.len());
     _db.close();
 }

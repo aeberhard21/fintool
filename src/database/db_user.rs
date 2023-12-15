@@ -1,16 +1,18 @@
 use std::{ptr::null, result};
 
+use crate::{ledger, user::*};
 use chrono::format::StrftimeItems;
-use rusqlite::{Connection, Error, params, types::Null};
-use crate::{user::*, ledger};
+use rusqlite::{params, types::Null, Connection, Error};
+
+use std::cell::RefCell;
+use std::rc::Rc;
 
 use super::DbConn;
 
 impl DbConn {
     pub fn create_user_table(&mut self) -> rusqlite::Result<()> {
-        let sql : &str;
-        sql = 
-            "CREATE TABLE IF NOT EXISTS users (
+        let sql: &str;
+        sql = "CREATE TABLE IF NOT EXISTS users (
                 id          INTEGER NOT NULL, 
                 name        TEXT    NOT NULL,
                 ledgers     TEXT    NOT NULL,
@@ -18,18 +20,24 @@ impl DbConn {
             )";
         let rs = self.conn.execute(sql, ());
         match rs {
-            Ok(0) => { println!("Table already created!");}
-            Ok(_) => { println!("Created users table!");}
-            Err(error) => {panic!("Unable to create users table: {}!", error);}
+            Ok(0) => {
+                println!("Table already created!");
+            }
+            Ok(_) => {
+                println!("Created users table!");
+            }
+            Err(error) => {
+                panic!("Unable to create users table: {}!", error);
+            }
         }
         Ok(())
     }
 
     pub fn store_users(&mut self, users: &mut Vec<crate::user::User>) {
-        let mut sql : &str; 
-        let mut ledgers : String = String::new();
+        let mut sql: &str;
+        let mut ledgers: String = String::new();
         println!("Number of users to store: {}.", users.len());
-        for mut user in users {
+        for user in users {
             sql = "INSERT INTO users (id, name, ledgers, admin) VALUES ( ?1, ?2, ?3, ?4)";
             let mut user_ledgers = user.get_ledgers();
             if user_ledgers.len() > 0 {
@@ -39,21 +47,28 @@ impl DbConn {
                     ledgers = format!("{}.{}", ledgers, ledger);
                 }
             }
-            let rs = self.conn.execute(sql, params![user.get_id(), user.get_name(), ledgers, user.get_admin()]);
+            let rs = self.conn.execute(
+                sql,
+                params![user.get_id(), user.get_name(), ledgers, user.get_admin()],
+            );
             match rs {
                 Ok(num_rows_updated) => {
                     println!("({}) Saved user: {}", num_rows_updated, user.get_name());
                 }
                 Err(error) => {
-                    println!("Unable to add user {} because of: {}", user.get_name(), error);
+                    println!(
+                        "Unable to add user {} because of: {}",
+                        user.get_name(),
+                        error
+                    );
                 }
             }
         }
     }
 
-    fn covert_string_to_ledgers(saved_string : String) -> Vec<String> {
-        let mut ledgers : Vec<String> = Vec::new();
-        let mut ledger : String = String::new();
+    fn covert_string_to_ledgers(saved_string: String) -> Vec<String> {
+        let mut ledgers: Vec<String> = Vec::new();
+        let mut ledger: String = String::new();
         println!("String to restore: {}", saved_string);
         for c in saved_string.chars() {
             println!("Char = {}", c);
@@ -70,34 +85,33 @@ impl DbConn {
     }
 
     pub fn restore_users(&mut self) -> Result<Vec<crate::user::User>, rusqlite::Error> {
-        let sql : &str;
+        let sql: &str;
         sql = "SELECT * FROM users";
         let mut rs = self.conn.prepare(sql).unwrap();
-        let results = rs.query_map(
-            [], 
-            |row| Ok(
-                User {
-                    id      : row.get(0)?,
-                    name    : row.get(1)?,
-                    ledgers : Self::covert_string_to_ledgers(row.get::<usize, String>(2).unwrap().to_string()),
+        let mut results = rs
+            .query_map([], |row| {
+                Ok(User {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    ledgers: Self::covert_string_to_ledgers(
+                        row.get::<usize, String>(2).unwrap().to_string(),
+                    ),
                     is_admin: row.get(3)?,
-                }
-            )
-        ).unwrap();
+                })
+            })
+            .unwrap().collect::<Vec<_>>();
 
         let mut users: Vec<crate::user::User> = Vec::new();
         let mut i = 0;
+        // println!("Length before pushing: {}", Rc::new(results.count()));
         for result in results {
             let mut user = result.unwrap();
             let name = user.get_name();
             users.push(user);
-            println!("Restored user:{}, {}", i,name);
-            i+=1;
+            println!("Restored user:{}, {}", i, name);
+            i += 1;
         }
         println!("The number of users restored: {}", users.len());
-        return Ok(users)
+        return Ok(users);
     }
-
-
-
 }

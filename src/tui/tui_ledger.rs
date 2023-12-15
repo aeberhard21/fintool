@@ -1,24 +1,29 @@
+use crate::database::*;
+use crate::ledger::*;
+use crate::user::*;
 use chrono::{NaiveDate, Weekday};
 use inquire::*;
 use rusqlite::config::DbConfig;
-use crate::ledger::*;
-use crate::user::*;
-use crate::database::*;
 
 pub fn create_ledger(_user: &mut User, _db: &mut DbConn) {
-    let name : String = Text::new("Enter ledger name:").prompt().unwrap().to_string();
+    let name: String = Text::new("Enter ledger name:")
+        .prompt()
+        .unwrap()
+        .to_string();
     _user.create_ledger(_db, name);
 }
 
-pub fn add_ledger(_user: &mut User, _db : &mut DbConn) {
-
+pub fn add_ledger(_user: &mut User, _db: &mut DbConn) {
     let ledger_options: Vec<String> = _user.get_ledgers();
-    let _ledger : String = Select::new("Select which ledger to add to:", ledger_options).prompt().unwrap().to_string();
+    let _ledger: String = Select::new("Select which ledger to add to:", ledger_options)
+        .prompt()
+        .unwrap()
+        .to_string();
 
-    let deposit_options: Vec<&str>= vec!["Credit", "Debit"];
+    let deposit_options: Vec<&str> = vec!["Credit", "Debit"];
 
     // this function returns either "Ok" or "Err". "Ok" indicates that the type T in Result<T, E>
-    // is okay to be used. 
+    // is okay to be used.
     let date_input: Result<NaiveDate, InquireError> = DateSelect::new("Enter date").prompt();
     let date: String = date_input.unwrap().to_string();
 
@@ -33,10 +38,13 @@ pub fn add_ledger(_user: &mut User, _db : &mut DbConn) {
 
     println!("Entered amount is {}", amount.to_string());
 
-    let deposit_type : String = Select::new("Credit or debit:", deposit_options).prompt().unwrap().to_string();
-    let deposit : bool;
+    let deposit_type: String = Select::new("Credit or debit:", deposit_options)
+        .prompt()
+        .unwrap()
+        .to_string();
+    let deposit: bool;
 
-    let mut payee : String = "".to_string();
+    let mut payee: String = "".to_string();
 
     // the match is equivalent to a switch statement
     match deposit_type.as_str() {
@@ -46,28 +54,33 @@ pub fn add_ledger(_user: &mut User, _db : &mut DbConn) {
         }
         "Debit" => {
             deposit = true;
-        } 
+        }
         _ => {
             panic!("Invalid entry.");
         }
     }
 
-    let description_input : String = Text::new("Enter payment description:").prompt().unwrap().to_string();
+    let description_input: String = Text::new("Enter payment description:")
+        .prompt()
+        .unwrap()
+        .to_string();
 
     let entry = LedgerEntry {
-        date: date, 
+        date: date,
         amount: amount,
         deposit: deposit,
         payee: payee,
-        description: description_input
+        description: description_input,
     };
     // _ledger.add(entry);
     _user.add_ledger_entry(_ledger, _db, entry);
-
 }
 
 pub fn print_ledger(_user: &mut User, _db: &mut DbConn) {
     let ledger_options: Vec<String> = _user.get_ledgers();
-    let _ledger : String = Select::new("Select which ledger to view:", ledger_options).prompt().unwrap().to_string();
+    let _ledger: String = Select::new("Select which ledger to view:", ledger_options)
+        .prompt()
+        .unwrap()
+        .to_string();
     _user.print_ledger(_db, _ledger);
 }
