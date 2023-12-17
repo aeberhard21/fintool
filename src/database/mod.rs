@@ -5,6 +5,7 @@ use crate::{ledger::Ledger, tui::tui_user::create_user};
 
 mod db_ledger;
 mod db_user;
+pub mod db_accounts;
 mod statements;
 
 const CURRENT_DATABASE_SCHEMA_VERSION: i32 = 0;
@@ -32,9 +33,16 @@ impl DbConn {
 
     fn initialize_database(&mut self) -> Result<(), rusqlite::Error> {
         // self.conn.execute(statements::CREATE_LEDGER, ())?;
+        Self::allow_foreign_keys(&self.conn);
         Self::create_user_table(self);
+        Self::create_accounts_table(self);
+        Self::create_ledger_table(self);
         Self::set_schema_version(&self.conn, CURRENT_DATABASE_SCHEMA_VERSION);
         Ok(())
+    }
+
+    fn allow_foreign_keys(conn: &Connection) -> rusqlite::Result<()> {
+        conn.pragma_update(None, "foreign_keys", "on")
     }
 
     fn get_schema_version(conn: &Connection) -> rusqlite::Result<i32> {

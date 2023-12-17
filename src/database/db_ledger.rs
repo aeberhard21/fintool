@@ -11,26 +11,26 @@ use rusqlite::{Connection, Result};
 use super::DbConn;
 
 impl DbConn {
-    pub fn create_ledger(&mut self, name: String) -> Result<()> {
-        let sql: String;
-        sql = format!(
-            "CREATE TABLE {} (
+    pub fn create_ledger_table(&mut self) -> Result<()> {
+        let sql: &str;
+        sql =
+            "CREATE TABLE IF NOT EXISTS ledgers (
                 date    TEXT NOT NULL, 
                 amount  REAL NOT NULL, 
                 deposit INTEGER NOT NULL, 
                 payee   TEXT NOT NULL, 
-                desc    TEXT
-            )",
-            name
-        );
-        println!("{}", sql);
-        let rs = self.conn.execute(sql.as_str(), ());
+                desc    TEXT,
+                user_id INTEGER,
+                FOREIGN KEY(user_id) REFERENCES users(id)
+            )";
+
+        let rs = self.conn.execute(sql, ());
         match rs {
             Ok(_) => {
-                println!("created")
+                println!("Created!")
             }
             Err(error) => {
-                panic!("unable to create: {}", error)
+                panic!("Unable to create: {}", error)
             }
         }
         Ok(())

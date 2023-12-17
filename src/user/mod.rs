@@ -31,7 +31,7 @@ impl User {
     pub fn create_ledger(&mut self, db: &mut DbConn, name: String) {
         self.ledgers.push(name.to_string());
         println!("number of ledgers is now: {}", self.get_ledgers().len());
-        db.create_ledger(name);
+        // db.create_ledger(name);
     }
 
     pub fn add_ledger_entry(&mut self, ledger: String, db: &mut DbConn, entry: LedgerEntry) {

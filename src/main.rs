@@ -40,24 +40,24 @@ fn main() {
         }
     }
 
-    let mut _users: Vec<User> = Vec::new();
-    _users = _db.restore_users().unwrap();
-    println!("number of users: {}", _users.len());
+    // let mut _users: Vec<User> = Vec::new();
+    // _users = _db.restore_users().unwrap();
+    // println!("number of users: {}", _users.len());
 
     println!("Welcome to FinTool!");
     let mut _user: User;
     let next_id: u32 = 0;
-    if _users.is_empty() {
-        _user = tui::tui_user::create_user(next_id);
-        // _db.add_user(_user);
-        _users.push(_user);
-    }
+    // if _users.is_empty() {
+    //     _user = tui::tui_user::create_user(next_id);
+    //     // _db.add_user(_user);
+    //     _users.push(_user);
+    // }
     // } else {
     //     _user = tui::login(_users);
     // }
-    tui::menu(&mut _users[next_id as usize], &mut _db);
-    println!("Size of users before store: {}", _users.len());
-    _db.store_users(&mut _users);
-    println!("Size of users after store: {}", _users.len());
+    tui::menu(&mut _db);
+    // println!("Size of users before store: {}", _users.len());
+    // _db.store_users(&mut _users);
+    // println!("Size of users after store: {}", _users.len());
     _db.close();
 }
