@@ -1,13 +1,17 @@
 // use core::panic;
 use crate::database::DbConn;
+use crate::database::db_accounts::AccountType;
 use crate::ledger::Ledger;
+use crate::ledger::LedgerEntry;
 use crate::tui::tui_ledger::*;
 use crate::tui::tui_user::*;
+use crate::tui::tui_accounts::*;
 use crate::user::User;
 use chrono::{NaiveDate, Weekday};
 use inquire::*;
 
 mod tui_ledger;
+mod tui_accounts;
 pub mod tui_user;
 
 // pub fn login(_users: &mut Vec<User>) -> User {
@@ -64,11 +68,11 @@ pub fn menu(_db: &mut DbConn) {
 fn tui_create(_uid: u32, _db: &mut DbConn) {
     let mut commands:Vec<&str> = Vec::new();
     if _db.is_admin(_uid).unwrap() {
-        commands = vec!["user", "ledger", "none"];
+        commands = vec!["user", "bank", "CD", "health", "investment", "ledger", "retirement", "none"];
 
     }
     else {
-        commands = vec!["ledger", "none"];
+        commands = vec!["bank", "CD", "health", "investment", "ledger", "retirement", "none"];
     }
     let command: String = Select::new("\nWhat would you like to add:", commands)
         .prompt()
@@ -79,8 +83,23 @@ fn tui_create(_uid: u32, _db: &mut DbConn) {
         "user" => {
             create_user(_db);
         }
+        "bank" => {
+            create_account(AccountType::Bank,_uid,  _db);
+        }
+        "CD" => {
+            create_account(AccountType::CD, _uid, _db);
+        }
+        "health" => {
+            create_account(AccountType::Health, _uid, _db);
+        }
+        "investment" => {
+            create_account(AccountType::Investment, _uid, _db);
+        }
         "ledger" => {
             create_ledger(_uid, _db);
+        }
+        "retirement" => {
+            create_account(AccountType::Retirement,_uid,  _db);
         }
         "none" => return,
         _ => {
@@ -89,28 +108,34 @@ fn tui_create(_uid: u32, _db: &mut DbConn) {
     }
 }
 
-fn tui_add(_user : u32, _db: &mut DbConn) {
-    let commands: Vec<&str> = vec!["ledger", "investment", "none"];
+fn tui_add(_uid : u32, _db: &mut DbConn) {
+    let commands: Vec<&str> = vec!["bank", "CD", "health", "investment", "ledger", "retirement", "none"];
     let command: String = Select::new("\nWhat would you like to add:", commands)
         .prompt()
         .unwrap()
         .to_string();
 
     match command.as_str() {
-        // "ledger" => loop {
-        //     add_ledger(id, _db);
-
-        //     let another: bool = Confirm::new("Add another entry?")
-        //         .with_default(false)
-        //         .prompt()
-        //         .unwrap();
-        //     if !another {
-        //         break;
-        //     }
-        // },
         "investment" => {
             println!("Not implemented!");
         }
+        "ledger" => {
+            let ledgers = _db.get_user_accounts(_uid, AccountType::Ledger).unwrap();
+            let ref ref_ledgers = &ledgers;
+            loop {
+                let selected_ledger: String = Select::new("Select which ledger to add to: ", ref_ledgers.to_vec()).prompt().unwrap().to_string();
+                let entry = add_ledger(_uid, _db);
+                let aid = _db.get_account_id(selected_ledger).unwrap();
+                _db.add_ledger_entry(aid, entry);
+                let another: bool = Confirm::new("Add another entry?")
+                    .with_default(false)
+                    .prompt()
+                    .unwrap();
+                if false == another {
+                    break
+                }
+            }
+        },
         "none" => {
             return;
         }

@@ -16,12 +16,12 @@ pub fn create_ledger(_uid: u32, _db: &mut DbConn) {
     _db.add_account(_uid, name, AccountType::Ledger);
 }
 
-pub fn add_ledger(_user: &mut User, _db: &mut DbConn) {
-    let ledger_options: Vec<String> = _user.get_ledgers();
-    let _ledger: String = Select::new("Select which ledger to add to:", ledger_options)
-        .prompt()
-        .unwrap()
-        .to_string();
+pub fn add_ledger(_user: u32, _db: &mut DbConn) -> LedgerEntry {
+    // let ledger_options: Vec<String> = _user.get_ledgers();
+    // let _ledger: String = Select::new("Select which ledger to add to:", ledger_options)
+    //     .prompt()
+    //     .unwrap()
+    //     .to_string();
 
     let deposit_options: Vec<&str> = vec!["Credit", "Debit"];
 
@@ -76,7 +76,8 @@ pub fn add_ledger(_user: &mut User, _db: &mut DbConn) {
         description: description_input,
     };
     // _ledger.add(entry);
-    _user.add_ledger_entry(_ledger, _db, entry);
+    // _user.add_ledger_entry(_ledger, _db, entry);
+    return entry;
 }
 
 pub fn print_ledger(_user: &mut User, _db: &mut DbConn) {

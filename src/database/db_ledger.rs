@@ -20,8 +20,8 @@ impl DbConn {
                 deposit INTEGER NOT NULL, 
                 payee   TEXT NOT NULL, 
                 desc    TEXT,
-                user_id INTEGER,
-                FOREIGN KEY(user_id) REFERENCES users(id)
+                aid     INTEGER,
+                FOREIGN KEY(aid) REFERENCES accounts(id)
             )";
 
         let rs = self.conn.execute(sql, ());
@@ -36,23 +36,18 @@ impl DbConn {
         Ok(())
     }
 
-    pub fn add_ledger_entry(&mut self, ledger: String, entry: LedgerEntry) -> Result<()> {
-        let sql: String;
-        sql = format!(
-            "INSERT INTO {} 
-                ( date, amount, deposit, payee, desc )
-                VALUES ( ?1, ?2, ?3, ?4, ?5)
-            ",
-            ledger
-        );
+    pub fn add_ledger_entry(&mut self, aid: u32, entry: LedgerEntry) -> Result<()> {
+        let sql: &str;
+        sql = "INSERT INTO ledgers ( date, amount, deposit, payee, desc, aid) VALUES ( ?1, ?2, ?3, ?4, ?5, ?6)";
         let rs = self.conn.execute(
-            sql.as_str(),
+            sql,
             (
                 entry.date.to_string(),
                 entry.amount,
                 entry.deposit,
                 entry.payee,
                 entry.description,
+                aid,
             ),
         );
         match rs {

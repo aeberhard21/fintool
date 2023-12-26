@@ -35,7 +35,7 @@ impl User {
     }
 
     pub fn add_ledger_entry(&mut self, ledger: String, db: &mut DbConn, entry: LedgerEntry) {
-        db.add_ledger_entry(ledger, entry);
+        // db.add_ledger_entry(ledger, entry);
     }
 
     pub fn get_name(&mut self) -> String {

@@ -23,9 +23,6 @@ impl DbConn {
             )";
         let rs = self.conn.execute(sql, ());
         match rs {
-            Ok(0) => {
-                println!("Table already created!");
-            }
             Ok(_) => {
                 println!("Created users table!");
             }
@@ -39,9 +36,10 @@ impl DbConn {
     pub fn add_user(&mut self, name: String, admin: bool) -> rusqlite::Result<u32, Error>{
         let sql: &str = "INSERT INTO users (id, name, admin) VALUES ( ?1, ?2, ?3)";
         
-        let mut s = DefaultHasher::new();
-        name.hash(&mut s);
-        let id: u32 = s.finish() as u32;
+        // let mut s = DefaultHasher::new();
+        // name.hash(&mut s);
+        // let id: u32 = s.finish() as u32;
+        let id = self.get_next_user_id().unwrap();
 
         let test_db: &str = "SELECT * FROM users where id = ?1";
         let mut stmt = self.conn.prepare(test_db);
