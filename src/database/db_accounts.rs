@@ -1,3 +1,4 @@
+use std::slice::RSplit;
 use std::usize;
 use std::sync::atomic::{AtomicU32, Ordering};
 use rusqlite::{Connection, Result, Error};
@@ -35,9 +36,14 @@ impl DbConn {
         Ok(())
     }
 
-    pub fn add_account(&mut self, uid: u32, name: String, atype: AccountType) -> Result<()> {
+    pub fn add_account(&mut self, uid: u32, name: String, atype: AccountType) -> Result<u32> {
         // static AID: AtomicU32 = AtomicU32::new(0);
         let aid = self.get_next_account_id().unwrap();
+        let sql: &str = "SELECT * FROM accounts WHERE uid = (?1) and name = (?2)";
+        let exists = self.conn.prepare(sql)?.exists(rusqlite::params![uid, name])?;
+        if exists {
+            panic!("Account with name {} already exists for user!", name);
+        }
         let sql: &str = "INSERT INTO accounts (id, type, name, uid) VALUES (?1, ?2, ?3, ?4)";
         let rs = self.conn.execute(sql, 
             (aid, 
@@ -46,7 +52,7 @@ impl DbConn {
             uid));
         match rs {
             Ok(usize) => {
-                Ok(())
+                Ok(aid)
             }
             Err(error) => {
                 panic!("Unable to add account {} for user {}: {}!", &name, &uid, error);
@@ -54,17 +60,17 @@ impl DbConn {
         }
     }
 
-    pub fn get_user_accounts(&mut self, uid: u32, atype: AccountType) -> rusqlite::Result<Vec<String>, Error> {
+    pub fn get_user_accounts(&mut self, uid: u32, atype: &AccountType) -> rusqlite::Result<Vec<String>, Error> {
         let sql: &str = "SELECT name FROM accounts WHERE uid = (?1) AND type = (?2)";
         let mut stmt = self.conn.prepare(sql)?;
-        let exists = stmt.exists(rusqlite::params![uid, atype as u32])?;
+        let exists = stmt.exists(rusqlite::params![uid, *atype.clone() as u32])?;
         let mut accounts: Vec<String> = Vec::new();
         match exists {
             true => {
                 stmt = self.conn.prepare(sql)?;
                 let names: Vec<Result<String, Error>> = 
                     stmt.query_map(
-                        rusqlite::params![uid, atype as u32], 
+                        rusqlite::params![uid, *atype.clone() as u32], 
                         |row| { 
                             Ok(row.get(0)?)
                         }).unwrap().collect::<Vec<_>>();
@@ -79,14 +85,14 @@ impl DbConn {
         }
     }
 
-    pub fn get_account_id(&mut self, aname: String) -> rusqlite::Result<u32, Error> {
-        let sql: &str = "SELECT id from accounts WHERE name = (?1)";
+    pub fn get_account_id(&mut self, uid: u32, aname: String) -> rusqlite::Result<u32, Error> {
+        let sql: &str = "SELECT id from accounts WHERE name = (?1) AND uid = (?2)";
         let mut stmt = self.conn.prepare(sql)?;
-        let exists = stmt.exists((&aname,),)?;
+        let exists = stmt.exists((&aname, uid),)?;
         match exists {
             true => {
                 stmt = self.conn.prepare(sql)?;
-                let id = stmt.query_row((&aname,), |row| row.get::<_,u32>(0));
+                let id = stmt.query_row((&aname,uid), |row| row.get::<_,u32>(0));
                 match id {
                     Ok(id) => {
                         return Ok(id);
@@ -101,4 +107,27 @@ impl DbConn {
             }
         }
     }  
+    pub fn get_account_name(&mut self, uid: u32, aid: u32) -> rusqlite::Result<String, Error> {
+        let sql: &str = "SELECT id from accounts WHERE aid = (?1) AND uid = (?2)";
+        let mut stmt = self.conn.prepare(sql)?;
+        let exists = stmt.exists((&aid, uid),)?;
+        match exists {
+            true => {
+                stmt = self.conn.prepare(sql)?;
+                let rs = stmt.query_row((&aid,uid), |row| row.get::<_,String>(0));
+                match rs {
+                    Ok(name) => {
+                        return Ok(name);
+                    }
+                    Err(err) => {
+                        panic!("Unable to retrieve name for account {}: {}", &aid, err);
+                    }
+                }
+            }
+            false => {
+                panic!("Unable to find account matching {}", aid);
+            }
+        }
+    }  
+
 }

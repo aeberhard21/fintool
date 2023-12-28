@@ -6,6 +6,8 @@ use crate::{ledger::Ledger, tui::tui_user::create_user};
 mod db_ledger;
 mod db_user;
 pub mod db_accounts;
+pub mod db_banks;
+pub mod db_hsa;
 mod statements;
 
 const CURRENT_DATABASE_SCHEMA_VERSION: i32 = 0;
@@ -38,6 +40,8 @@ impl DbConn {
         Self::create_user_table(self);
         Self::create_accounts_table(self);
         Self::create_ledger_table(self);
+        Self::create_bank_table(self);
+        Self::create_hsa_table(self);
         Self::set_schema_version(&self.conn, CURRENT_DATABASE_SCHEMA_VERSION);
         Ok(())
     }

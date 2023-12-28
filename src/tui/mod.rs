@@ -32,7 +32,7 @@ pub fn menu(_db: &mut DbConn) {
     uid = tui_set_user(_db);
 
     loop {
-        let commands: Vec<&str> = vec!["create", "change", "add", "report", "view", "exit"];
+        let commands: Vec<&str> = vec!["create", "change", "record", "report", "view", "exit"];
         let command: String = Select::new("What would you like to do:", commands)
             .prompt()
             .unwrap()
@@ -45,8 +45,8 @@ pub fn menu(_db: &mut DbConn) {
             "change" => {
                 uid = tui_set_user(_db);
             }
-            "add" => {
-                tui_add(uid, _db);
+            "record" => {
+                tui_record(uid, _db);
             }
             "view" => {
                 tui_view(uid, _db);
@@ -67,6 +67,7 @@ pub fn menu(_db: &mut DbConn) {
 
 fn tui_create(_uid: u32, _db: &mut DbConn) {
     let mut commands:Vec<&str> = Vec::new();
+    let aid;
     if _db.is_admin(_uid).unwrap() {
         commands = vec!["user", "bank", "CD", "health", "investment", "ledger", "retirement", "none"];
 
@@ -84,13 +85,18 @@ fn tui_create(_uid: u32, _db: &mut DbConn) {
             create_user(_db);
         }
         "bank" => {
-            create_account(AccountType::Bank,_uid,  _db);
+            aid = create_account(AccountType::Bank,_uid,  _db);
+            let record = record_f32_amount(_uid, _db);
+            _db.record_bank_account(aid, record);
         }
         "CD" => {
-            create_account(AccountType::CD, _uid, _db);
+            aid = create_account(AccountType::CD, _uid, _db);
         }
         "health" => {
-            create_account(AccountType::Health, _uid, _db);
+            aid = create_account(AccountType::Health, _uid, _db);
+            let record = record_health_account(_uid, _db);
+            _db.record_hsa_account(aid, record);
+
         }
         "investment" => {
             create_account(AccountType::Investment, _uid, _db);
@@ -108,7 +114,7 @@ fn tui_create(_uid: u32, _db: &mut DbConn) {
     }
 }
 
-fn tui_add(_uid : u32, _db: &mut DbConn) {
+fn tui_record(_uid : u32, _db: &mut DbConn) {
     let commands: Vec<&str> = vec!["bank", "CD", "health", "investment", "ledger", "retirement", "none"];
     let command: String = Select::new("\nWhat would you like to add:", commands)
         .prompt()
@@ -116,16 +122,30 @@ fn tui_add(_uid : u32, _db: &mut DbConn) {
         .to_string();
 
     match command.as_str() {
+        "bank" => {
+            let aid = select_account(_uid, _db, AccountType::Bank);
+            let record = record_f32_amount(_uid, _db);
+            _db.record_bank_account(aid, record);
+        }
+        "CD" => {
+            println!("Not implemented");
+            // let aid = select_account(_uid, _db, AccountType::CD);
+            // let record = record_f32_amount(_uid, _db);
+            // _db.record_cd_account(aid, record);
+        }
+        "health" => {
+            let aid = select_account(_uid, _db, AccountType::Health);
+            let record = record_health_account(_uid, _db);
+            _db.record_hsa_account(aid, record);
+    
+        }
         "investment" => {
             println!("Not implemented!");
         }
         "ledger" => {
-            let ledgers = _db.get_user_accounts(_uid, AccountType::Ledger).unwrap();
-            let ref ref_ledgers = &ledgers;
+            let aid = select_account(_uid, _db, AccountType::Ledger);
             loop {
-                let selected_ledger: String = Select::new("Select which ledger to add to: ", ref_ledgers.to_vec()).prompt().unwrap().to_string();
                 let entry = add_ledger(_uid, _db);
-                let aid = _db.get_account_id(selected_ledger).unwrap();
                 _db.add_ledger_entry(aid, entry);
                 let another: bool = Confirm::new("Add another entry?")
                     .with_default(false)
@@ -136,6 +156,10 @@ fn tui_add(_uid : u32, _db: &mut DbConn) {
                 }
             }
         },
+        "retirement" => {
+            let aid = select_account(_uid, _db, AccountType::Retirement);
+            let entry = record_f32_amount(_uid, _db);
+        }
         "none" => {
             return;
         }
@@ -145,16 +169,31 @@ fn tui_add(_uid : u32, _db: &mut DbConn) {
     }
 }
 
-fn tui_report(_user: u32, _db: &mut DbConn) {
-    let commands: Vec<&str> = vec!["ledger"];
+fn tui_report(_uid: u32, _db: &mut DbConn) {
+    let commands: Vec<&str> = vec!["bank", "ledger", "none"];
     let command: String = Select::new("What would you like to report:", commands)
         .prompt()
         .unwrap()
         .to_string();
 
     match command.as_str() {
+        "bank" => {
+            let aid = select_account(_uid, _db, AccountType::Bank);
+            let account = _db.get_account_name(_uid, aid).unwrap();
+            let value = _db.get_bank_value(aid).unwrap().amount;
+            println!("The value of account {} is: {}", &account, value )
+        }
+        "health" => {
+            let aid = select_account(_uid, _db, AccountType::Health);
+            let account = _db.get_account_name(_uid, aid).unwrap();
+            let value = _db.get_bank_value(aid).unwrap().amount;
+            println!("The value of account {} is: {}", &account, value )
+        }
         "ledger" => {
             // println!("Balance of account: {}", _ledger.sum());
+        }
+        "none" => {
+            return;
         }
         _ => {
             panic!("Invalid command!");
