@@ -1,13 +1,12 @@
-use rusqlite::{Connection, Error, Rows};
-use std::path::{Path, PathBuf};
-
-use crate::{ledger::Ledger, tui::tui_user::create_user};
+use rusqlite::Connection;
+use std::path::Path;
 
 mod db_ledger;
 mod db_user;
 pub mod db_accounts;
 pub mod db_banks;
 pub mod db_hsa;
+pub mod db_investments;
 mod statements;
 
 const CURRENT_DATABASE_SCHEMA_VERSION: i32 = 0;
@@ -42,6 +41,7 @@ impl DbConn {
         Self::create_ledger_table(self);
         Self::create_bank_table(self);
         Self::create_hsa_table(self);
+        Self::create_investment_table(self);
         Self::set_schema_version(&self.conn, CURRENT_DATABASE_SCHEMA_VERSION);
         Ok(())
     }
@@ -60,16 +60,17 @@ impl DbConn {
 
     fn create_db_info_table(&mut self) -> rusqlite::Result<()> {
         let sql = "CREATE TABLE IF NOT EXISTS info (
-            uid    INTEGER NOT NULL,
-            aid    INTEGER NOT NULL
+            uid     INTEGER NOT NULL,
+            aid     INTEGER NOT NULL,
+            sid     INTEGER NOT NULL
         )";
         self.conn.execute(sql, ())?;
         let sql = "SELECT uid FROM info";
         let mut stmt = self.conn.prepare(sql)?;
         let exists = stmt.exists(())?;
         if !exists {
-            let sql: &str = "INSERT INTO info (uid, aid) VALUES ( ?1,  ?2)";
-            match self.conn.execute(sql,(0, 0)) {
+            let sql: &str = "INSERT INTO info (uid, aid, sid) VALUES ( ?1,  ?2, ?3)";
+            match self.conn.execute(sql,(0, 0, 0)) {
                 Ok(rows_inserted) => {
                     println!("Initialized info table: {}!", rows_inserted);
                 }
@@ -111,6 +112,23 @@ impl DbConn {
             }
             false => {
                 panic!("The next account ID within table 'info' does not exist.");
+            }
+        }
+    }
+
+    pub fn get_next_stock_id(&mut self) -> rusqlite::Result<u32> {
+        let sql = "SELECT sid FROM info";
+        let mut stmt = self.conn.prepare(sql)?;
+        let exists = stmt.exists(())?;
+        match exists {
+            true => {
+                let id = stmt.query_row((), |row| row.get::<_, u32>(0))?; 
+                let sql = "UPDATE info SET sid = sid + 1";
+                self.conn.execute(sql, ())?;
+                Ok(id)
+            }
+            false => {
+                panic!("The next stock ID within table 'info' does not exist.");
             }
         }
     }

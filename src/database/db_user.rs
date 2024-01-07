@@ -1,17 +1,6 @@
-use core::num;
-use std::collections::hash_map::DefaultHasher;
-use std::{ptr::null, result};
-use std::hash::{Hash, Hasher};
-
-use crate::{ledger, user::{*, self}};
-use chrono::format::StrftimeItems;
-use inquire::error;
-use rusqlite::{params, types::Null, Connection, Error};
-
-use std::cell::RefCell;
-use std::rc::Rc;
-
-use super::{DbConn, statements};
+use rusqlite::{params, Error};
+use super::DbConn;
+use crate::user::User;
 
 impl DbConn {
     pub fn create_user_table(&mut self) -> rusqlite::Result<()> {

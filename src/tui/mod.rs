@@ -1,28 +1,23 @@
+use std::borrow::BorrowMut;
+use std::sync::Arc;
+
 // use core::panic;
 use crate::database::DbConn;
 use crate::database::db_accounts::AccountType;
-use crate::ledger::Ledger;
-use crate::ledger::LedgerEntry;
 use crate::tui::tui_ledger::*;
 use crate::tui::tui_user::*;
 use crate::tui::tui_accounts::*;
-use crate::user::User;
+use crate::stocks;
 use chrono::{NaiveDate, Weekday};
 use inquire::*;
+use tokio::task::spawn_blocking;
+use yahoo::YahooConnector;
+use yahoo_finance_api as yahoo;
+use tokio;
 
 mod tui_ledger;
 mod tui_accounts;
 pub mod tui_user;
-
-// pub fn login(_users: &mut Vec<User>) -> User {
-//     let selected_user: User;
-//     let mut users: Vec<&str> = Vec::new();
-//     for user in _users.iter() {
-//         users.push(user.get_name());
-//     }
-//     // let selected_user : String::new("User:");
-//     return selected_user;
-// }
 
 pub fn menu(_db: &mut DbConn) {
 
@@ -140,7 +135,24 @@ fn tui_record(_uid : u32, _db: &mut DbConn) {
     
         }
         "investment" => {
-            println!("Not implemented!");
+            let aid = select_account(_uid, _db, AccountType::Investment);
+            loop {
+                match record_stock_purchase(_uid) {
+                    Some(record) => {
+                       _db.add_stock(aid, record);
+                   }
+                   None => {
+                       return
+                   }
+               }
+               let another: bool = Confirm::new("Add another stock to investment?")
+                    .with_default(false)
+                    .prompt()
+                    .unwrap(); 
+                if false == another {
+                    break
+                }
+            }           
         }
         "ledger" => {
             let aid = select_account(_uid, _db, AccountType::Ledger);
@@ -150,7 +162,7 @@ fn tui_record(_uid : u32, _db: &mut DbConn) {
                 let another: bool = Confirm::new("Add another entry?")
                     .with_default(false)
                     .prompt()
-                    .unwrap();
+                    .unwrap(); 
                 if false == another {
                     break
                 }
@@ -170,7 +182,7 @@ fn tui_record(_uid : u32, _db: &mut DbConn) {
 }
 
 fn tui_report(_uid: u32, _db: &mut DbConn) {
-    let commands: Vec<&str> = vec!["bank", "ledger", "none"];
+    let commands: Vec<&str> = vec!["bank", "health", "investment", "ledger", "none"];
     let command: String = Select::new("What would you like to report:", commands)
         .prompt()
         .unwrap()
@@ -188,6 +200,25 @@ fn tui_report(_uid: u32, _db: &mut DbConn) {
             let account = _db.get_account_name(_uid, aid).unwrap();
             let value = _db.get_bank_value(aid).unwrap().amount;
             println!("The value of account {} is: {}", &account, value )
+        }
+        "investment" => {
+            let aid = select_account(_uid, _db, AccountType::Investment);
+            let mut stocks = _db.get_stocks(aid).expect("Unable to retrieve account information!");
+            let report_all = Confirm::new("Report total of entire account (y) or stocks (n)").with_default(false).prompt().unwrap();
+            if !report_all {
+                let tmp = stocks.clone();
+                stocks.clear();
+                stocks.push(select_stock(tmp));
+            }
+            let mut value: f64 = 0.0;
+            for stock in stocks {
+                let record = _db.get_stock_info(aid, stock).unwrap();
+                for r in record {
+                    value += stocks::get_stock_at_close(r.ticker).unwrap() * r.shares as f64;
+                }
+            }
+            println!("Value at last closing: {}", value);
+
         }
         "ledger" => {
             // println!("Balance of account: {}", _ledger.sum());

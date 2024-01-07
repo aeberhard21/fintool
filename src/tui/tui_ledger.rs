@@ -1,11 +1,9 @@
-use crate::database;
 use crate::database::*;
 use crate::database::db_accounts::AccountType;
 use crate::ledger::*;
 use crate::user::*;
 use chrono::{NaiveDate, Weekday};
 use inquire::*;
-use rusqlite::config::DbConfig;
 
 pub fn create_ledger(_uid: u32, _db: &mut DbConn) {
     let name: String = Text::new("Enter ledger name:")

@@ -1,10 +1,6 @@
-use std::slice::RSplit;
-use std::usize;
-use std::sync::atomic::{AtomicU32, Ordering};
-use rusqlite::{Connection, Result, Error};
+use rusqlite::{Result, Error};
 
 use super::DbConn;
-
 pub enum AccountType {
     Ledger, 
     Investment,
@@ -60,17 +56,18 @@ impl DbConn {
         }
     }
 
-    pub fn get_user_accounts(&mut self, uid: u32, atype: &AccountType) -> rusqlite::Result<Vec<String>, Error> {
+    pub fn get_user_accounts(&mut self, uid: u32, atype: AccountType) -> rusqlite::Result<Vec<String>, Error> {        
         let sql: &str = "SELECT name FROM accounts WHERE uid = (?1) AND type = (?2)";
+        let p = rusqlite::params![uid, atype as u32];
         let mut stmt = self.conn.prepare(sql)?;
-        let exists = stmt.exists(rusqlite::params![uid, *atype.clone() as u32])?;
+        let exists = stmt.exists(p)?;
         let mut accounts: Vec<String> = Vec::new();
         match exists {
             true => {
                 stmt = self.conn.prepare(sql)?;
                 let names: Vec<Result<String, Error>> = 
                     stmt.query_map(
-                        rusqlite::params![uid, *atype.clone() as u32], 
+                        p, 
                         |row| { 
                             Ok(row.get(0)?)
                         }).unwrap().collect::<Vec<_>>();
