@@ -4,6 +4,8 @@ use tokio_test;
 use yahoo_finance_api as yahoo;
 use yahoo::{YahooConnector, YahooError};
 
+use crate::database::db_investments::StockRecord;
+
 // #[cfg(not(feature = "blocking"))]
 pub fn get_stock_at_close(ticker: String) -> Result<f64, YahooError> {
     let provider = YahooConnector::new();
@@ -11,6 +13,14 @@ pub fn get_stock_at_close(ticker: String) -> Result<f64, YahooError> {
     let quote = rs.last_quote()?;
     let close = quote.close;
     Ok(close)
+}
+
+pub fn return_stock_values(stocks: Vec<StockRecord>) -> f64 {
+    let mut value: f64 = 0.0;
+    for s in stocks {
+        value += get_stock_at_close(s.ticker).unwrap() * s.shares as f64;
+    }
+    return value;
 }
 
 // pub async fn get_stock_at_date(provider: yahoo::YahooConnector, ticker: &str) -> f32 {

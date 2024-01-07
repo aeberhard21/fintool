@@ -1,12 +1,7 @@
-use std::usize;
-
 // use crate::database::statements::CREATE_LEDGER;
 use crate::ledger::Ledger;
 use crate::ledger::LedgerEntry;
-use rusqlite::ffi::sqlite3;
-use rusqlite::Rows;
-use rusqlite::Statement;
-use rusqlite::{Connection, Result};
+use rusqlite::Result;
 
 use super::DbConn;
 
@@ -51,7 +46,7 @@ impl DbConn {
             ),
         );
         match rs {
-            Ok(usize) => {
+            Ok(_usize) => {
                 println!("Added statement");
             }
             Err(Error) => {

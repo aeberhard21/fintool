@@ -2,3 +2,4 @@
 /db
 Cargo.lock
 .vscode/
+*.txt

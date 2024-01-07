@@ -10,6 +10,26 @@ pub enum AccountType {
     Health,
 }
 
+impl From<u32> for AccountType {
+    fn from(value: u32) -> Self {
+        match value {
+            0 => AccountType::Ledger,
+            1 => AccountType::Investment,
+            2 => AccountType::Bank, 
+            3 => AccountType::CD, 
+            4 => AccountType::Retirement,
+            5 => AccountType::Health,
+            _ => panic!("Invalid numberic value for AccountType!"),
+        }
+    }
+}
+
+pub struct AccountRecord {
+    pub id      : u32, 
+    pub atype   : AccountType, 
+    pub name    : String
+}
+
 impl DbConn {
     pub fn create_accounts_table(&mut self) -> Result<()> {
         let sql: &str = 
@@ -52,6 +72,36 @@ impl DbConn {
             }
             Err(error) => {
                 panic!("Unable to add account {} for user {}: {}!", &name, &uid, error);
+            }
+        }
+    }
+
+    pub fn get_user_account_info(&mut self, uid: u32) -> rusqlite::Result<Vec<AccountRecord>, Error> {
+        let sql: &str = "SELECT * FROM accounts WHERE uid = (?1)";
+        let p = rusqlite::params![uid];
+        let mut stmt = self.conn.prepare(sql)?;
+        let exists = stmt.exists(p)?;
+        let mut accounts: Vec<AccountRecord> = Vec::new();
+        match exists {
+            true => {
+                stmt = self.conn.prepare(sql)?;
+                let names: Vec<Result<AccountRecord, Error>> = 
+                    stmt.query_map(
+                        p, 
+                        |row| { 
+                            Ok( AccountRecord {
+                                id: row.get(0)?,
+                                atype: AccountType::from(row.get::<_, u32>(1)?), 
+                                name: row.get(2)? }
+                            )
+                        }).unwrap().collect::<Vec<_>>();
+                for name in names {
+                    accounts.push(name.unwrap())
+                }
+                return Ok(accounts);
+            }
+            false => {
+                return Ok(accounts);
             }
         }
     }

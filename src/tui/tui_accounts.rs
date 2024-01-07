@@ -1,4 +1,6 @@
 
+use core::panic;
+
 use crate::database::*;
 use crate::database::db_accounts::AccountType;
 use crate::database::db_banks::BankRecord;
@@ -27,12 +29,13 @@ pub fn create_account(_atype: AccountType, _uid: u32, _db: &mut DbConn ) -> u32 
 pub fn select_account(_uid : u32, _db: &mut DbConn, atype: AccountType) -> u32 {
     let msg;
     match &atype {
-        &AccountType::Bank => {msg = "Select bank account: ";}
-        &AccountType::CD => {msg = "Select CD account: ";}
-        &AccountType::Health => {msg = "Select health account: ";}
-        &AccountType::Ledger => {msg = "Select ledger: ";}
-        &AccountType::Investment => {msg = "Select investment account: ";}
-        &AccountType::Retirement => {msg = "Select retirement account: ";}
+        &AccountType::Bank => msg = "Select bank account: ",
+        &AccountType::CD => msg = "Select CD account: ",
+        &AccountType::Health => msg = "Select health account: ",
+        &AccountType::Ledger => msg = "Select ledger: ",
+        &AccountType::Investment => msg = "Select investment account: ",
+        &AccountType::Retirement => msg = "Select retirement account: ",
+        _ => panic!("Unrecognized account type!")
     }
     let accounts: Vec<String> = _db.get_user_accounts(_uid, atype).unwrap();
     let account: String = Select::new(msg, accounts).prompt().unwrap().to_string();
@@ -128,5 +131,41 @@ pub fn record_stock_purchase(_uid : u32) -> Option<StockRecord> {
     return Some(StockRecord { date : *date, ticker: ticker, shares: shares });
 
 
+}
+
+pub fn get_stock_info(aid: u32, _db: &mut DbConn, stocks: Vec<String>) -> Vec<StockRecord> {
+    let mut record = Vec::new();
+    for stock in stocks {
+        record = _db.get_stock_info(aid, stock).unwrap();
+    }
+    return record;
+}
+
+pub fn get_total_of_stocks(aid: u32, _db: &mut DbConn, stocks: Vec<String>) -> f64 {
+    let record = get_stock_info(aid, _db, stocks);
+    return stocks::return_stock_values(record);
+}
+
+pub fn get_net_wealth(uid: u32, _db: &mut DbConn) -> f64 {
+    let mut nw: f64 = 0.0;
+    let accounts = _db.get_user_account_info(uid).expect("Unable to retrieve user accounts!");
+    for account in accounts {
+        match account.atype {
+            AccountType::Bank => nw += _db.get_bank_value(account.id).expect("Unable to retrieve bank account!").amount as f64,
+            AccountType::CD => {}
+            AccountType::Investment => {
+                let stocks = _db.get_stocks(account.id).expect("Unable to retrieve user stocks!");
+                nw += get_total_of_stocks(account.id, _db, stocks);
+            }
+            AccountType::Ledger => {}
+            AccountType::Health => {
+                let hsa = _db.get_hsa_value(account.id).expect("Unable to retrieve user HSA account!");
+                nw += (hsa.fixed + hsa.variable) as f64;
+            }
+            AccountType::Retirement => {},
+            _ => panic!("Unrecognized account type!"),
+        }
+    }
+    return nw
 }
 

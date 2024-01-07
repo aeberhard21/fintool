@@ -39,4 +39,38 @@ impl DbConn {
         }
         Ok(())
     }  
+
+    pub fn get_hsa_value(&mut self, aid: u32) -> Result<HsaRecord, rusqlite::Error> {
+        let sql: &str = "SELECT * FROM hsa WHERE aid = (?1)";
+        match self.conn.prepare(sql) {
+            Ok(mut stmt) => {
+                let exists = stmt.exists([aid])?;
+                if exists {
+                    let mut entries = stmt.query_map([aid], |row| {
+                        Ok(HsaRecord {
+                            date: row.get(0)?,
+                            fixed: row.get(1)?,
+                            variable: row.get(2)?,
+                        })
+                    }).unwrap().collect::<Vec<_>>();
+
+                    let mut latest_record =entries.pop().unwrap().unwrap();
+                    for entry in entries {
+                        let record = entry.unwrap();
+                        if record.date > latest_record.date {
+                            latest_record = record;
+                        }
+                    }
+
+                    Ok(latest_record)
+                }
+                else {
+                    panic!("Unable to find entries for the account id: {}", aid);
+                }
+            }
+            Err(error) => {
+                panic!("Unable to retrieve HSA account information: {}", error);
+            }
+        }
+    }
 }

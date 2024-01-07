@@ -1,9 +1,11 @@
 use std::borrow::BorrowMut;
+use std::ops::Index;
 use std::sync::Arc;
 
 // use core::panic;
 use crate::database::DbConn;
 use crate::database::db_accounts::AccountType;
+use crate::stocks::return_stock_values;
 use crate::tui::tui_ledger::*;
 use crate::tui::tui_user::*;
 use crate::tui::tui_accounts::*;
@@ -182,7 +184,7 @@ fn tui_record(_uid : u32, _db: &mut DbConn) {
 }
 
 fn tui_report(_uid: u32, _db: &mut DbConn) {
-    let commands: Vec<&str> = vec!["bank", "health", "investment", "ledger", "none"];
+    let commands: Vec<&str> = vec!["bank", "health", "investment", "ledger", "wealth", "none"];
     let command: String = Select::new("What would you like to report:", commands)
         .prompt()
         .unwrap()
@@ -199,29 +201,24 @@ fn tui_report(_uid: u32, _db: &mut DbConn) {
             let aid = select_account(_uid, _db, AccountType::Health);
             let account = _db.get_account_name(_uid, aid).unwrap();
             let value = _db.get_bank_value(aid).unwrap().amount;
-            println!("The value of account {} is: {}", &account, value )
+            println!("The value of account {} is: {}", &account, value );
         }
         "investment" => {
             let aid = select_account(_uid, _db, AccountType::Investment);
             let mut stocks = _db.get_stocks(aid).expect("Unable to retrieve account information!");
             let report_all = Confirm::new("Report total of entire account (y) or stocks (n)").with_default(false).prompt().unwrap();
             if !report_all {
-                let tmp = stocks.clone();
+                let tickers = stocks.clone();
                 stocks.clear();
-                stocks.push(select_stock(tmp));
+                stocks.push(select_stock(tickers));
             }
-            let mut value: f64 = 0.0;
-            for stock in stocks {
-                let record = _db.get_stock_info(aid, stock).unwrap();
-                for r in record {
-                    value += stocks::get_stock_at_close(r.ticker).unwrap() * r.shares as f64;
-                }
-            }
-            println!("Value at last closing: {}", value);
-
+            println!("Value at last closing: {}", get_total_of_stocks(aid, _db, stocks));
         }
         "ledger" => {
             // println!("Balance of account: {}", _ledger.sum());
+        }
+        "wealth" => {
+            println!("Net wealth: {}", get_net_wealth(_uid, _db));
         }
         "none" => {
             return;
