@@ -45,7 +45,6 @@ pub fn tui_set_user(_db : &mut DbConn) -> u32 {
         let rid = _db.get_user_id(name);
         match rid {
             Ok(rid) => {
-                println!("id is {}", rid);
                 id = rid;
             }
             Err(error) => {

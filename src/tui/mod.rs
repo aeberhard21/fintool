@@ -2,9 +2,12 @@ use std::borrow::BorrowMut;
 use std::ops::Index;
 use std::sync::Arc;
 
+use crate::database;
 // use core::panic;
 use crate::database::DbConn;
 use crate::database::db_accounts::AccountType;
+use crate::database::db_hsa::HsaRecord;
+use crate::database::db_investments::StockRecord;
 use crate::stocks::return_stock_values;
 use crate::tui::tui_ledger::*;
 use crate::tui::tui_user::*;
@@ -96,7 +99,24 @@ fn tui_create(_uid: u32, _db: &mut DbConn) {
 
         }
         "investment" => {
-            create_account(AccountType::Investment, _uid, _db);
+            aid = create_account(AccountType::Investment, _uid, _db);
+            loop {
+                match record_stock_purchase(_uid) {
+                    Some(record) => {
+                       _db.add_stock(aid, record);
+                   }
+                   None => {
+                       return
+                   }
+               }
+               let another: bool = Confirm::new("Add another stock to investment?")
+                    .with_default(false)
+                    .prompt()
+                    .unwrap(); 
+                if false == another {
+                    break
+                }
+            }        
         }
         "ledger" => {
             create_ledger(_uid, _db);
@@ -200,21 +220,24 @@ fn tui_report(_uid: u32, _db: &mut DbConn) {
         "health" => {
             let aid = select_account(_uid, _db, AccountType::Health);
             let account = _db.get_account_name(_uid, aid).unwrap();
-            let value = _db.get_bank_value(aid).unwrap().amount;
+            let acct = _db.get_hsa_value(aid).expect("Unable to get HSA account!");
+            let mut total_investment_value = 0.0;
+            for stock in acct.investments {
+                total_investment_value += stocks::get_stock_at_close(stock.ticker).expect("Unable to retrieve stock value!")* (stock.shares as f64);
+            }
+            let value = acct.fixed.amount as f64 + total_investment_value;
             println!("The value of account {} is: {}", &account, value );
         }
         "investment" => {
             let aid = select_account(_uid, _db, AccountType::Investment);
-            let mut stocks = _db.get_stocks(aid).expect("Unable to retrieve account information!");
-            let report_all = Confirm::new("Report total of entire account (y) or stocks (n)").with_default(false).prompt().unwrap();
+            let report_all = Confirm::new("Report total of entire account (y) or an individual stock ticker (n)").with_default(false).prompt().unwrap();
+            let mut ticker = database::SQLITE_WILDCARD.to_string();
             if !report_all {
-                let tickers = stocks.clone();
-                stocks.clear();
-                stocks.push(select_stock(tickers));
+                ticker = select_stock(_db.get_stock_tickers(aid).expect("Unable to retrieve stock tickers for this account!"));
             }
-            println!("Value at last closing: {}", get_total_of_stocks(aid, _db, stocks));
+            println!("Value at last closing: {}", get_total_of_stocks(aid, _db, ticker));
         }
-        "ledger" => {
+        "ledger" => { 
             // println!("Balance of account: {}", _ledger.sum());
         }
         "wealth" => {

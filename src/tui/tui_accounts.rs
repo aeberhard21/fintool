@@ -1,7 +1,8 @@
 
 use core::panic;
+use std::collections::HashMap;
 
-use crate::database::*;
+use crate::database::{*, self};
 use crate::database::db_accounts::AccountType;
 use crate::database::db_banks::BankRecord;
 use crate::database::db_hsa::HsaRecord;
@@ -9,6 +10,7 @@ use crate::database::db_investments::StockRecord;
 use crate::stocks;
 use chrono::{NaiveDate, Weekday, Date, NaiveDateTime};
 use inquire::*;
+use tokio::time::MissedTickBehavior;
 use yahoo_finance_api::{YahooConnector, YahooError};
 
 pub fn create_account(_atype: AccountType, _uid: u32, _db: &mut DbConn ) -> u32 {
@@ -65,25 +67,22 @@ pub fn record_f32_amount(_uid: u32, _db: &mut DbConn) -> BankRecord {
 }
 
 pub fn record_health_account(_uid: u32, _db: &mut DbConn) -> HsaRecord {
-    let fixed: Result<f32, InquireError> = CustomType::<f32>::new("Enter fixed amount in account: ")
-        .with_placeholder("00000.00")
-        .with_default(00000.00)
-        .with_error_message("Please type a valid amount!")
-        .prompt();
-
-    let variable: Result<f32, InquireError> = CustomType::<f32>::new("Enter variable amount in account: ")
-        .with_placeholder("00000.00")
-        .with_default(00000.00)
-        .with_error_message("Please type a valid amount!")
-        .prompt();
-
-    let date_input: Result<NaiveDate, InquireError> = DateSelect::new("Enter date").prompt();
-    let date = &date_input.unwrap().and_hms_milli_opt(0, 0, 0, 0).unwrap().timestamp();
-    println!("The date is: {} ", &date);
-    let converted_time = NaiveDateTime::from_timestamp(*date, 0).to_string();
-    println!("The date is: {} ", converted_time);
-
-    return HsaRecord { date: *date, fixed : fixed.unwrap(), variable : variable.unwrap() };
+    let bank = record_f32_amount(_uid, _db);
+    let add_stocks: bool = Confirm::new("Record stock purchase?").with_default(false).prompt().unwrap();
+    let mut stocks : Vec<StockRecord> = Vec::new();
+    loop {
+        if add_stocks {
+            match record_stock_purchase(_uid) {
+                Some(stock) => stocks.push(stock),
+                None => {}
+            }
+        }
+        let add_more: bool = Confirm::new("Add additional stock purchases?").with_default(false).prompt().unwrap();
+        if !add_more {
+            break;
+        }
+    }
+    return HsaRecord { fixed : bank, investments : stocks }
 }
 
 pub fn record_stock_purchase(_uid : u32) -> Option<StockRecord> {
@@ -127,23 +126,21 @@ pub fn record_stock_purchase(_uid : u32) -> Option<StockRecord> {
         .with_error_message("Please enter a valid amount!")
         .prompt().unwrap();
 
+    let costbasis : f32 = CustomType::<f32>::new("Enter cost basis of shares purchased: ")
+        .with_placeholder("0.00")
+        .with_default(0.00)
+        .with_error_message("Please enter a valid amount!")
+        .prompt().unwrap();
 
-    return Some(StockRecord { date : *date, ticker: ticker, shares: shares });
+
+    return Some(StockRecord { date : Some(*date), ticker: ticker, shares: shares, costbasis: Some(costbasis) });
 
 
 }
 
-pub fn get_stock_info(aid: u32, _db: &mut DbConn, stocks: Vec<String>) -> Vec<StockRecord> {
-    let mut record = Vec::new();
-    for stock in stocks {
-        record = _db.get_stock_info(aid, stock).unwrap();
-    }
-    return record;
-}
-
-pub fn get_total_of_stocks(aid: u32, _db: &mut DbConn, stocks: Vec<String>) -> f64 {
-    let record = get_stock_info(aid, _db, stocks);
-    return stocks::return_stock_values(record);
+pub fn get_total_of_stocks(aid: u32, _db: &mut DbConn, ticker: String) -> f64 {
+    let cum = _db.cumulate_stocks(aid, ticker);
+    return stocks::return_stock_values(cum);
 }
 
 pub fn get_net_wealth(uid: u32, _db: &mut DbConn) -> f64 {
@@ -154,13 +151,12 @@ pub fn get_net_wealth(uid: u32, _db: &mut DbConn) -> f64 {
             AccountType::Bank => nw += _db.get_bank_value(account.id).expect("Unable to retrieve bank account!").amount as f64,
             AccountType::CD => {}
             AccountType::Investment => {
-                let stocks = _db.get_stocks(account.id).expect("Unable to retrieve user stocks!");
-                nw += get_total_of_stocks(account.id, _db, stocks);
+                nw += get_total_of_stocks(account.id, _db, database::SQLITE_WILDCARD.to_string());
             }
             AccountType::Ledger => {}
             AccountType::Health => {
                 let hsa = _db.get_hsa_value(account.id).expect("Unable to retrieve user HSA account!");
-                nw += (hsa.fixed + hsa.variable) as f64;
+                nw += (hsa.fixed.amount ) as f64;
             }
             AccountType::Retirement => {},
             _ => panic!("Unrecognized account type!"),

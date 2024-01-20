@@ -10,6 +10,7 @@ pub mod db_investments;
 mod statements;
 
 const CURRENT_DATABASE_SCHEMA_VERSION: i32 = 0;
+pub const SQLITE_WILDCARD: &str = "%";
 
 pub struct DbConn {
     pub conn: Connection,
@@ -40,7 +41,7 @@ impl DbConn {
         Self::create_accounts_table(self);
         Self::create_ledger_table(self);
         Self::create_bank_table(self);
-        Self::create_hsa_table(self);
+        // Self::create_hsa_table(self);
         Self::create_investment_table(self);
         Self::set_schema_version(&self.conn, CURRENT_DATABASE_SCHEMA_VERSION);
         Ok(())
