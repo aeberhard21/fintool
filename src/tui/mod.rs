@@ -1,24 +1,11 @@
-use std::borrow::BorrowMut;
-use std::ops::Index;
-use std::sync::Arc;
-
 use crate::database;
-// use core::panic;
 use crate::database::DbConn;
 use crate::database::db_accounts::AccountType;
-use crate::database::db_hsa::HsaRecord;
-use crate::database::db_investments::StockRecord;
-use crate::stocks::return_stock_values;
 use crate::tui::tui_ledger::*;
 use crate::tui::tui_user::*;
 use crate::tui::tui_accounts::*;
 use crate::stocks;
-use chrono::{NaiveDate, Weekday};
 use inquire::*;
-use tokio::task::spawn_blocking;
-use yahoo::YahooConnector;
-use yahoo_finance_api as yahoo;
-use tokio;
 
 mod tui_ledger;
 mod tui_accounts;
@@ -87,15 +74,17 @@ fn tui_create(_uid: u32, _db: &mut DbConn) {
         "bank" => {
             aid = create_account(AccountType::Bank,_uid,  _db);
             let record = record_f32_amount(_uid, _db);
-            _db.record_bank_account(aid, record);
+            _db.record_bank_account(aid, record).expect("Unable to record bank account!");
         }
         "CD" => {
             aid = create_account(AccountType::CD, _uid, _db);
+            let record = record_cd_account(_uid);
+            _db.add_cd(aid, record).expect("Unable to add CD account!");
         }
         "health" => {
             aid = create_account(AccountType::Health, _uid, _db);
             let record = record_health_account(_uid, _db);
-            _db.record_hsa_account(aid, record);
+            _db.record_hsa_account(aid, record).expect("Unable to record HSA account!");
 
         }
         "investment" => {
@@ -103,7 +92,7 @@ fn tui_create(_uid: u32, _db: &mut DbConn) {
             loop {
                 match record_stock_purchase(_uid) {
                     Some(record) => {
-                       _db.add_stock(aid, record);
+                       _db.add_stock(aid, record).expect("Unable to add stock!");
                    }
                    None => {
                        return
@@ -143,12 +132,6 @@ fn tui_record(_uid : u32, _db: &mut DbConn) {
             let aid = select_account(_uid, _db, AccountType::Bank);
             let record = record_f32_amount(_uid, _db);
             _db.record_bank_account(aid, record);
-        }
-        "CD" => {
-            println!("Not implemented");
-            // let aid = select_account(_uid, _db, AccountType::CD);
-            // let record = record_f32_amount(_uid, _db);
-            // _db.record_cd_account(aid, record);
         }
         "health" => {
             let aid = select_account(_uid, _db, AccountType::Health);

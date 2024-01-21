@@ -1,4 +1,3 @@
-// use crate::database::statements::CREATE_LEDGER;
 use crate::ledger::Ledger;
 use crate::ledger::LedgerEntry;
 use rusqlite::Result;

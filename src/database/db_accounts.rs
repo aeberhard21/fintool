@@ -53,7 +53,6 @@ impl DbConn {
     }
 
     pub fn add_account(&mut self, uid: u32, name: String, atype: AccountType) -> Result<u32> {
-        // static AID: AtomicU32 = AtomicU32::new(0);
         let aid = self.get_next_account_id().unwrap();
         let sql: &str = "SELECT * FROM accounts WHERE uid = (?1) and name = (?2)";
         let exists = self.conn.prepare(sql)?.exists(rusqlite::params![uid, name])?;
@@ -67,7 +66,7 @@ impl DbConn {
             &name, 
             uid));
         match rs {
-            Ok(usize) => {
+            Ok(_) => {
                 Ok(aid)
             }
             Err(error) => {

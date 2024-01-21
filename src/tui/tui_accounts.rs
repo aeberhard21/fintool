@@ -7,6 +7,7 @@ use crate::database::db_accounts::AccountType;
 use crate::database::db_banks::BankRecord;
 use crate::database::db_hsa::HsaRecord;
 use crate::database::db_investments::StockRecord;
+use crate::database::db_cd::CdRecord;
 use crate::stocks;
 use chrono::{NaiveDate, Weekday, Date, NaiveDateTime};
 use inquire::*;
@@ -138,6 +139,32 @@ pub fn record_stock_purchase(_uid : u32) -> Option<StockRecord> {
 
 }
 
+pub fn record_cd_account(_uid : u32) -> CdRecord {
+
+    let principal = CustomType::<f32>::new("Enter principal amount: ")
+        .with_placeholder("00000.00")
+        .with_default(00000.00)
+        .with_error_message("Please type a valid amount!")
+        .prompt().unwrap();
+
+    let apy = CustomType::<f32>::new("Enter APY (%): ")
+        .with_placeholder("0.00")
+        .with_default(00000.00)
+        .with_error_message("Please type a valid amount!")
+        .prompt().unwrap();
+
+    let date_input: Result<NaiveDate, InquireError> = DateSelect::new("Enter date opened").prompt();
+    let date = &date_input.unwrap().and_hms_milli_opt(0, 0, 0, 0).unwrap().timestamp();
+
+    let months = CustomType::<u32>::new("Enter term length (months): ")
+        .with_placeholder("0")
+        .with_default(0000000)
+        .with_error_message("Please type a valid amount!")
+        .prompt().unwrap();
+
+    return CdRecord { principal : principal, apy : apy, open_date : *date, length : months };
+}
+
 pub fn get_total_of_stocks(aid: u32, _db: &mut DbConn, ticker: String) -> f64 {
     let cum = _db.cumulate_stocks(aid, ticker);
     return stocks::return_stock_values(cum);
@@ -149,7 +176,9 @@ pub fn get_net_wealth(uid: u32, _db: &mut DbConn) -> f64 {
     for account in accounts {
         match account.atype {
             AccountType::Bank => nw += _db.get_bank_value(account.id).expect("Unable to retrieve bank account!").amount as f64,
-            AccountType::CD => {}
+            AccountType::CD => {
+                nw += _db.get_cds(account.id).expect("Unable to retrieve CD account information").principal as f64;
+            }
             AccountType::Investment => {
                 nw += get_total_of_stocks(account.id, _db, database::SQLITE_WILDCARD.to_string());
             }

@@ -1,5 +1,3 @@
-use tokio;
-use tokio::time::timeout;
 use tokio_test;
 use yahoo_finance_api as yahoo;
 use yahoo::{YahooConnector, YahooError};

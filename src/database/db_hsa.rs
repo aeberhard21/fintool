@@ -7,24 +7,6 @@ pub struct HsaRecord {
 }
 
 impl DbConn {
-    // pub fn create_hsa_table(&mut self) -> Result<()> {
-    //     let sql: &str = "CREATE TABLE IF NOT EXISTS hsa ( 
-    //         date        INTEGER NOT NULL, 
-    //         fixed       REAL NOT NULL,
-    //         variable    REAL NOT NULL,
-    //         aid         INTEGER,
-    //         FOREIGN     KEY (aid) REFERENCES accounts(id)
-    //     )";
-    //     match self.conn.execute(sql, ()) {
-    //         Ok(_) => {
-    //             println!("Created hsa table!");
-    //         }
-    //         Err(error) => {
-    //             panic!("Unable to create table 'hsa:' {}", error);
-    //         }
-    //     }
-    //     Ok(())
-    // }
 
     pub fn record_hsa_account(&mut self, aid: u32, record: HsaRecord) -> Result<(), Error> {
         let sql: &str = "INSERT INTO banks (date, fixed, aid) VALUES (?1, ?2, ?3)";
@@ -43,4 +25,5 @@ impl DbConn {
         // let tickers = self.get_stocks(aid).expect("Unable to retrieve HSA stocks!");
         Ok(HsaRecord{fixed: bank, investments: self.cumulate_stocks(aid, SQLITE_WILDCARD.to_string())})
     }
+    
 }

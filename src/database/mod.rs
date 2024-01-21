@@ -7,6 +7,7 @@ pub mod db_accounts;
 pub mod db_banks;
 pub mod db_hsa;
 pub mod db_investments;
+pub mod db_cd;
 mod statements;
 
 const CURRENT_DATABASE_SCHEMA_VERSION: i32 = 0;
@@ -41,8 +42,8 @@ impl DbConn {
         Self::create_accounts_table(self);
         Self::create_ledger_table(self);
         Self::create_bank_table(self);
-        // Self::create_hsa_table(self);
         Self::create_investment_table(self);
+        Self::create_cd_table(self);
         Self::set_schema_version(&self.conn, CURRENT_DATABASE_SCHEMA_VERSION);
         Ok(())
     }

@@ -1,4 +1,4 @@
-use rusqlite::{Result, Error};
+use rusqlite::Result;
 use super::DbConn;
 
 pub struct BankRecord { 
