@@ -1,13 +1,15 @@
 use rusqlite::Connection;
 use std::path::Path;
 
-mod db_ledger;
-mod db_user;
 pub mod db_accounts;
 pub mod db_banks;
+pub mod db_budget_categories;
+pub mod db_cd;
 pub mod db_hsa;
 pub mod db_investments;
-pub mod db_cd;
+pub mod db_ledger;
+pub mod db_people;
+mod db_user;
 mod statements;
 
 const CURRENT_DATABASE_SCHEMA_VERSION: i32 = 0;
@@ -35,11 +37,12 @@ impl DbConn {
     }
 
     fn initialize_database(&mut self) -> Result<(), rusqlite::Error> {
-        // self.conn.execute(statements::CREATE_LEDGER, ())?;
         Self::allow_foreign_keys(&self.conn);
-        Self::create_db_info_table(self);
+        Self::create_db_info_table(self).expect("unable to create!");
         Self::create_user_table(self);
         Self::create_accounts_table(self);
+        Self::create_budget_categories_table(self);
+        Self::create_people_table(self);
         Self::create_ledger_table(self);
         Self::create_bank_table(self);
         Self::create_investment_table(self);
@@ -64,15 +67,18 @@ impl DbConn {
         let sql = "CREATE TABLE IF NOT EXISTS info (
             uid     INTEGER NOT NULL,
             aid     INTEGER NOT NULL,
-            sid     INTEGER NOT NULL
+            sid     INTEGER NOT NULL,
+            cid     INTEGER NOT NULL,
+            pid     INTEGER NOT NULL
         )";
         self.conn.execute(sql, ())?;
         let sql = "SELECT uid FROM info";
         let mut stmt = self.conn.prepare(sql)?;
         let exists = stmt.exists(())?;
         if !exists {
-            let sql: &str = "INSERT INTO info (uid, aid, sid) VALUES ( ?1,  ?2, ?3)";
-            match self.conn.execute(sql,(0, 0, 0)) {
+            let sql: &str =
+                "INSERT INTO info (uid, aid, sid, cid, pid) VALUES ( ?1, ?2, ?3, ?4, ?5)";
+            match self.conn.execute(sql, (0, 0, 0, 0, 0)) {
                 Ok(rows_inserted) => {
                     println!("Initialized info table: {}!", rows_inserted);
                 }
@@ -91,7 +97,7 @@ impl DbConn {
         let exists = stmt.exists(())?;
         match exists {
             true => {
-                let id = stmt.query_row((), |row| row.get::<_, u32>(0))?; 
+                let id = stmt.query_row((), |row| row.get::<_, u32>(0))?;
                 let sql = "UPDATE info SET uid = uid + 1";
                 self.conn.execute(sql, ())?;
                 Ok(id)
@@ -107,7 +113,7 @@ impl DbConn {
         let exists = stmt.exists(())?;
         match exists {
             true => {
-                let id = stmt.query_row((), |row| row.get::<_, u32>(0))?; 
+                let id = stmt.query_row((), |row| row.get::<_, u32>(0))?;
                 let sql = "UPDATE info SET aid = aid + 1";
                 self.conn.execute(sql, ())?;
                 Ok(id)
@@ -124,13 +130,47 @@ impl DbConn {
         let exists = stmt.exists(())?;
         match exists {
             true => {
-                let id = stmt.query_row((), |row| row.get::<_, u32>(0))?; 
+                let id = stmt.query_row((), |row| row.get::<_, u32>(0))?;
                 let sql = "UPDATE info SET sid = sid + 1";
                 self.conn.execute(sql, ())?;
                 Ok(id)
             }
             false => {
                 panic!("The next stock ID within table 'info' does not exist.");
+            }
+        }
+    }
+
+    pub fn get_next_category_id(&mut self) -> rusqlite::Result<u32> {
+        let sql = "SELECT cid FROM info";
+        let mut stmt = self.conn.prepare(sql)?;
+        let exists = stmt.exists(())?;
+        match exists {
+            true => {
+                let id = stmt.query_row((), |row| row.get::<_, u32>(0))?;
+                let sql = "UPDATE info SET cid = cid + 1";
+                self.conn.execute(sql, ())?;
+                Ok(id)
+            }
+            false => {
+                panic!("The next category ID within table 'info' does not exist.");
+            }
+        }
+    }
+
+    pub fn get_next_people_id(&mut self) -> rusqlite::Result<u32> {
+        let sql = "SELECT pid FROM info";
+        let mut stmt = self.conn.prepare(sql)?;
+        let exists = stmt.exists(())?;
+        match exists {
+            true => {
+                let id = stmt.query_row((), |row| row.get::<_, u32>(0))?;
+                let sql = "UPDATE info SET pid = pid + 1";
+                self.conn.execute(sql, ())?;
+                Ok(id)
+            }
+            false => {
+                panic!("The next people ID within table 'info' does not exist.");
             }
         }
     }

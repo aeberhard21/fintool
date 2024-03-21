@@ -1,4 +1,4 @@
-use crate::database::*;
+// use crate::database::*;
 use crate::ledger::{Ledger, LedgerEntry};
 
 #[derive(Clone)]
@@ -28,15 +28,15 @@ impl User {
     // }
 
     // create a ledger
-    pub fn create_ledger(&mut self, db: &mut DbConn, name: String) {
-        self.ledgers.push(name.to_string());
-        println!("number of ledgers is now: {}", self.get_ledgers().len());
-        // db.create_ledger(name);
-    }
+    // pub fn create_ledger(&mut self, db: &mut DbConn, name: String) {
+    //     self.ledgers.push(name.to_string());
+    //     println!("number of ledgers is now: {}", self.get_ledgers().len());
+    //     // db.create_ledger(name);
+    // }
 
-    pub fn add_ledger_entry(&mut self, ledger: String, db: &mut DbConn, entry: LedgerEntry) {
-        // db.add_ledger_entry(ledger, entry);
-    }
+    // pub fn add_ledger_entry(&mut self, ledger: String, db: &mut DbConn, entry: LedgerEntry) {
+    //     // db.add_ledger_entry(ledger, entry);
+    // }
 
     pub fn get_name(&mut self) -> String {
         return String::from(self.name.as_str());
@@ -50,9 +50,9 @@ impl User {
         self.ledgers.clone()
     }
 
-    pub fn print_ledger(&mut self, db: &mut DbConn, name: String) {
-        db.read_ledger(name);
-    }
+    // pub fn print_ledger(&mut self, db: &mut DbConn, name: String) {
+    //     db.read_ledger(name);
+    // }
 
     pub fn get_admin(&mut self) -> bool {
         return self.is_admin;

@@ -1,9 +1,9 @@
-use yahoo::YahooConnector;
 use std::fs::{self};
 use std::path::{Path, PathBuf};
-use yahoo_finance_api as yahoo;
 use tokio;
 use tokio::time::timeout;
+use yahoo::YahooConnector;
+use yahoo_finance_api as yahoo;
 
 use crate::database::DbConn;
 use crate::user::User;
@@ -11,12 +11,11 @@ use crate::user::User;
 
 mod database;
 mod ledger;
+mod stocks;
 mod tui;
 mod user;
-mod stocks;
 
 fn main() {
-
     let stock_provider: YahooConnector = yahoo::YahooConnector::new();
     // let sp : &'static YahooConnector = &stock_provider;
     // get_quote(provider).await;
@@ -52,7 +51,7 @@ fn main() {
     let mut _user: User;
     let next_id: u32 = 0;
     {
-    tui::menu(&mut _db);
+        tui::menu(&mut _db);
     }
     _db.close();
 }
@@ -62,7 +61,11 @@ async fn get_quote(provider: YahooConnector) {
     // let quote = tokio::spawn(provider.get_latest_quotes("SOXX", "1d"));
     // let tmp = quote.await.unwrap().unwrap();
     // println!("Stock is: {}", tmp.last_quote().unwrap().adjclose);
-    let result = timeout(std::time::Duration::from_secs(5), provider.get_latest_quotes("SOXX", "1d")).await;
+    let result = timeout(
+        std::time::Duration::from_secs(5),
+        provider.get_latest_quotes("SOXX", "1d"),
+    )
+    .await;
     match result {
         Ok(Ok(tmp)) => {
             println!("Stock is: {}", tmp.last_quote().unwrap().adjclose);
@@ -78,5 +81,5 @@ async fn get_quote(provider: YahooConnector) {
 
 // async fn fetch_quote(mut provider: YahooConnector) -> Result<yahoo::Quote, YahooError> {
 //     provider.timeout(tokio::time::Duration::from_secs(5));
-    
+
 // }

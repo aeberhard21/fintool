@@ -1,6 +1,6 @@
-use rusqlite::{params, Error};
 use super::DbConn;
 use crate::user::User;
+use rusqlite::{params, Error};
 
 impl DbConn {
     pub fn create_user_table(&mut self) -> rusqlite::Result<()> {
@@ -22,9 +22,9 @@ impl DbConn {
         Ok(())
     }
 
-    pub fn add_user(&mut self, name: String, admin: bool) -> rusqlite::Result<u32, Error>{
+    pub fn add_user(&mut self, name: String, admin: bool) -> rusqlite::Result<u32, Error> {
         let sql: &str = "INSERT INTO users (id, name, admin) VALUES ( ?1, ?2, ?3)";
-        
+
         // let mut s = DefaultHasher::new();
         // name.hash(&mut s);
         // let id: u32 = s.finish() as u32;
@@ -40,10 +40,11 @@ impl DbConn {
                         panic!("User already exists!");
                     }
                     Ok(false) => {
-                        let number_of_rows_inserted = self.conn.execute(sql, params![id, name, admin]);
+                        let number_of_rows_inserted =
+                            self.conn.execute(sql, params![id, name, admin]);
                         match number_of_rows_inserted {
                             Ok(rows_inserted) => {
-                                println!("({}) Saved user: {}", rows_inserted, name);                
+                                println!("({}) Saved user: {}", rows_inserted, name);
                                 Ok(id)
                             }
                             Err(err) => {
@@ -60,7 +61,6 @@ impl DbConn {
                 panic!("Unable to add user {}: {}", &name, err);
             }
         }
-
     }
 
     pub fn get_users(&mut self) -> rusqlite::Result<Vec<String>, rusqlite::Error> {
@@ -72,9 +72,10 @@ impl DbConn {
             true => {
                 let sql: &str = "SELECT name from users";
                 let mut rs: rusqlite::Statement<'_> = self.conn.prepare(sql).unwrap();
-                let names: Vec<Result<String, Error>> = rs.query_map([], |row|  {
-                    Ok(row.get(0)?)
-                }).unwrap().collect::<Vec<_>>();
+                let names: Vec<Result<String, Error>> = rs
+                    .query_map([], |row| Ok(row.get(0)?))
+                    .unwrap()
+                    .collect::<Vec<_>>();
 
                 for name in names {
                     users.push(name.unwrap());
@@ -95,7 +96,7 @@ impl DbConn {
             true => {
                 let sql: &str = "SELECT id from users WHERE name = (?1)";
                 let mut stmt = self.conn.prepare(sql)?;
-                let id = stmt.query_row((&name,), |row| row.get::<_,u32>(0));
+                let id = stmt.query_row((&name,), |row| row.get::<_, u32>(0));
                 match id {
                     Ok(id) => {
                         return Ok(id);
@@ -104,7 +105,7 @@ impl DbConn {
                         panic!("Unable t retrieve id for user {}: {}", &name, err);
                     }
                 }
-            } 
+            }
             false => {
                 panic!("Unable to find user {}!", name);
             }
@@ -159,7 +160,8 @@ impl DbConn {
                     is_admin: row.get(3)?,
                 })
             })
-            .unwrap().collect::<Vec<_>>();
+            .unwrap()
+            .collect::<Vec<_>>();
 
         let mut users: Vec<crate::user::User> = Vec::new();
         let mut i = 0;

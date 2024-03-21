@@ -1,6 +1,6 @@
 use tokio_test;
-use yahoo_finance_api as yahoo;
 use yahoo::{YahooConnector, YahooError};
+use yahoo_finance_api as yahoo;
 
 use crate::database::db_investments::StockRecord;
 
