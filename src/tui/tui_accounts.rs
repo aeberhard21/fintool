@@ -8,11 +8,14 @@ use crate::database::db_cd::CdRecord;
 use crate::database::db_hsa::HsaRecord;
 use crate::database::db_investments::StockRecord;
 use crate::database::{self, *};
+use crate::tui::tui_budgets::create_budget;
 use crate::stocks;
 use chrono::{Date, NaiveDate, NaiveDateTime, Weekday};
 use inquire::*;
 use tokio::time::MissedTickBehavior;
 use yahoo_finance_api::{YahooConnector, YahooError};
+
+use self::db_accounts::AccountFilter;
 
 pub fn create_account(_atype: AccountType, _uid: u32, _db: &mut DbConn) -> u32 {
     let mut name: String = String::new();
@@ -30,36 +33,33 @@ pub fn create_account(_atype: AccountType, _uid: u32, _db: &mut DbConn) -> u32 {
     let mut has_bank = false;
     let mut has_stocks = false;
     let mut has_ledger = false;
+    let mut has_budget = false;
     match _atype {
         AccountType::Bank => {
             has_bank = true;
-            has_stocks = false;
-            has_ledger = false;
         }
         AccountType::CD => {
             has_bank = true;
-            has_stocks = false;
-            has_ledger = false;
         }
         AccountType::Investment => {
             has_bank = true;
             has_stocks = true;
-            has_ledger = false;
         }
         AccountType::Ledger => {
-            has_bank = false;
-            has_stocks = false;
             has_ledger = true;
+            has_budget = 
+                Confirm::new("Would you like to associate a budget with this ledger?" )
+                    .with_default(false)
+                    .prompt()
+                    .unwrap();
         }
         AccountType::Retirement => {
             has_bank = true;
             has_stocks = true;
-            has_ledger = false;
         }
         AccountType::Health => {
             has_bank = true;
             has_stocks = true;
-            has_ledger = false;
         }
         AccountType::Custom => {
             has_bank =
@@ -76,6 +76,10 @@ pub fn create_account(_atype: AccountType, _uid: u32, _db: &mut DbConn) -> u32 {
                 .with_default(false)
                 .prompt()
                 .unwrap();
+            has_budget = Confirm::new("Would you like to associate a budget with this account?")
+                .with_default(false)
+                .prompt()
+                .unwrap();
         }
     }
     let account = AccountRecord {
@@ -85,11 +89,19 @@ pub fn create_account(_atype: AccountType, _uid: u32, _db: &mut DbConn) -> u32 {
         has_stocks: has_stocks,
         has_bank: has_bank,
         has_ledger: has_ledger,
+        has_budget: has_budget
     };
-    _db.add_account(_uid, account).unwrap()
+    let aid = _db.add_account(_uid, account).unwrap();
+
+    if has_budget {
+        println!("Creating budget...");
+        create_budget(aid, _db);
+    }
+
+    return aid;
 }
 
-pub fn select_account(_uid: u32, _db: &mut DbConn, atype: AccountType) -> u32 {
+pub fn select_account_by_type(_uid: u32, _db: &mut DbConn, atype: AccountType) -> u32 {
     let msg;
     match &atype {
         &AccountType::Bank => msg = "Select bank account: ",
@@ -100,7 +112,22 @@ pub fn select_account(_uid: u32, _db: &mut DbConn, atype: AccountType) -> u32 {
         &AccountType::Retirement => msg = "Select retirement account: ",
         _ => panic!("Unrecognized account type!"),
     }
-    let accounts: Vec<String> = _db.get_user_accounts(_uid, atype).unwrap();
+    let accounts: Vec<String> = _db.get_user_accounts_by_type(_uid, atype).unwrap();
+    let account: String = Select::new(msg, accounts).prompt().unwrap().to_string();
+    let aid = _db.get_account_id(_uid, account).unwrap();
+    return aid;
+}
+
+pub fn select_account_by_filter(_uid: u32, _db: &mut DbConn, filter: AccountFilter) -> u32 {
+    let msg;
+    match &filter {
+        &AccountFilter::Bank => msg = "Select bank account: ",
+        &AccountFilter::Stocks => msg = "Select investment account: ",
+        &AccountFilter::Ledger => msg = "Select ledger account: ",
+        &AccountFilter::Budget => msg = "Select budget account: ",
+        _ => panic!("Unrecognized account type!"),
+    }
+    let accounts: Vec<String> = _db.get_user_accounts_by_filter(_uid, filter).unwrap();
     let account: String = Select::new(msg, accounts).prompt().unwrap().to_string();
     let aid = _db.get_account_id(_uid, account).unwrap();
     return aid;

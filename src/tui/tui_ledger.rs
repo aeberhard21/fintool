@@ -110,7 +110,7 @@ pub fn add_ledger(_aid: u32, _db: &mut DbConn) -> LedgerEntry {
         } else if category == "None" {
             cid = _db.add_category(_aid, category).unwrap();
         } else {
-            cid = _db.get_category_id(_aid, category).unwrap();
+            cid = _db.get_category_id(_aid, &category).unwrap();
         }
     } else {
         category = Text::new("Enter payment category:")
@@ -125,7 +125,6 @@ pub fn add_ledger(_aid: u32, _db: &mut DbConn) -> LedgerEntry {
         .unwrap()
         .to_string();
 
-    println!("{}, {}", pid, cid);
     let entry = LedgerEntry {
         date: date,
         amount: amount,

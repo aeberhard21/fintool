@@ -50,10 +50,38 @@ impl DbConn {
         Ok(categories)
     }
 
+    pub fn get_category_name(
+        &mut self,
+        aid: u32,
+        cid: u32
+    ) -> rusqlite::Result<String, rusqlite::Error> {
+        let sql: &str = "SELECT category FROM categories WHERE aid = (?1) AND id = (?2)";
+        let p = rusqlite::params![aid, cid];
+        let mut stmt = self.conn.prepare(sql)?;
+        let exists = stmt.exists(p)?;
+        match exists {
+            true => {
+                stmt = self.conn.prepare(sql)?;
+                let name = stmt.query_row(p, |row| row.get::<_, String>(0));
+                match name {
+                    Ok(name) => {
+                        return Ok(name);
+                    }
+                    Err(err) => {
+                        panic!("Unable to retrieve id for account {}: {}", aid, err);
+                    }
+                }
+            }
+            false => {
+                panic!("Unable to find account matching {}", aid);
+            }
+        }
+    }
+
     pub fn get_category_id(
         &mut self,
         aid: u32,
-        category: String,
+        category: &String,
     ) -> rusqlite::Result<u32, rusqlite::Error> {
         let sql: &str = "SELECT id FROM categories WHERE aid = (?1) AND category = (?2)";
         let p = rusqlite::params![aid, category];

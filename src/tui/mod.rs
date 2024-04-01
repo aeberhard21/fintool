@@ -1,4 +1,5 @@
 use crate::database;
+use crate::database::db_accounts::AccountFilter;
 use crate::database::db_accounts::AccountType;
 use crate::database::DbConn;
 use crate::stocks;
@@ -7,8 +8,11 @@ use crate::tui::tui_ledger::*;
 use crate::tui::tui_user::*;
 use inquire::*;
 
+use self::tui_budgets::amend_budget;
+
 mod tui_accounts;
 mod tui_ledger;
+pub mod tui_budgets;
 pub mod tui_user;
 
 pub fn menu(_db: &mut DbConn) {
@@ -18,7 +22,7 @@ pub fn menu(_db: &mut DbConn) {
     uid = tui_set_user(_db);
 
     loop {
-        let commands: Vec<&str> = vec!["create", "change", "record", "report", "view", "exit"];
+        let commands: Vec<&str> = vec!["create", "change", "modify", "record", "report", "view", "exit"];
         let command: String = Select::new("What would you like to do:", commands)
             .prompt()
             .unwrap()
@@ -34,11 +38,14 @@ pub fn menu(_db: &mut DbConn) {
             "record" => {
                 tui_record(uid, _db);
             }
-            "view" => {
-                tui_view(uid, _db);
+            "modify" => {
+                tui_modify(uid, _db);
             }
             "report" => {
                 tui_report(uid, _db);
+            }
+            "view" => {
+                tui_view(uid, _db);
             }
             "exit" => {
                 println!("Exiting...");
@@ -124,7 +131,6 @@ fn tui_create(_uid: u32, _db: &mut DbConn) {
         }
         "ledger" => {
             aid = create_account(AccountType::Ledger, _uid, _db);
-            add_ledger(aid, _db);
         }
         "retirement" => {
             create_account(AccountType::Retirement, _uid, _db);
@@ -134,6 +140,32 @@ fn tui_create(_uid: u32, _db: &mut DbConn) {
             panic!("Invalid command");
         }
     }
+}
+
+fn tui_modify(_uid: u32, _db: &mut DbConn) {
+    let commands: Vec<&str> = vec![
+        "budget",
+        "none",
+    ];
+    let command: String = Select::new("\nWhat would you like to modify:", commands)
+        .prompt()
+        .unwrap()
+        .to_string();
+
+    match command.as_str() {
+        "budget" => {
+            let aid = select_account_by_filter(_uid, _db, AccountFilter::Budget);
+            amend_budget(aid, _db);
+        }
+        "none" => {
+            return
+        }
+        _ => {
+            panic!("Invalid command!");
+        }
+    }
+    return;
+
 }
 
 fn tui_record(_uid: u32, _db: &mut DbConn) {
@@ -153,17 +185,17 @@ fn tui_record(_uid: u32, _db: &mut DbConn) {
 
     match command.as_str() {
         "bank" => {
-            let aid = select_account(_uid, _db, AccountType::Bank);
+            let aid = select_account_by_type(_uid, _db, AccountType::Bank);
             let record = record_f32_amount(_uid, _db);
             _db.record_bank_account(aid, record);
         }
         "health" => {
-            let aid = select_account(_uid, _db, AccountType::Health);
+            let aid = select_account_by_type(_uid, _db, AccountType::Health);
             let record = record_health_account(_uid, _db);
             _db.record_hsa_account(aid, record);
         }
         "investment" => {
-            let aid = select_account(_uid, _db, AccountType::Investment);
+            let aid = select_account_by_type(_uid, _db, AccountType::Investment);
             let report_bank: bool = Confirm::new("Record fixed cash account?")
                 .with_default(false)
                 .prompt()
@@ -191,7 +223,7 @@ fn tui_record(_uid: u32, _db: &mut DbConn) {
             _db.record_bank_account(aid, insured_account);
         }
         "ledger" => {
-            let aid = select_account(_uid, _db, AccountType::Ledger);
+            let aid = select_account_by_type(_uid, _db, AccountType::Ledger);
             loop {
                 let entry = add_ledger(_uid, _db);
                 _db.add_ledger_entry(aid, entry);
@@ -205,7 +237,7 @@ fn tui_record(_uid: u32, _db: &mut DbConn) {
             }
         }
         "retirement" => {
-            let aid = select_account(_uid, _db, AccountType::Retirement);
+            let aid = select_account_by_type(_uid, _db, AccountType::Retirement);
             let entry = record_f32_amount(_uid, _db);
         }
         "none" => {
@@ -227,13 +259,13 @@ fn tui_report(_uid: u32, _db: &mut DbConn) {
 
     match command.as_str() {
         "bank" => {
-            aid = select_account(_uid, _db, AccountType::Bank);
+            aid = select_account_by_type(_uid, _db, AccountType::Bank);
             let account = _db.get_account_name(_uid, aid).unwrap();
             let value = _db.get_bank_value(aid).unwrap().amount;
             println!("The value of account {} is: {}", &account, value)
         }
         "health" => {
-            aid = select_account(_uid, _db, AccountType::Health);
+            aid = select_account_by_type(_uid, _db, AccountType::Health);
             let account = _db.get_account_name(_uid, aid).unwrap();
             let acct = _db.get_hsa_value(aid).expect("Unable to get HSA account!");
             let mut total_investment_value = 0.0;
@@ -246,7 +278,7 @@ fn tui_report(_uid: u32, _db: &mut DbConn) {
             println!("The value of account {} is: {}", &account, value);
         }
         "investment" => {
-            let aid = select_account(_uid, _db, AccountType::Investment);
+            let aid = select_account_by_type(_uid, _db, AccountType::Investment);
             let report_all = Confirm::new(
                 "Report total of entire account (y) or an individual stock ticker (n)",
             )

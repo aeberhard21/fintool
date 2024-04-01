@@ -11,6 +11,13 @@ pub enum AccountType {
     Custom,
 }
 
+pub enum AccountFilter { 
+    Stocks,
+    Bank, 
+    Ledger,
+    Budget
+}
+
 impl From<u32> for AccountType {
     fn from(value: u32) -> Self {
         match value {
@@ -33,6 +40,7 @@ pub struct AccountRecord {
     pub has_stocks: bool,
     pub has_bank: bool,
     pub has_ledger: bool,
+    pub has_budget: bool,
 }
 
 impl DbConn {
@@ -44,6 +52,7 @@ impl DbConn {
                 stocks BOOL NOT NULL,
                 bank   BOOL NOT NULL,
                 ledger BOOL NOT NULL,
+                budget BOOL NOT NULL,
                 uid  INTEGER,
                 FOREIGN KEY (uid) REFERENCES users(id)
             )";
@@ -61,7 +70,7 @@ impl DbConn {
 
     pub fn add_account(&mut self, uid: u32, info: AccountRecord) -> Result<u32> {
         let aid = self.get_next_account_id().unwrap();
-        let p = rusqlite::params![aid, info.atype as u32, info.name, info.has_stocks, info.has_bank, info.has_ledger, uid]; 
+        let p = rusqlite::params![aid, info.atype as u32, info.name, info.has_stocks, info.has_bank, info.has_ledger, info.has_budget, uid]; 
         let sql: &str = "SELECT * FROM accounts WHERE uid = (?1) and name = (?2)";
         let exists = self
             .conn
@@ -70,7 +79,7 @@ impl DbConn {
         if exists {
             panic!("Account with name {} already exists for user!", info.name);
         }
-        let sql: &str = "INSERT INTO accounts (id, type, name, uid, stocks, bank, ledger) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)";
+        let sql: &str = "INSERT INTO accounts (id, type, name, stocks, bank, ledger, budget, uid) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)";
         let rs = self.conn.execute(sql, p);
         match rs {
             Ok(_) => Ok(aid),
@@ -104,6 +113,7 @@ impl DbConn {
                             has_stocks: row.get(2)?,
                             has_bank: row.get(3)?,
                             has_ledger: row.get(4)?,
+                            has_budget: row.get(5)?
                         })
                     })
                     .unwrap()
@@ -119,13 +129,57 @@ impl DbConn {
         }
     }
 
-    pub fn get_user_accounts(
+    pub fn get_user_accounts_by_type(
         &mut self,
         uid: u32,
         atype: AccountType,
     ) -> rusqlite::Result<Vec<String>, Error> {
         let sql: &str = "SELECT name FROM accounts WHERE uid = (?1) AND type = (?2)";
         let p = rusqlite::params![uid, atype as u32];
+        let mut stmt = self.conn.prepare(sql)?;
+        let exists = stmt.exists(p)?;
+        let mut accounts: Vec<String> = Vec::new();
+        match exists {
+            true => {
+                stmt = self.conn.prepare(sql)?;
+                let names: Vec<Result<String, Error>> = stmt
+                    .query_map(p, |row| Ok(row.get(0)?))
+                    .unwrap()
+                    .collect::<Vec<_>>();
+                for name in names {
+                    accounts.push(name.unwrap())
+                }
+                return Ok(accounts);
+            }
+            false => {
+                return Ok(accounts);
+            }
+        }
+    }
+
+    pub fn get_user_accounts_by_filter(
+        &mut self,
+        uid: u32,
+        filter: AccountFilter,
+    ) -> rusqlite::Result<Vec<String>, Error> {
+
+        let mut sql: &str;
+        match filter {
+            AccountFilter::Bank => {
+                sql = "SELECT name FROM accounts WHERE uid = (?1) and bank = TRUE";
+            }
+            AccountFilter::Budget => {
+                sql = "SELECT name FROM accounts WHERE uid = (?1) and budget = TRUE";
+            }
+            AccountFilter::Ledger => {
+                sql = "SELECT name FROM accounts WHERE uid = (?1) and ledger = TRUE";
+            }
+            AccountFilter::Stocks => {
+                sql = "SELECT name FROM accounts WHERE uid = (?1) and stocks = TRUE";
+            }
+        }
+
+        let p = rusqlite::params![uid];
         let mut stmt = self.conn.prepare(sql)?;
         let exists = stmt.exists(p)?;
         let mut accounts: Vec<String> = Vec::new();
@@ -208,6 +262,7 @@ impl DbConn {
                             has_stocks: row.get(2)?,
                             has_bank: row.get(3)?,
                             has_ledger: row.get(4)?,
+                            has_budget: row.get(5)?
                         })});
                 return acct;
             }
