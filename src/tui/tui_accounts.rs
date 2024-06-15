@@ -10,10 +10,15 @@ use crate::database::db_investments::StockRecord;
 use crate::database::{self, *};
 use crate::tui::tui_budgets::create_budget;
 use crate::stocks;
-use chrono::{Date, NaiveDate, NaiveDateTime, Weekday};
+use chrono::Month;
+use chrono::Offset;
+use chrono::TimeZone;
+use chrono::{Date, NaiveDate, NaiveTime, NaiveDateTime, Weekday};
 use inquire::*;
 use tokio::time::MissedTickBehavior;
 use yahoo_finance_api::{YahooConnector, YahooError};
+use chrono::{Datelike, Days, Local, Utc};
+use time::{Duration, OffsetDateTime};
 
 use self::db_accounts::AccountFilter;
 
@@ -312,4 +317,126 @@ pub fn get_net_wealth(uid: u32, _db: &mut DbConn) -> f64 {
         }
     }
     return nw;
+}
+
+pub fn get_growth(aid: u32, _db: &mut DbConn) {
+    let periods: Vec<&str> = vec!["1 Week", "1 Month", "3 Months", "6 Months", "1 Year", "2 Year", "10 Year", "YTD", "Custom" ];
+    let command: String = Select::new("What period would you like to analyze:", periods)
+        .prompt()
+        .unwrap()
+        .to_string();
+
+    let period_end = OffsetDateTime::from_unix_timestamp(Utc::now().timestamp()).unwrap();
+    let mut period_start = period_end;
+
+    match command.as_str() { 
+        "1 Week" => {
+            period_start = period_start.checked_sub(Duration::days(7)).unwrap();
+        }
+        "1 Month" => {
+            let mut year = period_end.year();
+            let mut month = period_end.month() as i32 - 1;
+            let mut day = period_end.day();
+            month -= 1;
+            while month < 0 {
+                year -= 1;
+                month += 12;
+            }
+            let month_as_enum = time::Month::try_from((month+1) as u8).ok().unwrap();
+            let last_day_of_month = time::util::days_in_year_month(year, month_as_enum) as i32;
+            day = if day > last_day_of_month as u8 {
+                last_day_of_month as u8
+            } else {
+                day
+            };
+
+            period_start = period_start.replace_year(year).unwrap();
+            period_start = period_start.replace_month(month_as_enum).unwrap();
+            period_start = period_start.replace_day(day).unwrap();
+        }
+        "3 Months" => {
+            let mut year = period_end.year();
+            let mut month = period_end.month() as i32 - 1;
+            let mut day = period_end.day();
+            month -= 3;
+            while month < 0 {
+                year -= 1;
+                month += 12;
+            }
+            let month_as_enum = time::Month::try_from((month+1) as u8).ok().unwrap();
+            let last_day_of_month = time::util::days_in_year_month(year, month_as_enum) as i32;
+            day = if day > last_day_of_month as u8 {
+                last_day_of_month as u8
+            } else {
+                day
+            };
+
+            period_start = period_start.replace_year(year).unwrap();
+            period_start = period_start.replace_month(month_as_enum).unwrap();
+            period_start = period_start.replace_day(day).unwrap();
+        }
+        "6 Months" => {
+            let mut year = period_end.year();
+            let mut month = period_end.month() as i32 - 1;
+            let mut day = period_end.day();
+            month -= 6;
+            while month < 0 {
+                year -= 1;
+                month += 12;
+            }
+            let month_as_enum = time::Month::try_from((month+1) as u8).ok().unwrap();
+            let last_day_of_month = time::util::days_in_year_month(year, month_as_enum) as i32;
+            day = if day > last_day_of_month as u8 {
+                last_day_of_month as u8
+            } else {
+                day
+            };
+
+            period_start = period_start.replace_year(year).unwrap();
+            period_start = period_start.replace_month(month_as_enum).unwrap();
+            period_start = period_start.replace_day(day).unwrap();        
+        }
+        "1 Year" => {
+            let month = period_start.month();
+            let year = period_start.year();
+            let day = period_start.day();
+            if month == time::Month::February && time::util::is_leap_year(year) && day == 29 {
+                // this handles the case of leap day
+                period_start = period_start.replace_month(time::Month::March).unwrap();
+                period_start = period_start.replace_day(1).unwrap();
+            }
+            period_start = period_start.replace_year(period_start.year()-1).unwrap();
+        }
+        "5 Year" => {
+            let month = period_start.month();
+            let year = period_start.year();
+            let day = period_start.day();
+            if month == time::Month::February && time::util::is_leap_year(year) && day == 29 {
+                // this handles the case of leap day
+                period_start = period_start.replace_month(time::Month::March).unwrap();
+                period_start = period_start.replace_day(1).unwrap();
+            }
+            period_start = period_start.replace_year(period_start.year()-5).unwrap();
+        }
+        "10 Year" => {
+            let month = period_start.month();
+            let year = period_start.year();
+            let day = period_start.day();
+            if month == time::Month::February && time::util::is_leap_year(year) && day == 29 {
+                // this handles the case of leap day
+                period_start = period_start.replace_month(time::Month::March).unwrap();
+                period_start = period_start.replace_day(1).unwrap();
+            }
+            period_start = period_start.replace_year(period_start.year()-10).unwrap();
+        }
+        "YTD" => {
+            period_start = period_start.replace_month(time::Month::January).unwrap().replace_day(1).unwrap();
+        }
+        "Custom" | _ => {
+            let date_input: Result<NaiveDate, InquireError> = DateSelect::new("Enter date").prompt();
+            let time = NaiveTime::from_hms_opt(0,0,0).unwrap();
+            let date_time = NaiveDateTime::new(date_input.unwrap(), time);
+            period_start = OffsetDateTime::from_unix_timestamp(Utc.from_utc_datetime(&date_time).timestamp()).unwrap();
+        }
+    }
 }

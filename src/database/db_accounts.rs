@@ -32,6 +32,20 @@ impl From<u32> for AccountType {
         }
     }
 }
+impl From<String> for AccountType {
+    fn from(value: String) -> Self {
+        match value.as_str() {
+            "Ledger" => AccountType::Ledger,
+            "Investment" => AccountType::Investment,
+            "Bank" => AccountType::Bank,
+            "CD" => AccountType::CD,
+            "Retirement" => AccountType::Retirement,
+            "Health" => AccountType::Health,
+            "Custom" => AccountType::Custom,
+            _ => panic!("Invalid string type for AccountType!")
+        }
+    }
+}
 
 pub struct AccountRecord {
     pub aid: Option<u32>,

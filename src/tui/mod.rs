@@ -250,7 +250,7 @@ fn tui_record(_uid: u32, _db: &mut DbConn) {
 }
 
 fn tui_report(_uid: u32, _db: &mut DbConn) {
-    let commands: Vec<&str> = vec!["bank", "health", "investment", "ledger", "wealth", "none"];
+    let commands: Vec<&str> = vec!["bank", "growth", "health", "investment", "ledger", "wealth", "none"];
     let command: String = Select::new("What would you like to report:", commands)
         .prompt()
         .unwrap()
@@ -276,6 +276,26 @@ fn tui_report(_uid: u32, _db: &mut DbConn) {
             }
             let value = acct.fixed.amount as f64 + total_investment_value;
             println!("The value of account {} is: {}", &account, value);
+        }
+        "growth" => {
+            let account_types = vec![
+                "Bank",
+                "CD",
+                "Health",
+                "Investment",
+                "Ledger",
+                "Retirement",
+                "none",
+            ];
+            let selected_type: String = Select::new("What would you like to analyze:", account_types)
+                .prompt()
+                .unwrap()
+                .to_string();
+
+            if selected_type != "none" {
+                let aid = select_account_by_type(_uid, _db, AccountType::from(selected_type));
+                get_growth(aid,_db);
+            }
         }
         "investment" => {
             let aid = select_account_by_type(_uid, _db, AccountType::Investment);
@@ -311,7 +331,7 @@ fn tui_report(_uid: u32, _db: &mut DbConn) {
         }
     }
 
-    let acct = _db.get_account(aid).expect("Unable to retrieve user account!");
+    // let acct = _db.get_account(aid).expect("Unable to retrieve user account!");
     // if acct.has
 
 }
