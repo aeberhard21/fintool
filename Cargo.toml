@@ -11,7 +11,7 @@ inquire = { version = "0.6.2", features = ["date"] }
 file = "1.0.0"
 savefile = "0.16.2"
 rusqlite = "0.30.0"
-yahoo_finance_api = "2.1.0"
+yahoo_finance_api = "2.2.0"
 tokio = { version = "1.35.1", features = ["full"] }
 tokio-test = "0.4.3"
 time = "0.3.28"

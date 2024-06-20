@@ -19,7 +19,7 @@ pub enum StockRange {
 
 // #[cfg(not(feature = "blocking"))]
 pub fn get_stock_at_close(ticker: String) -> Result<f64, YahooError> {
-    let provider = YahooConnector::new();
+    let provider = YahooConnector::new().unwrap();
     let rs = tokio_test::block_on(provider.get_latest_quotes(ticker.as_str(), "1d"))?;
     let quote = rs.last_quote()?;
     let close = quote.close;
@@ -27,7 +27,7 @@ pub fn get_stock_at_close(ticker: String) -> Result<f64, YahooError> {
 }
 
 pub fn get_stock_growth_by_range(ticker: String, range: StockRange) -> Result<YResponse, YahooError> {
-    let provider = YahooConnector::new();
+    let provider = YahooConnector::new().unwrap();
     let yrange: &str;
     let interval: &str;
     //https://cryptocointracker.com/yahoo-finance/yahoo-finance-api
@@ -78,7 +78,7 @@ pub fn get_stock_growth_by_range(ticker: String, range: StockRange) -> Result<YR
 // } 
 
 pub fn get_stock_history(ticker: String, range: StockRange) -> Result<YResponse, YahooError> {
-    let provider = YahooConnector::new();
+    let provider = YahooConnector::new().unwrap();
     let yrange: &str;
     let interval: &str;
     //https://cryptocointracker.com/yahoo-finance/yahoo-finance-api
