@@ -84,7 +84,7 @@ impl DbConn {
 
     pub fn add_account(&mut self, uid: u32, info: AccountRecord) -> Result<u32> {
         let aid = self.get_next_account_id().unwrap();
-        let p = rusqlite::params![aid, info.atype as u32, info.name, info.has_stocks, info.has_bank, info.has_ledger, info.has_budget, uid]; 
+        let p = rusqlite::params![aid, info.atype as usize, info.name, info.has_stocks, info.has_bank, info.has_ledger, info.has_budget, uid]; 
         let sql: &str = "SELECT * FROM accounts WHERE uid = (?1) and name = (?2)";
         let exists = self
             .conn
@@ -122,7 +122,7 @@ impl DbConn {
                     .query_map(p, |row| {
                         Ok(AccountRecord {
                             aid: row.get(0)?,
-                            atype: AccountType::from(row.get::<_, u32>(0)?),
+                            atype: AccountType::from(row.get::<_, u32>(0)? as u32),
                             name: row.get(1)?,
                             has_stocks: row.get(2)?,
                             has_bank: row.get(3)?,
@@ -260,7 +260,7 @@ impl DbConn {
         }
     }
     pub fn get_account(&mut self, aid: u32) -> rusqlite::Result<AccountRecord, Error> {
-        let sql: &str = "SELECT aid from accounts WHERE aid = (?1)";
+        let sql: &str = "SELECT * from accounts WHERE id = (?1)";
         let p = rusqlite::params![aid];
         let mut stmt = self.conn.prepare(sql)?;
         let exists = stmt.exists(p)?;
@@ -271,12 +271,12 @@ impl DbConn {
                     .query_row(p, |row| {
                         Ok(AccountRecord {
                             aid: row.get(0)?,
-                            atype: AccountType::from(row.get::<_, u32>(0)?),
-                            name: row.get(1)?,
-                            has_stocks: row.get(2)?,
-                            has_bank: row.get(3)?,
-                            has_ledger: row.get(4)?,
-                            has_budget: row.get(5)?
+                            atype: AccountType::from(row.get::<_, u32>(1)?),
+                            name: row.get(2)?,
+                            has_stocks: row.get(3)?,
+                            has_bank: row.get(4)?,
+                            has_ledger: row.get(5)?,
+                            has_budget: row.get(6)?
                         })});
                 return acct;
             }

@@ -4,7 +4,7 @@ use rusqlite;
 pub struct CdRecord {
     pub principal: f32,
     pub apy: f32,
-    pub open_date: i64,
+    pub open_date: String,
     pub length: u32,
 }
 
@@ -13,7 +13,7 @@ impl DbConn {
         let sql: &str = "CREATE TABLE IF NOT EXISTS cds (
             principal   REAL NOT NULL, 
             apy         REAL NOT NULL, 
-            open_date   INTEGER NOT NULL, 
+            open_date   STRINT NOT NULL, 
             length      INTEGER NOT NULL,
             aid         INTEGER NOT NULL, 
             FOREIGN     KEY (aid) REFERENCES accounts(id)

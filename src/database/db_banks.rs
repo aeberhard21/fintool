@@ -1,15 +1,18 @@
+use std::ptr::null;
+
 use super::DbConn;
 use rusqlite::Result;
+use chrono::NaiveDate;
 
 pub struct BankRecord {
     pub amount: f32,
-    pub date: i64,
+    pub date: String,
 }
 
 impl DbConn {
     pub fn create_bank_table(&mut self) -> Result<()> {
         let sql: &str = " CREATE TABLE IF NOT EXISTS banks ( 
-                    date    INTEGER NOT NULL, 
+                    date    TEXT NOT NULL, 
                     amount  REAL NOT NULL,
                     aid     INTEGER, 
                     FOREIGN KEY (aid) REFERENCES accounts(id)
@@ -65,7 +68,7 @@ impl DbConn {
                     let mut latest_record = entries.pop().unwrap().unwrap();
                     for entry in entries {
                         let record = entry.unwrap();
-                        if record.date > latest_record.date {
+                        if NaiveDate::parse_from_str(record.date.as_str(), "%Y-%m-%d").unwrap() > NaiveDate::parse_from_str(latest_record.date.as_str(), "%Y-%m-%d").unwrap() {
                             latest_record = record;
                         }
                     }
@@ -79,5 +82,74 @@ impl DbConn {
                 panic!("Unable to retrieve bank account information: {}", error);
             }
         }
+    }
+    
+    // returns a vector of bank history within period and the just before that time
+    pub fn get_bank_history(&mut self, aid: u32, date_start : String, date_end : String) -> Result<(Vec<BankRecord>, BankRecord), rusqlite::Error> {
+        let sql: &str = "SELECT * FROM banks WHERE aid = (?1) and date >= (?2) and date <= (?3) ORDER BY date ASC";
+        let p = rusqlite::params![aid, date_start, date_end];
+        
+        let mut history : Vec<BankRecord> = Vec::new();
+        let mut initial : BankRecord = BankRecord { amount: 0.00, date: "1970-01-01".to_string() };
+        
+        match self.conn.prepare(sql) {
+            Ok(mut stmt) => {
+                let exists = stmt.exists(p)?;
+                if exists {
+                    let entries = stmt
+                        .query_map(p, |row| {
+                            Ok(BankRecord {
+                                date: row.get(0)?,
+                                amount: row.get(1)?,
+                            })
+                        })
+                        .unwrap()
+                        .collect::<Vec<_>>();
+
+                    history = Vec::new();
+                    let mut record;
+                    for entry in entries {
+                        record = entry.unwrap();
+                        history.push(record);
+                    }
+
+                } else {
+                    panic!("Unable to find entries for the account id: {}", aid);
+                }
+            }
+            Err(error) => {
+                panic!("Unable to retrieve bank account information: {}", error);
+            }
+        }
+        
+        let sql: &str = "SELECT * FROM banks WHERE aid = (?1) and date <= (?2) ORDER BY date DESC";
+        let p = rusqlite::params![aid, date_start];
+        match self.conn.prepare(sql) {
+            Ok(mut stmt) => {
+                let exists = stmt.exists(p)?;
+                if exists {
+                    initial = stmt.query_row(p, |row| {
+                            Ok(BankRecord {
+                                date: row.get(0)?,
+                                amount: row.get(1)?,
+                            })
+                        })
+                        .unwrap();
+                } else {
+                    // choosing not to do nothing for now in the event that a user
+                    // chooses a date range that does not return a value
+                    // this will return an initial value of 0 indicating 
+                    // that the account did not exist
+                    // may want to do more in the future, but its good enough
+                    // for now
+                }
+            }
+            Err(error) => {
+                panic!("Unable to retrieve bank account information: {}", error);
+            }
+        }
+
+        Ok((history, initial))
+
     }
 }

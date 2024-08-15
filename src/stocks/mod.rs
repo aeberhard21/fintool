@@ -1,6 +1,8 @@
+use chrono::{FixedOffset, NaiveDate, NaiveTime};
+use time::OffsetDateTime;
 use tokio_test;
 use yahoo::{YResponse, YahooConnector, YahooError};
-use yahoo_finance_api as yahoo;
+use yahoo_finance_api::{self as yahoo, Quote};
 // use time::OffsetDateTime;
 
 use crate::database::db_investments::StockRecord;
@@ -26,98 +28,25 @@ pub fn get_stock_at_close(ticker: String) -> Result<f64, YahooError> {
     Ok(close)
 }
 
-pub fn get_stock_growth_by_range(ticker: String, range: StockRange) -> Result<YResponse, YahooError> {
+pub fn get_stock_history(ticker: String, period_start : NaiveDate, period_end : NaiveDate) -> Result<Vec<Quote>, YahooError> {
     let provider = YahooConnector::new().unwrap();
-    let yrange: &str;
-    let interval: &str;
-    //https://cryptocointracker.com/yahoo-finance/yahoo-finance-api
-    match range {
-        StockRange::OneDay => {
-            // interval = "1d";
-            yrange = "1d";
-        }
-        StockRange::OneWeek => {
-            // interval
-            yrange = "1wk"
-        }
-        StockRange::OneMonth => {
-            yrange = "1mo"
-        }
-        StockRange::ThreeMonth => {
-            yrange = "3mo"
-        }
-        StockRange::SixMonth => {
-            yrange = "6mo"
-        }
-        StockRange::OneYear => {
-            yrange = "1y"
-        }
-        StockRange::TwoYear => {
-            yrange = "2y"
-        }
-        StockRange::FiveYear => {
-            yrange = "5y"
-        }
-        StockRange::All => {
-            yrange = "10y"
-        }
-        _ => {
-            yrange = "2mo"
-        }
-    }
-    let rs = tokio_test::block_on(provider.get_quote_range(&ticker, "1d", yrange));
-    return rs;
-} 
 
-// pub fn get_stock_growth_by_interval(ticker: String, start: &str, ) -> Result<YResponse, YahooError> {
-//     let provider = YahooConnector::new();
-//     let yrange: &str;
-//     let interval: &str;
-//     let rs = tokio_test::block_on(provider.get_quote_range(&ticker, "1d", yrange));
-//     return rs;
-// } 
+    let start  = OffsetDateTime::from_unix_timestamp(
+        period_start
+        .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
+        .and_utc()
+        .timestamp())
+        .unwrap();
 
-pub fn get_stock_history(ticker: String, range: StockRange) -> Result<YResponse, YahooError> {
-    let provider = YahooConnector::new().unwrap();
-    let yrange: &str;
-    let interval: &str;
-    //https://cryptocointracker.com/yahoo-finance/yahoo-finance-api
-    match range {
-        StockRange::OneDay => {
-            // interval = "1d";
-            yrange = "1d";
-        }
-        StockRange::OneWeek => {
-            // interval
-            yrange = "1wk"
-        }
-        StockRange::OneMonth => {
-            yrange = "1mo"
-        }
-        StockRange::ThreeMonth => {
-            yrange = "3mo"
-        }
-        StockRange::SixMonth => {
-            yrange = "6mo"
-        }
-        StockRange::OneYear => {
-            yrange = "1y"
-        }
-        StockRange::TwoYear => {
-            yrange = "2y"
-        }
-        StockRange::FiveYear => {
-            yrange = "5y"
-        }
-        StockRange::All => {
-            yrange = "10y"
-        }
-        _ => {
-            yrange = "2mo"
-        }
-    }
-    let rs = tokio_test::block_on(provider.get_quote_range(&ticker, "1d", yrange));
-    return rs;
+    let end = OffsetDateTime::from_unix_timestamp(
+        period_end
+        .and_time(NaiveTime::from_hms_opt(0,0,0).unwrap())
+        .and_utc()
+        .timestamp())
+        .unwrap();
+
+    let rs = tokio_test::block_on(provider.get_quote_history(&ticker, start, end)).unwrap();
+    return rs.quotes();
 } 
 
 pub fn return_stock_values(stocks: Vec<StockRecord>) -> f64 {

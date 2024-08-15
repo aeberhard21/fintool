@@ -106,7 +106,7 @@ pub fn create_account(_atype: AccountType, _uid: u32, _db: &mut DbConn) -> u32 {
     return aid;
 }
 
-pub fn select_account_by_type(_uid: u32, _db: &mut DbConn, atype: AccountType) -> u32 {
+pub fn select_account_by_type(_uid: u32, _db: &mut DbConn, atype: AccountType) -> (u32, String) {
     let msg;
     match &atype {
         &AccountType::Bank => msg = "Select bank account: ",
@@ -119,8 +119,8 @@ pub fn select_account_by_type(_uid: u32, _db: &mut DbConn, atype: AccountType) -
     }
     let accounts: Vec<String> = _db.get_user_accounts_by_type(_uid, atype).unwrap();
     let account: String = Select::new(msg, accounts).prompt().unwrap().to_string();
-    let aid = _db.get_account_id(_uid, account).unwrap();
-    return aid;
+    let aid = _db.get_account_id(_uid, account.clone()).unwrap();
+    return (aid, account);
 }
 
 pub fn select_account_by_filter(_uid: u32, _db: &mut DbConn, filter: AccountFilter) -> u32 {
@@ -154,18 +154,19 @@ pub fn record_f32_amount(_uid: u32, _db: &mut DbConn) -> BankRecord {
         .prompt();
 
     let date_input: Result<NaiveDate, InquireError> = DateSelect::new("Enter date").prompt();
-    let date = &date_input
-        .unwrap()
-        .and_hms_milli_opt(0, 0, 0, 0)
-        .unwrap()
-        .timestamp();
-    println!("The date is: {} ", &date);
-    let converted_time = NaiveDateTime::from_timestamp(*date, 0).to_string();
-    println!("The date is: {} ", converted_time);
+    // let date = &date_input
+    //     .unwrap()
+    //     .and_hms_milli_opt(0, 0, 0, 0)
+    //     .unwrap()
+    //     .timestamp();
+    // println!("The date is: {} ", &date);
+    // let converted_time = NaiveDateTime::from_timestamp_opt(*date, 0).expect("Value should be string").to_string();
+    // println!("The date is: {} ", converted_time);
 
     return BankRecord {
         amount: amount.unwrap(),
-        date: *date,
+        // date: *date,
+        date: date_input.unwrap().to_string()
     };
 }
 
@@ -233,11 +234,11 @@ pub fn record_stock_purchase(_uid: u32) -> Option<StockRecord> {
 
     let date_input: Result<NaiveDate, InquireError> =
         DateSelect::new("Enter date of purchase").prompt();
-    let date = &date_input
-        .unwrap()
-        .and_hms_milli_opt(0, 0, 0, 0)
-        .unwrap()
-        .timestamp();
+    // let date = &date_input
+    //     .unwrap()
+    //     .and_hms_milli_opt(0, 0, 0, 0)
+    //     .unwrap()
+    //     .timestamp();
 
     let shares: f32 = CustomType::<f32>::new("Enter number of shares purchased: ")
         .with_placeholder("0.00")
@@ -254,7 +255,7 @@ pub fn record_stock_purchase(_uid: u32) -> Option<StockRecord> {
         .unwrap();
 
     return Some(StockRecord {
-        date: Some(*date),
+        date: Some(date_input.unwrap().to_string()),
         ticker: ticker,
         shares: shares,
         costbasis: Some(costbasis),
@@ -277,11 +278,11 @@ pub fn record_cd_account(_uid: u32) -> CdRecord {
         .unwrap();
 
     let date_input: Result<NaiveDate, InquireError> = DateSelect::new("Enter date opened").prompt();
-    let date = &date_input
-        .unwrap()
-        .and_hms_milli_opt(0, 0, 0, 0)
-        .unwrap()
-        .timestamp();
+    // let date = &date_input
+    //     .unwrap()
+    //     .and_hms_milli_opt(0, 0, 0, 0)
+    //     .unwrap()
+    //     .timestamp();
 
     let months = CustomType::<u32>::new("Enter term length (months): ")
         .with_placeholder("0")
@@ -293,7 +294,7 @@ pub fn record_cd_account(_uid: u32) -> CdRecord {
     return CdRecord {
         principal: principal,
         apy: apy,
-        open_date: *date,
+        open_date: date_input.unwrap().to_string(),
         length: months,
     };
 }
@@ -320,7 +321,7 @@ pub fn get_net_wealth(uid: u32, _db: &mut DbConn) -> f64 {
 }
 
 pub fn get_growth(aid: u32, _db: &mut DbConn) {
-    let periods: Vec<&str> = vec!["1 Week", "1 Month", "3 Months", "6 Months", "1 Year", "2 Year", "10 Year", "YTD", "Custom" ];
+    let periods: Vec<&str> = vec!["1 day", "1 Week", "1 Month", "3 Months", "6 Months", "1 Year", "2 Year", "10 Year", "YTD", "Custom" ];
     let command: String = Select::new("What period would you like to analyze:", periods)
         .prompt()
         .unwrap()
@@ -329,7 +330,10 @@ pub fn get_growth(aid: u32, _db: &mut DbConn) {
     let period_end = OffsetDateTime::from_unix_timestamp(Utc::now().timestamp()).unwrap();
     let mut period_start = period_end;
 
-    match command.as_str() { 
+    match command.as_str() {
+        "1 Day" => {
+            period_start = period_start.checked_sub(Duration::days(1)).unwrap();
+        }
         "1 Week" => {
             period_start = period_start.checked_sub(Duration::days(7)).unwrap();
         }
@@ -407,6 +411,17 @@ pub fn get_growth(aid: u32, _db: &mut DbConn) {
             }
             period_start = period_start.replace_year(period_start.year()-1).unwrap();
         }
+        "2 Year" => {
+            let month = period_start.month();
+            let year = period_start.year();
+            let day = period_start.day();
+            if month == time::Month::February && time::util::is_leap_year(year) && day == 29 {
+                // this handles the case of leap day
+                period_start = period_start.replace_month(time::Month::March).unwrap();
+                period_start = period_start.replace_day(1).unwrap();
+            }
+            period_start = period_start.replace_year(period_start.year()-2).unwrap();
+        }
         "5 Year" => {
             let month = period_start.month();
             let year = period_start.year();
@@ -439,4 +454,29 @@ pub fn get_growth(aid: u32, _db: &mut DbConn) {
             period_start = OffsetDateTime::from_unix_timestamp(Utc.from_utc_datetime(&date_time).timestamp()).unwrap();
         }
     }
+
+    println!("aid is {}", aid.clone());
+    let account = _db.get_account(aid).unwrap();
+
+    let (mut bank_history, bank_initial) : (Vec<BankRecord>, BankRecord);
+    let bank_growth : f32;
+
+    if account.has_bank {
+        (bank_history, bank_initial) = _db.get_bank_history(aid, period_start.date().to_string(), period_end.date().to_string()).unwrap();
+        bank_history.reverse();
+        let bank_end_amount = bank_history.get(0).unwrap().amount;
+        bank_growth = (bank_end_amount - bank_initial.amount) / ( bank_initial.amount ) * 100 as f32;
+        println!("Initial: {} End: {} Growth: {}", bank_initial.amount, bank_end_amount, bank_growth)
+    }
+
+    if account.has_stocks {
+        let tickers = _db.get_stock_tickers(aid).unwrap();
+        let ticker = Select::new("Select ticker:", tickers).prompt().unwrap().to_string();
+        let stock_growth = _db.get_stock_growth(aid, ticker, 
+            NaiveDate::parse_from_str(period_start.date().to_string().as_str(), "%Y-%m-%d").unwrap(), 
+            NaiveDate::parse_from_str(period_end.date().to_string().as_str(), "%Y-%m-%d").unwrap());
+        println!("Growth {}", stock_growth);
+    }
+
+
 }

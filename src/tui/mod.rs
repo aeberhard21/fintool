@@ -185,17 +185,17 @@ fn tui_record(_uid: u32, _db: &mut DbConn) {
 
     match command.as_str() {
         "bank" => {
-            let aid = select_account_by_type(_uid, _db, AccountType::Bank);
+            let (aid, account) = select_account_by_type(_uid, _db, AccountType::Bank);
             let record = record_f32_amount(_uid, _db);
             _db.record_bank_account(aid, record);
         }
         "health" => {
-            let aid = select_account_by_type(_uid, _db, AccountType::Health);
+            let (aid, account) = select_account_by_type(_uid, _db, AccountType::Health);
             let record = record_health_account(_uid, _db);
             _db.record_hsa_account(aid, record);
         }
         "investment" => {
-            let aid = select_account_by_type(_uid, _db, AccountType::Investment);
+            let (aid, account) = select_account_by_type(_uid, _db, AccountType::Investment);
             let report_bank: bool = Confirm::new("Record fixed cash account?")
                 .with_default(false)
                 .prompt()
@@ -223,7 +223,7 @@ fn tui_record(_uid: u32, _db: &mut DbConn) {
             _db.record_bank_account(aid, insured_account);
         }
         "ledger" => {
-            let aid = select_account_by_type(_uid, _db, AccountType::Ledger);
+            let (aid, account) = select_account_by_type(_uid, _db, AccountType::Ledger);
             loop {
                 let entry = add_ledger(_uid, _db);
                 _db.add_ledger_entry(aid, entry);
@@ -237,7 +237,7 @@ fn tui_record(_uid: u32, _db: &mut DbConn) {
             }
         }
         "retirement" => {
-            let aid = select_account_by_type(_uid, _db, AccountType::Retirement);
+            let (aid, account)= select_account_by_type(_uid, _db, AccountType::Retirement);
             let entry = record_f32_amount(_uid, _db);
         }
         "none" => {
@@ -256,16 +256,16 @@ fn tui_report(_uid: u32, _db: &mut DbConn) {
         .unwrap()
         .to_string();
     let mut aid= 0;
+    let account : String;
 
     match command.as_str() {
         "bank" => {
-            aid = select_account_by_type(_uid, _db, AccountType::Bank);
-            let account = _db.get_account_name(_uid, aid).unwrap();
+            (aid, account) = select_account_by_type(_uid, _db, AccountType::Bank);
             let value = _db.get_bank_value(aid).unwrap().amount;
             println!("The value of account {} is: {}", &account, value)
         }
         "health" => {
-            aid = select_account_by_type(_uid, _db, AccountType::Health);
+            (aid, account) = select_account_by_type(_uid, _db, AccountType::Health);
             let account = _db.get_account_name(_uid, aid).unwrap();
             let acct = _db.get_hsa_value(aid).expect("Unable to get HSA account!");
             let mut total_investment_value = 0.0;
@@ -283,7 +283,6 @@ fn tui_report(_uid: u32, _db: &mut DbConn) {
                 "CD",
                 "Health",
                 "Investment",
-                "Ledger",
                 "Retirement",
                 "none",
             ];
@@ -293,12 +292,12 @@ fn tui_report(_uid: u32, _db: &mut DbConn) {
                 .to_string();
 
             if selected_type != "none" {
-                let aid = select_account_by_type(_uid, _db, AccountType::from(selected_type));
+                let (aid, account) = select_account_by_type(_uid, _db, AccountType::from(selected_type));
                 get_growth(aid,_db);
             }
         }
         "investment" => {
-            let aid = select_account_by_type(_uid, _db, AccountType::Investment);
+            let (aid, account) = select_account_by_type(_uid, _db, AccountType::Investment);
             let report_all = Confirm::new(
                 "Report total of entire account (y) or an individual stock ticker (n)",
             )
