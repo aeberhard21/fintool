@@ -5,13 +5,12 @@ use crate::database::*;
 use crate::ledger::*;
 use crate::user::*;
 use chrono::{NaiveDate, Weekday};
+use db_ledger::TransferType;
 use inquire::*;
 
 use self::db_accounts::AccountRecord;
 
-pub fn add_ledger(_aid: u32, _db: &mut DbConn) -> LedgerEntry {
-    let deposit_options: Vec<&str> = vec!["Credit", "Debit"];
-
+pub fn record_ledger_entry(_aid: u32, _db: &mut DbConn, action : Option<TransferType> ) -> LedgerEntry {
     // this function returns either "Ok" or "Err". "Ok" indicates that the type T in Result<T, E>
     // is okay to be used.
     let date_input: Result<NaiveDate, InquireError> = DateSelect::new("Enter date").prompt();
@@ -28,19 +27,30 @@ pub fn add_ledger(_aid: u32, _db: &mut DbConn) -> LedgerEntry {
 
     println!("Entered amount is {}", amount.to_string());
 
-    let deposit_type: String = Select::new("Credit or debit:", deposit_options)
-        .prompt()
-        .unwrap()
-        .to_string();
-    let deposit: bool;
-
-    let mut payee;
+    let transfer_type: TransferType;
     let mut pid = 0;
+    let mut deposit_type : String;
+    let mut payee;
+
+    if action.is_none() {
+        let deposit_options: Vec<&str> = vec!["Widthdrawal", "Deposit"];
+        deposit_type = Select::new("Widthdrawal or deposit:", deposit_options)
+            .prompt()
+            .unwrap()
+            .to_string();
+        
+        if deposit_type == "Widthdrawal" {
+            transfer_type = TransferType::WidthdrawalToExternalAccount;
+        } else {
+            transfer_type = TransferType::DepositFromExternalAccount;
+        }
+    } else {
+       transfer_type = action.unwrap();
+    }
 
     // the match is equivalent to a switch statement
-    match deposit_type.as_str() {
-        "Credit" => {
-            deposit = false;
+    match transfer_type {
+        TransferType::WidthdrawalToExternalAccount => {
             let mut payees = _db.get_people(_aid, PeopleType::Payee).unwrap();
             if payees.len() > 0 {
                 payees.push("None".to_string());
@@ -62,9 +72,8 @@ pub fn add_ledger(_aid: u32, _db: &mut DbConn) -> LedgerEntry {
                 pid = _db.add_person(_aid, PeopleType::Payee, payee).unwrap();
             }
         }
-        "Debit" => {
-            deposit = true;
-            let mut payees = _db.get_people(_aid, PeopleType::Payer).unwrap();
+        TransferType::DepositFromExternalAccount => {
+            let mut payees = _db.get_people(_aid, PeopleType::Payee).unwrap();
             if payees.len() > 0 {
                 payees.push("None".to_string());
                 payees.push("New Payer".to_string());
@@ -84,6 +93,50 @@ pub fn add_ledger(_aid: u32, _db: &mut DbConn) -> LedgerEntry {
                 payee = Text::new("Enter payer:").prompt().unwrap().to_string();
                 pid = _db.add_person(_aid, PeopleType::Payer, payee).unwrap();
             }
+        }
+        TransferType::WidthdrawalToInternalAccount => {
+            let mut payees = _db.get_people(_aid, PeopleType::Payee).unwrap();
+            if payees.len() > 0 {
+                payees.push("None".to_string());
+                payees.push("New Beneficiary".to_string());
+                payee = Select::new("Select withdrawal beneficiary:", payees)
+                    .prompt()
+                    .unwrap()
+                    .to_string();
+                if payee == "New Beneficiary" {
+                    payee = Text::new("Enter withdrawal beneficiary:").prompt().unwrap().to_string();
+                    pid = _db.add_person(_aid, PeopleType::Payee, payee).unwrap();
+                } else if payee == "None" {
+                    pid = _db.add_person(_aid, PeopleType::Payee, payee).unwrap();
+                } else {
+                    pid = _db.get_person_id(_aid, payee).unwrap();
+                }
+            } else {
+                payee = Text::new("Enter withdrawal beneficiary:").prompt().unwrap().to_string();
+                pid = _db.add_person(_aid, PeopleType::Payee, payee).unwrap();
+            } 
+        }
+        TransferType::WidthdrawalToInternalAccount => {
+            let mut payees = _db.get_people(_aid, PeopleType::Payee).unwrap();
+            if payees.len() > 0 {
+                payees.push("None".to_string());
+                payees.push("New Source".to_string());
+                payee = Select::new("Select deposit source:", payees)
+                    .prompt()
+                    .unwrap()
+                    .to_string();
+                if payee == "New Source" {
+                    payee = Text::new("Enter deposit source:").prompt().unwrap().to_string();
+                    pid = _db.add_person(_aid, PeopleType::Payee, payee).unwrap();
+                } else if payee == "None" {
+                    pid = _db.add_person(_aid, PeopleType::Payee, payee).unwrap();
+                } else {
+                    pid = _db.get_person_id(_aid, payee).unwrap();
+                }
+            } else {
+                payee = Text::new("Enter deposit source:").prompt().unwrap().to_string();
+                pid = _db.add_person(_aid, PeopleType::Payee, payee).unwrap();
+            } 
         }
         _ => {
             panic!("Invalid entry.");
@@ -110,7 +163,7 @@ pub fn add_ledger(_aid: u32, _db: &mut DbConn) -> LedgerEntry {
         } else if category == "None" {
             cid = _db.add_category(_aid, category).unwrap();
         } else {
-            cid = _db.get_category_id(_aid, &category).unwrap();
+            cid = _db.get_category_id(_aid, category).unwrap();
         }
     } else {
         category = Text::new("Enter payment category:")
@@ -128,7 +181,7 @@ pub fn add_ledger(_aid: u32, _db: &mut DbConn) -> LedgerEntry {
     let entry = LedgerEntry {
         date: date,
         amount: amount,
-        deposit: deposit,
+        transfer_type: transfer_type,
         payee_id: pid,
         category_id: cid,
         description: description_input,
@@ -136,12 +189,3 @@ pub fn add_ledger(_aid: u32, _db: &mut DbConn) -> LedgerEntry {
 
     return entry;
 }
-
-// pub fn print_ledger(_user: &mut User, _db: &mut DbConn) {
-//     let ledger_options: Vec<String> = _user.get_ledgers();
-//     let _ledger: String = Select::new("Select which ledger to view:", ledger_options)
-//         .prompt()
-//         .unwrap()
-//         .to_string();
-//     _user.print_ledger(_db, _ledger);
-// }

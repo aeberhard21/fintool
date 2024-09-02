@@ -166,7 +166,7 @@ impl DbConn {
                 return Ok(accounts);
             }
             false => {
-                return Ok(accounts);
+                panic!("Account not found!");
             }
         }
     }

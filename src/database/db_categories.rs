@@ -81,7 +81,7 @@ impl DbConn {
     pub fn get_category_id(
         &mut self,
         aid: u32,
-        category: &String,
+        category: String,
     ) -> rusqlite::Result<u32, rusqlite::Error> {
         let sql: &str = "SELECT id FROM categories WHERE aid = (?1) AND category = (?2)";
         let p = rusqlite::params![aid, category];

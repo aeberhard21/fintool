@@ -1,12 +1,20 @@
+use std::fmt::format;
+
 use crate::database;
 use crate::database::db_accounts::AccountFilter;
 use crate::database::db_accounts::AccountType;
+use crate::database::db_ledger::LedgerEntry;
+use crate::database::db_ledger::TransferType;
+use crate::database::db_people::PeopleType;
 use crate::database::DbConn;
+use crate::ledger;
 use crate::stocks;
 use crate::tui::tui_accounts::*;
 use crate::tui::tui_ledger::*;
 use crate::tui::tui_user::*;
+use chrono::NaiveDate;
 use inquire::*;
+use yahoo_finance_api::Dividend;
 
 use self::tui_budgets::amend_budget;
 
@@ -64,22 +72,21 @@ fn tui_create(_uid: u32, _db: &mut DbConn) {
     if _db.is_admin(_uid).unwrap() {
         commands = vec![
             "user",
-            "bank",
+            "Bank",
             "CD",
-            "health",
-            "investment",
-            "ledger",
-            "retirement",
+            "Health",
+            "Investment",
+            "Ledger",
+            "Retirement",
             "none",
         ];
     } else {
         commands = vec![
-            "bank",
+            "Bank",
             "CD",
-            "health",
-            "investment",
-            "ledger",
-            "retirement",
+            "Health",
+            "Investment",
+            "Retirement",
             "none",
         ];
     }
@@ -92,48 +99,50 @@ fn tui_create(_uid: u32, _db: &mut DbConn) {
         "user" => {
             create_user(_db);
         }
-        "bank" => {
-            aid = create_account(AccountType::Bank, _uid, _db);
-            let record = record_f32_amount(_uid, _db);
-            _db.record_bank_account(aid, record)
-                .expect("Unable to record bank account!");
+        "Bank"|"CD" => {
+            aid = create_account(AccountType::from(command), _uid, _db);
+            let bank = record_ledger_entry(aid, _db, None);
         }
-        "CD" => {
-            aid = create_account(AccountType::CD, _uid, _db);
-            let record = record_cd_account(_uid);
-            _db.add_cd(aid, record).expect("Unable to add CD account!");
-        }
-        "health" => {
-            aid = create_account(AccountType::Health, _uid, _db);
-            let record = record_health_account(_uid, _db);
-            _db.record_hsa_account(aid, record)
-                .expect("Unable to record HSA account!");
-        }
-        "investment" => {
-            aid = create_account(AccountType::Investment, _uid, _db);
-            let cash = record_f32_amount(_uid, _db);
-            _db.record_bank_account(aid, cash);
-            loop {
-                match record_stock_purchase(_uid) {
-                    Some(record) => {
-                        _db.add_stock(aid, record).expect("Unable to add stock!");
+        "Investment"|"Retirement"|"Health" => {
+            aid = create_account(AccountType::from(command), _uid, _db);
+            
+            _db.add_person(aid, PeopleType::Payee, "Fixed".to_string());
+            _db.add_category(aid, "Bought".to_string());
+            _db.add_category(aid, "Cash Dividend".to_string());
+            _db.add_category(aid, "Interest".to_string());
+            _db.add_category(aid, "Dividend-Reinvest".to_string());
+            _db.add_category(aid, "Sold".to_string());
+            _db.add_category(aid, "Deposit".to_string());
+            _db.add_category(aid, "Withdrawal".to_string());
+
+            let has_bank = Confirm::new("Would you like to record a fixed account?")
+                .with_default(false)
+                .prompt()
+                .unwrap();
+            if has_bank {
+                let bank = record_ledger_entry(aid, _db, None);
+            }
+            let has_stock = Confirm::new("Would you like to record investments?")
+                .with_default(false)
+                .prompt()
+                .unwrap();
+            if has_stock {
+                loop {
+                    match record_stock_purchase(_uid) {
+                        Some(record) => {
+                            _db.add_stock(aid, record).expect("Unable to add stock!");
+                        }
+                        None => return,
                     }
-                    None => return,
-                }
-                let another: bool = Confirm::new("Add another stock to investment?")
-                    .with_default(false)
-                    .prompt()
-                    .unwrap();
-                if false == another {
-                    break;
+                    let another: bool = Confirm::new("Add another stock to investment?")
+                        .with_default(false)
+                        .prompt()
+                        .unwrap();
+                    if false == another {
+                        break;
+                    }
                 }
             }
-        }
-        "ledger" => {
-            aid = create_account(AccountType::Ledger, _uid, _db);
-        }
-        "retirement" => {
-            create_account(AccountType::Retirement, _uid, _db);
         }
         "none" => return,
         _ => {
@@ -170,12 +179,12 @@ fn tui_modify(_uid: u32, _db: &mut DbConn) {
 
 fn tui_record(_uid: u32, _db: &mut DbConn) {
     let commands: Vec<&str> = vec![
-        "bank",
+        "Bank",
         "CD",
-        "health",
-        "investment",
-        "ledger",
-        "retirement",
+        "Health",
+        "Investment",
+        "Ledger",
+        "Retirement",
         "none",
     ];
     let command: String = Select::new("\nWhat would you like to add:", commands)
@@ -184,61 +193,235 @@ fn tui_record(_uid: u32, _db: &mut DbConn) {
         .to_string();
 
     match command.as_str() {
-        "bank" => {
+        "Bank" => {
             let (aid, account) = select_account_by_type(_uid, _db, AccountType::Bank);
-            let record = record_f32_amount(_uid, _db);
-            _db.record_bank_account(aid, record);
+            // let record = record_f32_amount(_uid, _db);
+            let fixed = record_ledger_entry(aid, _db, None);
+            _db.add_ledger_entry(aid, fixed);
         }
-        "health" => {
-            let (aid, account) = select_account_by_type(_uid, _db, AccountType::Health);
-            let record = record_health_account(_uid, _db);
-            _db.record_hsa_account(aid, record);
+        "CD" => {
+            let (aid, account) = select_account_by_type(_uid, _db, AccountType::CD);
+            let fixed = record_ledger_entry(aid, _db, Some(TransferType::DepositFromExternalAccount));
+            _db.add_ledger_entry(aid, fixed);
         }
-        "investment" => {
-            let (aid, account) = select_account_by_type(_uid, _db, AccountType::Investment);
-            let report_bank: bool = Confirm::new("Record fixed cash account?")
-                .with_default(false)
+        "Retirement"|"Investment"|"Health" => {
+            let (aid, account) = select_account_by_type(_uid, _db, AccountType::from(command));
+            let command: String = Select::new("\nWhat would you like to record:", vec!["Fixed", "Variable", "Both"])
                 .prompt()
-                .unwrap();
-            if report_bank == true {
-                let cash = record_f32_amount(_uid, _db);
-                _db.record_bank_account(aid, cash);
-            }
-            loop {
-                match record_stock_purchase(_uid) {
-                    Some(record) => {
-                        _db.add_stock(aid, record);
+                .unwrap()
+                .to_string();
+
+            let transfer_type : TransferType;
+            match command.as_str() {
+                "Fixed" => {
+                    let transfer_source = Select::new("What type of transfer is this: ", vec!["Internal", "External"])
+                        .prompt()
+                        .unwrap()
+                        .to_string();
+                    let add_subtract = Select::new("Deposit or withdrawal:", vec!["Withdrawal", "Deposit"])
+                        .prompt()
+                        .unwrap()
+                        .to_string();
+                    if transfer_source == "Internal" {
+                        if add_subtract == "Widthdrawal" {
+                            transfer_type = TransferType::WidthdrawalToInternalAccount;
+                        } else {
+
+                            transfer_type = TransferType::DepositFromInternalAccount;
+                        }
+                    } else {
+                        if add_subtract == "Widthdrawal" {
+                            transfer_type = TransferType::WidthdrawalToExternalAccount;
+                        } else {
+                            transfer_type = TransferType::DepositFromExternalAccount;
+                        }
                     }
-                    None => return,
+                    let fixed = record_ledger_entry(aid, _db, Some(transfer_type));
+                    _db.add_ledger_entry(aid, fixed);
                 }
-                let another: bool = Confirm::new("Add another stock to investment?")
-                    .with_default(false)
+                "Variable" => {
+                    loop {
+                        let command: String = Select::new("\nWhat would you like to record:", vec!["Purchase", "Sale"])
+                            .prompt()
+                            .unwrap()
+                            .to_string();
+
+                        match command.as_str() {
+                            "Purchase" => {
+                                match record_stock_purchase(_uid) {
+                                    Some(record) => {
+                                        let command: String = Select::new("\nPurchase from internal, external account,:", vec!["External", "Internal", "Dividend-Reinvest"])
+                                            .prompt()
+                                            .unwrap()
+                                            .to_string();
+                                        let mut purchase : LedgerEntry;
+                                        let mut dividend : LedgerEntry;
+
+                                        let payees = _db.get_people(aid, PeopleType::Payee).unwrap();
+                                        let mut stock_pid = 0;
+                                        if payees.is_empty() {
+                                            stock_pid = _db.add_person(aid, PeopleType::Payee, record.ticker.clone()).unwrap();
+                                        } else {
+                                            let stock_found = false;
+                                            let fixed_found = false;
+                                            for payee in payees {
+                                                if payee == record.ticker.clone() {
+                                                    stock_pid = _db.get_person_id(aid, payee).unwrap();
+                                                }
+                                            }
+                                            if !stock_found {
+                                                stock_pid = _db.add_person(aid, PeopleType::Payee, record.ticker.clone()).unwrap();
+                                            }
+                                        }
+
+                                        let mut fixed_pid = _db.get_person_id(aid, "Fixed".to_string()).unwrap();
+
+                                        match command.as_str() {
+                                            "External" => {
+
+                                                let mut fixed_pid = _db.get_person_id(aid, "Fixed".to_string()).unwrap();
+                                                let mut fixed_cid = _db.get_category_id(aid, "Deposit".to_string()).unwrap();
+                                                let mut stock_cid = _db.get_category_id(aid, "Bought".to_string()).unwrap();
+
+                                                let deposit  = LedgerEntry { 
+                                                    date: format!("{}", record.date), 
+                                                    amount: record.shares * record.costbasis,
+                                                    transfer_type: TransferType::DepositFromExternalAccount,
+                                                    payee_id: fixed_pid, 
+                                                    category_id: fixed_cid, 
+                                                    description : format!("[External]: Purchase {} shares of {} at ${} on {}.", record.shares, record.ticker , record.costbasis, record.date)
+                                                };
+                                                _db.add_ledger_entry(aid, deposit);
+
+                                                purchase = LedgerEntry { 
+                                                    date: format!("{}", record.date), 
+                                                    amount: record.shares * record.costbasis,
+                                                    transfer_type: TransferType::WidthdrawalToInternalAccount,
+                                                    payee_id: stock_pid, 
+                                                    category_id: stock_cid, 
+                                                    description : format!("[External]: Purchase {} shares of {} at ${} on {}.", record.shares, record.ticker, record.costbasis, record.date)
+                                                };
+                                            }
+                                            "Dividend-Reinvest" => {
+
+                                                let mut fixed_cid = _db.get_category_id(aid, "Cash Dividend".to_string()).unwrap();
+                                                let mut stock_cid = _db.get_category_id(aid, "Dividend-Reinvest".to_string()).unwrap();
+
+                                                let mut dividend = LedgerEntry { 
+                                                    date: format!("{}", record.date), 
+                                                    amount: record.shares * record.costbasis,
+                                                    transfer_type: TransferType::DepositFromExternalAccount,
+                                                    payee_id: fixed_pid, 
+                                                    category_id: fixed_cid, 
+                                                    description : format!("[Dividend-Reinvest]: Dividend of ${} from {} on {}.", record.shares * record.costbasis, record.ticker, record.date)
+                                                };
+
+                                                _db.add_ledger_entry(aid, dividend);
+
+                                                purchase = LedgerEntry { 
+                                                    date: format!("{}", record.date), 
+                                                    amount: record.shares * record.costbasis,
+                                                    transfer_type: TransferType::WidthdrawalToInternalAccount,
+                                                    payee_id: stock_pid, 
+                                                    category_id: stock_cid, 
+                                                    description : format!("[Dividend-Reinvest]: Purchase {} shares of {} at ${} on {}.", record.shares, record.ticker, record.costbasis, record.date)
+                                                };
+
+                                            }
+                                            "Internal" => { 
+                                                let mut stock_cid = _db.get_category_id(aid, "Bought".to_string()).unwrap();
+
+                                                purchase = LedgerEntry { 
+                                                    date: format!("{}", record.date), 
+                                                    amount: record.shares * record.costbasis,
+                                                    transfer_type: TransferType::WidthdrawalToInternalAccount,
+                                                    payee_id: stock_pid, 
+                                                    category_id: stock_cid, 
+                                                    description : format!("[Internal]: Purchase {} shares of {} at ${} on {}.", record.shares, record.ticker, record.costbasis, record.date)
+                                                };
+                                            }
+                                            _ => {
+                                                panic!("Invalid input type!");
+                                            }
+                                        }
+
+                                        _db.add_ledger_entry(aid, purchase);
+                                        _db.add_stock(aid, record);
+                                        
+                                    }
+                                    None => return,
+                                }
+                            }
+                            "Sale" => {
+                                let tickers = _db.get_stock_tickers(aid).unwrap();
+                                let ticker = Select::new("\nSelect which stock you would like to sell:", tickers)
+                                    .prompt()
+                                    .unwrap()
+                                    .to_string();
+                                let owned_stocks = _db.get_stocks(aid, ticker).unwrap();
+                                let command: String = Select::new("Sell all or partial:", vec!["All", "Partial"])
+                                    .prompt()
+                                    .unwrap()
+                                    .to_string(); 
+                            }
+                            _ => {
+
+                            }
+                        }
+
+                        let another: bool = Confirm::new("Add another stock to investment?")
+                            .with_default(false)
+                            .prompt()
+                            .unwrap();
+                        if false == another {
+                            break;
+                        }
+                    }
+                }
+                "Both" => { 
+                    let transfer_source = Select::new("What type of transfer is this: ", vec!["Internal", "External"])
                     .prompt()
-                    .unwrap();
-                if false == another {
-                    break;
+                    .unwrap()
+                    .to_string();
+                    let add_subtract = Select::new("Deposit or withdrawal:", vec!["Withdrawal", "Deposit"])
+                        .prompt()
+                        .unwrap()
+                        .to_string();
+                    if transfer_source == "Internal" {
+                        if add_subtract == "Widthdrawal" {
+                            transfer_type = TransferType::WidthdrawalToInternalAccount;
+                        } else {
+                            transfer_type = TransferType::DepositFromInternalAccount;
+                        }
+                    } else {
+                        if add_subtract == "Widthdrawal" {
+                            transfer_type = TransferType::WidthdrawalToExternalAccount;
+                        } else {
+                            transfer_type = TransferType::DepositFromExternalAccount;
+                        }
+                    }
+                    let fixed = record_ledger_entry(aid, _db, Some(transfer_type));
+                    _db.add_ledger_entry(aid, fixed);
+                    loop {
+                        match record_stock_purchase(_uid) {
+                            Some(record) => {
+                                _db.add_stock(aid, record);
+                            }
+                            None => return,
+                        }
+                        let another: bool = Confirm::new("Add another stock to investment?")
+                            .with_default(false)
+                            .prompt()
+                            .unwrap();
+                        if false == another {
+                            break;
+                        }
+                    }
+                }
+                _ => {
+                    panic!("Unrecognized input!");
                 }
             }
-            let insured_account = record_f32_amount(_uid, _db);
-            _db.record_bank_account(aid, insured_account);
-        }
-        "ledger" => {
-            let (aid, account) = select_account_by_type(_uid, _db, AccountType::Ledger);
-            loop {
-                let entry = add_ledger(_uid, _db);
-                _db.add_ledger_entry(aid, entry);
-                let another: bool = Confirm::new("Add another entry?")
-                    .with_default(false)
-                    .prompt()
-                    .unwrap();
-                if false == another {
-                    break;
-                }
-            }
-        }
-        "retirement" => {
-            let (aid, account)= select_account_by_type(_uid, _db, AccountType::Retirement);
-            let entry = record_f32_amount(_uid, _db);
         }
         "none" => {
             return;

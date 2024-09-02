@@ -15,8 +15,8 @@ use yahoo_finance_api::Quote;
 pub struct StockRecord {
     pub ticker: String,
     pub shares: f32,
-    pub costbasis: Option<f32>,
-    pub date: Option<String>,
+    pub costbasis: f32,
+    pub date: String,
 }
 
 impl DbConn {
@@ -135,7 +135,7 @@ impl DbConn {
         let mut stmt = self.conn.prepare(sql)?;
         let exists = stmt.exists(p)?;
         let mut stocks = Vec::new();
-        let mut initial: StockRecord = StockRecord{shares : 0.0, ticker : ticker.clone(), costbasis : Some(0.0), date : Some(start.to_string())};
+        let mut initial: StockRecord = StockRecord{shares : 0.0, ticker : ticker.clone(), costbasis : 0.0, date : start.to_string()};
 
         match exists {
             true => {
@@ -230,8 +230,8 @@ impl DbConn {
             cumulated_stocks.push(StockRecord {
                 ticker: kv.0,
                 shares: kv.1,
-                costbasis: None,
-                date: None,
+                costbasis: 0.0,
+                date: "1970-01-01".to_string(),
             });
         }
         return cumulated_stocks;
@@ -250,7 +250,7 @@ impl DbConn {
         let ts = VecDeque::from(transactions);
         
         let mut vi;
-        let mut first_open_date = initial.date.expect("Date must be populated!");
+        let mut first_open_date = initial.date;
         loop {
             if quote_lookup.get(&first_open_date.clone()).is_none() {
                 first_open_date = 
@@ -277,13 +277,13 @@ impl DbConn {
             let mut ve : f32;
             let hp : f32;
             let next_vi = t;
-            let date = next_vi.date.clone().expect("Date must be populated!");
+            let date = next_vi.date.clone();
             
             // Check is found within the quote lookup. If not, this may suggest that the 
             // stock market was closed that day, e.g., weekends or holidays.
             if quote_lookup.get(&date.clone()).is_none() {
 
-                cf += next_vi.costbasis.expect("Cost basis must be populated!") * next_vi.shares;
+                cf += next_vi.costbasis * next_vi.shares;
                 total_shares += next_vi.shares;
 
                 if i == ts.len()-1 {
@@ -299,7 +299,7 @@ impl DbConn {
             } else {
                 // add in the costs and we will consider this in the next period when 
                 // the market is open
-                cf += next_vi.costbasis.expect("Requires costbasis!") * next_vi.shares;
+                cf += next_vi.costbasis * next_vi.shares;
 
                 // let fail_msg = format!("Date {} not found!", &next_vi.date.clone().expect("not populated!"));
                 let fail_msg = "Not here!";
@@ -327,7 +327,7 @@ impl DbConn {
 
     pub fn get_stock_growth(self : &mut DbConn, aid : u32, ticker : String, period_start : NaiveDate, period_end : NaiveDate) -> f32 {
         let (transactions, initial) = self.get_stock_history(aid, ticker.clone(), period_start, period_end).unwrap();
-        let quotes = crate::stocks::get_stock_history(ticker, NaiveDate::parse_from_str(initial.date.clone().expect("Date not populated!").as_str(), "%Y-%m-%d").unwrap(), period_end).unwrap();
+        let quotes = crate::stocks::get_stock_history(ticker, NaiveDate::parse_from_str(initial.date.clone().as_str(), "%Y-%m-%d").unwrap(), period_end).unwrap();
         self.time_weighted_return(quotes, transactions, initial)
     }
 }

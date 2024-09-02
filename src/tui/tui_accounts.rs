@@ -118,6 +118,9 @@ pub fn select_account_by_type(_uid: u32, _db: &mut DbConn, atype: AccountType) -
         _ => panic!("Unrecognized account type!"),
     }
     let accounts: Vec<String> = _db.get_user_accounts_by_type(_uid, atype).unwrap();
+    for account in accounts.clone() { 
+        println!("Here are the accounts {}", account);
+    }
     let account: String = Select::new(msg, accounts).prompt().unwrap().to_string();
     let aid = _db.get_account_id(_uid, account.clone()).unwrap();
     return (aid, account);
@@ -146,7 +149,7 @@ pub fn select_stock(tickers: Vec<String>) -> String {
     return stock;
 }
 
-pub fn record_f32_amount(_uid: u32, _db: &mut DbConn) -> BankRecord {
+pub fn record_f32_amount() -> BankRecord {
     let amount: Result<f32, InquireError> = CustomType::<f32>::new("Enter amount in account: ")
         .with_placeholder("00000.00")
         .with_default(00000.00)
@@ -154,14 +157,6 @@ pub fn record_f32_amount(_uid: u32, _db: &mut DbConn) -> BankRecord {
         .prompt();
 
     let date_input: Result<NaiveDate, InquireError> = DateSelect::new("Enter date").prompt();
-    // let date = &date_input
-    //     .unwrap()
-    //     .and_hms_milli_opt(0, 0, 0, 0)
-    //     .unwrap()
-    //     .timestamp();
-    // println!("The date is: {} ", &date);
-    // let converted_time = NaiveDateTime::from_timestamp_opt(*date, 0).expect("Value should be string").to_string();
-    // println!("The date is: {} ", converted_time);
 
     return BankRecord {
         amount: amount.unwrap(),
@@ -170,33 +165,33 @@ pub fn record_f32_amount(_uid: u32, _db: &mut DbConn) -> BankRecord {
     };
 }
 
-pub fn record_health_account(_uid: u32, _db: &mut DbConn) -> HsaRecord {
-    let bank = record_f32_amount(_uid, _db);
-    let add_stocks: bool = Confirm::new("Record stock purchase?")
-        .with_default(false)
-        .prompt()
-        .unwrap();
-    let mut stocks: Vec<StockRecord> = Vec::new();
-    loop {
-        if add_stocks {
-            match record_stock_purchase(_uid) {
-                Some(stock) => stocks.push(stock),
-                None => {}
-            }
-        }
-        let add_more: bool = Confirm::new("Add additional stock purchases?")
-            .with_default(false)
-            .prompt()
-            .unwrap();
-        if !add_more {
-            break;
-        }
-    }
-    return HsaRecord {
-        fixed: bank,
-        investments: stocks,
-    };
-}
+// pub fn record_health_account(_uid: u32, _db: &mut DbConn) -> HsaRecord {
+//     let bank = record_f32_amount(_uid, _db);
+//     let add_stocks: bool = Confirm::new("Record stock purchase?")
+//         .with_default(false)
+//         .prompt()
+//         .unwrap();
+//     let mut stocks: Vec<StockRecord> = Vec::new();
+//     loop {
+//         if add_stocks {
+//             match record_stock_purchase(_uid) {
+//                 Some(stock) => stocks.push(stock),
+//                 None => {}
+//             }
+//         }
+//         let add_more: bool = Confirm::new("Add additional stock purchases?")
+//             .with_default(false)
+//             .prompt()
+//             .unwrap();
+//         if !add_more {
+//             break;
+//         }
+//     }
+//     return HsaRecord {
+//         fixed: bank,
+//         investments: stocks,
+//     };
+// }
 
 pub fn record_stock_purchase(_uid: u32) -> Option<StockRecord> {
     let another = false;
@@ -255,10 +250,10 @@ pub fn record_stock_purchase(_uid: u32) -> Option<StockRecord> {
         .unwrap();
 
     return Some(StockRecord {
-        date: Some(date_input.unwrap().to_string()),
+        date: date_input.unwrap().to_string(),
         ticker: ticker,
         shares: shares,
-        costbasis: Some(costbasis),
+        costbasis: costbasis,
     });
 }
 

@@ -15,8 +15,8 @@ pub fn create_budget(_aid : u32, _db: &mut DbConn) {
         }    
     } else {
         for category in categories { 
-            let cid = _db.get_category_id(_aid, &category).unwrap();
-            let value = set_budget_value(&category);
+            let cid = _db.get_category_id(_aid, category.clone()).unwrap();
+            let value = set_budget_value(category.clone());
             let mut ignore = false;
             if value == 0.0 { 
                 let prompt = format!("Ignore {} from budget?", category.clone());
@@ -46,12 +46,12 @@ pub fn prompt_new_budget_item(_aid : u32, _db: &mut DbConn) -> BudgetItem {
         .prompt()
         .unwrap()
         .to_string();
-    let value = set_budget_value(&category);
+    let value = set_budget_value(category.clone());
     let cid = _db.add_category(_aid, category).unwrap();
     return BudgetItem { category_id : cid, value : value };
 }
 
-pub fn set_budget_value( category : &String ) -> f32 { 
+pub fn set_budget_value( category : String ) -> f32 { 
     let prompt = format!("Enter budgeted amount [{}]", category);
     let value = CustomType::<f32>::new(prompt.as_str())
         .with_placeholder("00000.00")
@@ -77,8 +77,8 @@ pub fn amend_budget (_aid : u32, _db : &mut DbConn ) {
                 _db.add_budget_item(_aid, item);
             }
             _ => {
-                let cid = _db.get_category_id(_aid, &category).unwrap();
-                let value = set_budget_value(&category);
+                let cid = _db.get_category_id(_aid, category.clone()).unwrap();
+                let value = set_budget_value(category.clone());
                 let mut delete = false;
                 if value == 0.0 { 
                     let prompt = format!("Delete {} from budget?", category);
