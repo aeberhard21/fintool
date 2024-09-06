@@ -19,6 +19,11 @@ pub struct StockRecord {
     pub date: String,
 }
 
+pub struct StockEntries {
+    pub id: u32,
+    pub record: StockRecord, 
+}
+
 impl DbConn {
     pub fn create_investment_table(&mut self) -> Result<()> {
         let sql: &str = "CREATE TABLE IF NOT EXISTS investments (
@@ -65,6 +70,44 @@ impl DbConn {
         }
     }
 
+    pub fn drop_stock(&mut self, aid : u32, ticker : String ) {
+        let p = rusqlite::params![aid, ticker];
+        let sql = "DELETE FROM investments WHERE aid = (?1) and ticker = (?2)";
+        let mut stmt = self.conn.prepare(sql).unwrap();
+        stmt.execute(p).unwrap();
+        // let exists = stmt.exists(p).unwrap();
+        // if exists { 
+        //     stmt.execute(p);
+        // } else {
+        //     panic!("Stock {} does not exist in account {}!", ticker, aid);
+        // }
+    }
+
+    pub fn drop_stock_by_id(&mut self, id : u32) {
+        let p = rusqlite::params![id];
+        let sql = "DELETE FROM investments WHERE id = (?1)";
+        let mut stmt = self.conn.prepare(sql).unwrap();
+        let exists = stmt.exists(p).unwrap();
+        if exists { 
+            stmt.execute(p);
+        } else {
+            panic!("Stock id {} does not exist!", id);
+        } 
+    }
+
+    pub fn update_stock_shares(&mut self, id : u32, updated_shares : f32 ) -> Result<u32> {
+        let p = rusqlite::params![id,updated_shares];
+        let sql = "UPDATE investments SET shares = (?2) WHERE id = (?1)";
+        match self.conn.execute(sql, p) {
+            Ok(_) => Ok(id),
+            Err(error) => {
+                panic!(
+                    "Unable to update shares!"
+                );
+            }
+        }
+    }
+    
     pub fn get_stock_tickers(&mut self, aid: u32) -> Result<Vec<String>, rusqlite::Error> {
         let p = rusqlite::params![aid];
         let sql = "SELECT ticker FROM investments WHERE aid = (?1)";
@@ -93,7 +136,7 @@ impl DbConn {
         &mut self,
         aid: u32,
         ticker: String,
-    ) -> Result<Vec<StockRecord>, rusqlite::Error> {
+    ) -> Result<Vec<StockEntries>, rusqlite::Error> {
         let p = rusqlite::params![aid, ticker];
         let sql = "SELECT * FROM investments WHERE aid = (?1) and ticker LIKE (?2)";
         let mut stmt = self.conn.prepare(sql)?;
@@ -104,12 +147,14 @@ impl DbConn {
                 stmt = self.conn.prepare(sql)?;
                 let tickers = stmt
                     .query_map(p, |row| {
-                        Ok(StockRecord {
+                        Ok(StockEntries{
+                            id: row.get(0)?, 
+                            record: StockRecord {
                             date: row.get(1)?,
                             ticker: row.get(2)?,
                             shares: row.get(3)?,
                             costbasis: row.get(4)?,
-                        })
+                        }})
                     })
                     .unwrap()
                     .collect::<Vec<_>>();
@@ -217,12 +262,12 @@ impl DbConn {
         let mut map = HashMap::new();
         let mut cumulated_stocks = Vec::new();
         for stock in stocks {
-            match map.insert(stock.ticker.clone(), stock.shares) {
+            match map.insert(stock.record.ticker.clone(), stock.record.shares) {
                 None => {
                     continue;
                 }
                 Some(shares) => {
-                    map.insert(stock.ticker, stock.shares + shares);
+                    map.insert(stock.record.ticker, stock.record.shares + shares);
                 }
             }
         }

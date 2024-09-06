@@ -31,7 +31,7 @@ fn main() {
     match Path::new(&db_dir).join(&db).try_exists() {
         Ok(_) => {
             // nothing to do
-            _db = DbConn::new(db).unwrap();
+            _db = DbConn::new(db.clone()).unwrap();
         }
         Err(_) => {
             panic!("Unable to verify existence of the database!");

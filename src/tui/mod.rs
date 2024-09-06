@@ -1,19 +1,28 @@
+use core::num;
+use std::borrow::Borrow;
+use std::collections::HashMap;
 use std::fmt::format;
+use std::hash::Hash;
+use std::process::CommandArgs;
 
 use crate::database;
 use crate::database::db_accounts::AccountFilter;
 use crate::database::db_accounts::AccountType;
+use crate::database::db_investments::StockEntries;
+use crate::database::db_investments::StockRecord;
 use crate::database::db_ledger::LedgerEntry;
 use crate::database::db_ledger::TransferType;
 use crate::database::db_people::PeopleType;
 use crate::database::DbConn;
 use crate::ledger;
+use crate::ledger::Ledger;
 use crate::stocks;
 use crate::tui::tui_accounts::*;
 use crate::tui::tui_ledger::*;
 use crate::tui::tui_user::*;
 use chrono::NaiveDate;
 use inquire::*;
+use tokio::runtime::EnterGuard;
 use yahoo_finance_api::Dividend;
 
 use self::tui_budgets::amend_budget;
@@ -178,256 +187,320 @@ fn tui_modify(_uid: u32, _db: &mut DbConn) {
 }
 
 fn tui_record(_uid: u32, _db: &mut DbConn) {
-    let commands: Vec<&str> = vec![
-        "Bank",
-        "CD",
-        "Health",
-        "Investment",
-        "Ledger",
-        "Retirement",
-        "none",
-    ];
-    let command: String = Select::new("\nWhat would you like to add:", commands)
-        .prompt()
-        .unwrap()
-        .to_string();
+    loop {
+        let commands: Vec<&str> = vec![
+            "Bank",
+            "CD",
+            "Health",
+            "Investment",
+            "Ledger",
+            "Retirement",
+            "none",
+        ];
 
-    match command.as_str() {
-        "Bank" => {
-            let (aid, account) = select_account_by_type(_uid, _db, AccountType::Bank);
-            // let record = record_f32_amount(_uid, _db);
-            let fixed = record_ledger_entry(aid, _db, None);
-            _db.add_ledger_entry(aid, fixed);
-        }
-        "CD" => {
-            let (aid, account) = select_account_by_type(_uid, _db, AccountType::CD);
-            let fixed = record_ledger_entry(aid, _db, Some(TransferType::DepositFromExternalAccount));
-            _db.add_ledger_entry(aid, fixed);
-        }
-        "Retirement"|"Investment"|"Health" => {
-            let (aid, account) = select_account_by_type(_uid, _db, AccountType::from(command));
-            let command: String = Select::new("\nWhat would you like to record:", vec!["Fixed", "Variable", "Both"])
-                .prompt()
-                .unwrap()
-                .to_string();
+        let command: String = Select::new("\nWhat would you like to add:", commands)
+            .prompt()
+            .unwrap()
+            .to_string();
 
-            let transfer_type : TransferType;
-            match command.as_str() {
-                "Fixed" => {
-                    let transfer_source = Select::new("What type of transfer is this: ", vec!["Internal", "External"])
-                        .prompt()
-                        .unwrap()
-                        .to_string();
-                    let add_subtract = Select::new("Deposit or withdrawal:", vec!["Withdrawal", "Deposit"])
-                        .prompt()
-                        .unwrap()
-                        .to_string();
-                    if transfer_source == "Internal" {
-                        if add_subtract == "Widthdrawal" {
-                            transfer_type = TransferType::WidthdrawalToInternalAccount;
-                        } else {
-
-                            transfer_type = TransferType::DepositFromInternalAccount;
-                        }
-                    } else {
-                        if add_subtract == "Widthdrawal" {
-                            transfer_type = TransferType::WidthdrawalToExternalAccount;
-                        } else {
-                            transfer_type = TransferType::DepositFromExternalAccount;
-                        }
-                    }
-                    let fixed = record_ledger_entry(aid, _db, Some(transfer_type));
-                    _db.add_ledger_entry(aid, fixed);
-                }
-                "Variable" => {
-                    loop {
-                        let command: String = Select::new("\nWhat would you like to record:", vec!["Purchase", "Sale"])
-                            .prompt()
-                            .unwrap()
-                            .to_string();
-
-                        match command.as_str() {
-                            "Purchase" => {
-                                match record_stock_purchase(_uid) {
-                                    Some(record) => {
-                                        let command: String = Select::new("\nPurchase from internal, external account,:", vec!["External", "Internal", "Dividend-Reinvest"])
-                                            .prompt()
-                                            .unwrap()
-                                            .to_string();
-                                        let mut purchase : LedgerEntry;
-                                        let mut dividend : LedgerEntry;
-
-                                        let payees = _db.get_people(aid, PeopleType::Payee).unwrap();
-                                        let mut stock_pid = 0;
-                                        if payees.is_empty() {
-                                            stock_pid = _db.add_person(aid, PeopleType::Payee, record.ticker.clone()).unwrap();
-                                        } else {
-                                            let stock_found = false;
-                                            let fixed_found = false;
-                                            for payee in payees {
-                                                if payee == record.ticker.clone() {
-                                                    stock_pid = _db.get_person_id(aid, payee).unwrap();
-                                                }
-                                            }
-                                            if !stock_found {
-                                                stock_pid = _db.add_person(aid, PeopleType::Payee, record.ticker.clone()).unwrap();
-                                            }
-                                        }
-
-                                        let mut fixed_pid = _db.get_person_id(aid, "Fixed".to_string()).unwrap();
-
-                                        match command.as_str() {
-                                            "External" => {
-
-                                                let mut fixed_pid = _db.get_person_id(aid, "Fixed".to_string()).unwrap();
-                                                let mut fixed_cid = _db.get_category_id(aid, "Deposit".to_string()).unwrap();
-                                                let mut stock_cid = _db.get_category_id(aid, "Bought".to_string()).unwrap();
-
-                                                let deposit  = LedgerEntry { 
-                                                    date: format!("{}", record.date), 
-                                                    amount: record.shares * record.costbasis,
-                                                    transfer_type: TransferType::DepositFromExternalAccount,
-                                                    payee_id: fixed_pid, 
-                                                    category_id: fixed_cid, 
-                                                    description : format!("[External]: Purchase {} shares of {} at ${} on {}.", record.shares, record.ticker , record.costbasis, record.date)
-                                                };
-                                                _db.add_ledger_entry(aid, deposit);
-
-                                                purchase = LedgerEntry { 
-                                                    date: format!("{}", record.date), 
-                                                    amount: record.shares * record.costbasis,
-                                                    transfer_type: TransferType::WidthdrawalToInternalAccount,
-                                                    payee_id: stock_pid, 
-                                                    category_id: stock_cid, 
-                                                    description : format!("[External]: Purchase {} shares of {} at ${} on {}.", record.shares, record.ticker, record.costbasis, record.date)
-                                                };
-                                            }
-                                            "Dividend-Reinvest" => {
-
-                                                let mut fixed_cid = _db.get_category_id(aid, "Cash Dividend".to_string()).unwrap();
-                                                let mut stock_cid = _db.get_category_id(aid, "Dividend-Reinvest".to_string()).unwrap();
-
-                                                let mut dividend = LedgerEntry { 
-                                                    date: format!("{}", record.date), 
-                                                    amount: record.shares * record.costbasis,
-                                                    transfer_type: TransferType::DepositFromExternalAccount,
-                                                    payee_id: fixed_pid, 
-                                                    category_id: fixed_cid, 
-                                                    description : format!("[Dividend-Reinvest]: Dividend of ${} from {} on {}.", record.shares * record.costbasis, record.ticker, record.date)
-                                                };
-
-                                                _db.add_ledger_entry(aid, dividend);
-
-                                                purchase = LedgerEntry { 
-                                                    date: format!("{}", record.date), 
-                                                    amount: record.shares * record.costbasis,
-                                                    transfer_type: TransferType::WidthdrawalToInternalAccount,
-                                                    payee_id: stock_pid, 
-                                                    category_id: stock_cid, 
-                                                    description : format!("[Dividend-Reinvest]: Purchase {} shares of {} at ${} on {}.", record.shares, record.ticker, record.costbasis, record.date)
-                                                };
-
-                                            }
-                                            "Internal" => { 
-                                                let mut stock_cid = _db.get_category_id(aid, "Bought".to_string()).unwrap();
-
-                                                purchase = LedgerEntry { 
-                                                    date: format!("{}", record.date), 
-                                                    amount: record.shares * record.costbasis,
-                                                    transfer_type: TransferType::WidthdrawalToInternalAccount,
-                                                    payee_id: stock_pid, 
-                                                    category_id: stock_cid, 
-                                                    description : format!("[Internal]: Purchase {} shares of {} at ${} on {}.", record.shares, record.ticker, record.costbasis, record.date)
-                                                };
-                                            }
-                                            _ => {
-                                                panic!("Invalid input type!");
-                                            }
-                                        }
-
-                                        _db.add_ledger_entry(aid, purchase);
-                                        _db.add_stock(aid, record);
-                                        
-                                    }
-                                    None => return,
-                                }
-                            }
-                            "Sale" => {
-                                let tickers = _db.get_stock_tickers(aid).unwrap();
-                                let ticker = Select::new("\nSelect which stock you would like to sell:", tickers)
-                                    .prompt()
-                                    .unwrap()
-                                    .to_string();
-                                let owned_stocks = _db.get_stocks(aid, ticker).unwrap();
-                                let command: String = Select::new("Sell all or partial:", vec!["All", "Partial"])
-                                    .prompt()
-                                    .unwrap()
-                                    .to_string(); 
-                            }
-                            _ => {
-
-                            }
-                        }
-
-                        let another: bool = Confirm::new("Add another stock to investment?")
-                            .with_default(false)
-                            .prompt()
-                            .unwrap();
-                        if false == another {
-                            break;
-                        }
-                    }
-                }
-                "Both" => { 
-                    let transfer_source = Select::new("What type of transfer is this: ", vec!["Internal", "External"])
+        match command.as_str() {
+            "Bank" => {
+                let (aid, account) = select_account_by_type(_uid, _db, AccountType::Bank);
+                // let record = record_f32_amount(_uid, _db);
+                let fixed = record_ledger_entry(aid, _db, None);
+                _db.add_ledger_entry(aid, fixed);
+            }
+            "CD" => {
+                let (aid, account) = select_account_by_type(_uid, _db, AccountType::CD);
+                let fixed = record_ledger_entry(aid, _db, Some(TransferType::DepositFromExternalAccount));
+                _db.add_ledger_entry(aid, fixed);
+            }
+            "Retirement"|"Investment"|"Health" => {
+                let (aid, account) = select_account_by_type(_uid, _db, AccountType::from(command));
+                let command: String = Select::new("\nWhat would you like to record:", vec!["Fixed", "Variable"])
                     .prompt()
                     .unwrap()
                     .to_string();
-                    let add_subtract = Select::new("Deposit or withdrawal:", vec!["Withdrawal", "Deposit"])
-                        .prompt()
-                        .unwrap()
-                        .to_string();
-                    if transfer_source == "Internal" {
-                        if add_subtract == "Widthdrawal" {
-                            transfer_type = TransferType::WidthdrawalToInternalAccount;
-                        } else {
-                            transfer_type = TransferType::DepositFromInternalAccount;
-                        }
-                    } else {
-                        if add_subtract == "Widthdrawal" {
-                            transfer_type = TransferType::WidthdrawalToExternalAccount;
-                        } else {
-                            transfer_type = TransferType::DepositFromExternalAccount;
-                        }
-                    }
-                    let fixed = record_ledger_entry(aid, _db, Some(transfer_type));
-                    _db.add_ledger_entry(aid, fixed);
-                    loop {
-                        match record_stock_purchase(_uid) {
-                            Some(record) => {
-                                _db.add_stock(aid, record);
-                            }
-                            None => return,
-                        }
-                        let another: bool = Confirm::new("Add another stock to investment?")
-                            .with_default(false)
+
+                let transfer_type : TransferType;
+                match command.as_str() {
+                    "Fixed" => {
+                        let transfer_source = Select::new("What type of transfer is this: ", vec!["Internal", "External"])
                             .prompt()
-                            .unwrap();
-                        if false == another {
-                            break;
+                            .unwrap()
+                            .to_string();
+                        let add_subtract = Select::new("Deposit or withdrawal:", vec!["Withdrawal", "Deposit"])
+                            .prompt()
+                            .unwrap()
+                            .to_string();
+                        if transfer_source == "Internal" {
+                            if add_subtract == "Widthdrawal" {
+                                transfer_type = TransferType::WidthdrawalToInternalAccount;
+                            } else {
+
+                                transfer_type = TransferType::DepositFromInternalAccount;
+                            }
+                        } else {
+                            if add_subtract == "Widthdrawal" {
+                                transfer_type = TransferType::WidthdrawalToExternalAccount;
+                            } else {
+                                transfer_type = TransferType::DepositFromExternalAccount;
+                            }
+                        }
+                        let fixed = record_ledger_entry(aid, _db, Some(transfer_type));
+                        _db.add_ledger_entry(aid, fixed);
+                    }
+                    "Variable" => {
+                        loop {
+                            let command: String = Select::new("\nWhat would you like to record:", vec!["Purchase", "Sale"])
+                                .prompt()
+                                .unwrap()
+                                .to_string();
+
+                            match command.as_str() {
+                                "Purchase" => {
+                                    match record_stock_purchase(_uid) {
+                                        Some(record) => {
+                                            let command: String = Select::new("\nPurchase from internal, external account,:", vec!["External", "Internal", "Dividend-Reinvest"])
+                                                .prompt()
+                                                .unwrap()
+                                                .to_string();
+                                            let mut purchase : LedgerEntry;
+                                            let mut dividend : LedgerEntry;
+
+                                            let payees = _db.get_people(aid, PeopleType::Payee).unwrap();
+                                            let mut stock_pid = 0;
+                                            if payees.is_empty() {
+                                                stock_pid = _db.add_person(aid, PeopleType::Payee, record.ticker.clone()).unwrap();
+                                            } else {
+                                                let mut stock_found = false;
+                                                let fixed_found = false;
+                                                for payee in payees {
+                                                    if payee == record.ticker.clone() {
+                                                        stock_pid = _db.get_person_id(aid, payee).unwrap();
+                                                        stock_found = true;
+                                                        break;
+                                                    }
+                                                }
+                                                if !stock_found {
+                                                    stock_pid = _db.add_person(aid, PeopleType::Payee, record.ticker.clone()).unwrap();
+                                                }
+                                            }
+
+                                            let mut fixed_pid = _db.get_person_id(aid, "Fixed".to_string()).unwrap();
+
+                                            match command.as_str() {
+                                                "External" => {
+
+                                                    let mut fixed_pid = _db.get_person_id(aid, "Fixed".to_string()).unwrap();
+                                                    let mut fixed_cid = _db.get_category_id(aid, "Deposit".to_string()).unwrap();
+                                                    let mut stock_cid = _db.get_category_id(aid, "Bought".to_string()).unwrap();
+
+                                                    let deposit  = LedgerEntry { 
+                                                        date: format!("{}", record.date), 
+                                                        amount: record.shares * record.costbasis,
+                                                        transfer_type: TransferType::DepositFromExternalAccount,
+                                                        payee_id: fixed_pid, 
+                                                        category_id: fixed_cid, 
+                                                        description : format!("[External]: Purchase {} shares of {} at ${} on {}.", record.shares, record.ticker , record.costbasis, record.date)
+                                                    };
+                                                    _db.add_ledger_entry(aid, deposit);
+
+                                                    purchase = LedgerEntry { 
+                                                        date: format!("{}", record.date), 
+                                                        amount: record.shares * record.costbasis,
+                                                        transfer_type: TransferType::WidthdrawalToInternalAccount,
+                                                        payee_id: stock_pid, 
+                                                        category_id: stock_cid, 
+                                                        description : format!("[External]: Purchase {} shares of {} at ${} on {}.", record.shares, record.ticker, record.costbasis, record.date)
+                                                    };
+                                                }
+                                                "Dividend-Reinvest" => {
+
+                                                    let mut fixed_cid = _db.get_category_id(aid, "Cash Dividend".to_string()).unwrap();
+                                                    let mut stock_cid = _db.get_category_id(aid, "Dividend-Reinvest".to_string()).unwrap();
+
+                                                    let mut dividend = LedgerEntry { 
+                                                        date: format!("{}", record.date), 
+                                                        amount: record.shares * record.costbasis,
+                                                        transfer_type: TransferType::DepositFromExternalAccount,
+                                                        payee_id: fixed_pid, 
+                                                        category_id: fixed_cid, 
+                                                        description : format!("[Dividend-Reinvest]: Dividend of ${} from {} on {}.", record.shares * record.costbasis, record.ticker, record.date)
+                                                    };
+
+                                                    _db.add_ledger_entry(aid, dividend);
+
+                                                    purchase = LedgerEntry { 
+                                                        date: format!("{}", record.date), 
+                                                        amount: record.shares * record.costbasis,
+                                                        transfer_type: TransferType::WidthdrawalToInternalAccount,
+                                                        payee_id: stock_pid, 
+                                                        category_id: stock_cid, 
+                                                        description : format!("[Dividend-Reinvest]: Purchase {} shares of {} at ${} on {}.", record.shares, record.ticker, record.costbasis, record.date)
+                                                    };
+
+                                                }
+                                                "Internal" => { 
+                                                    let mut stock_cid = _db.get_category_id(aid, "Bought".to_string()).unwrap();
+
+                                                    purchase = LedgerEntry { 
+                                                        date: format!("{}", record.date), 
+                                                        amount: record.shares * record.costbasis,
+                                                        transfer_type: TransferType::WidthdrawalToInternalAccount,
+                                                        payee_id: stock_pid, 
+                                                        category_id: stock_cid, 
+                                                        description : format!("[Internal]: Purchase {} shares of {} at ${} on {}.", record.shares, record.ticker, record.costbasis, record.date)
+                                                    };
+                                                }
+                                                _ => {
+                                                    panic!("Invalid input type!");
+                                                }
+                                            }
+
+                                            _db.add_ledger_entry(aid, purchase);
+                                            _db.add_stock(aid, record);
+                                            
+                                        }
+                                        None => return,
+                                    }
+                                }
+                                "Sale" => {
+                                    let tickers = _db.get_stock_tickers(aid).unwrap();
+                                    let ticker = Select::new("\nSelect which stock you would like to record a sale of:", tickers)
+                                        .prompt()
+                                        .unwrap()
+                                        .to_string();
+                                    let owned_stocks = _db.get_stocks(aid, ticker.clone()).unwrap();
+
+                                    let command: String = Select::new("Sell all or partial:", vec!["All", "Partial"])
+                                        .prompt()
+                                        .unwrap()
+                                        .to_string(); 
+
+                                    let sale_date: Result<NaiveDate, InquireError> = DateSelect::new("Enter date of purchase").prompt();
+
+                                    let sale_price : f32 = CustomType::<f32>::new("Enter sale price: ")
+                                        .with_placeholder("00000.00")
+                                        .with_default(00000.00)
+                                        .with_error_message("Please type a valid amount!")
+                                        .prompt()
+                                        .unwrap();
+
+                                    let mut number_of_shares_sold : f32 = 0.0;
+                                    let mut cost_basis_of_shares_sold : f32 = 0.0;
+
+                                    match command.as_str() {
+                                        "All" => {
+                                            number_of_shares_sold = owned_stocks.iter().map(|stock_entry| stock_entry.record.shares).sum();
+                                            cost_basis_of_shares_sold = owned_stocks.iter().map(|stock_entry| stock_entry.record.costbasis).sum();
+                                            _db.drop_stock(aid, ticker.clone());
+                                        }
+                                        "Partial" => {
+                                            let mut entry_map : HashMap<String, u32> = HashMap::new();
+                                            let mut record_map: HashMap<u32, StockRecord> = HashMap::new();
+                                            let mut commands : Vec<String> = Vec::new();
+                                            for entries in owned_stocks {
+
+                                                let key = format!(
+                                                    "{}",
+                                                    [entries.record.ticker.clone(), entries.record.date.clone(), entries.record.costbasis.to_string().clone()].join("\t")
+                                                );
+
+                                                // record_map.insert(entries.id, entries.record);
+
+                                                entry_map.insert(key, entries.id.clone());
+                                            }
+                                            commands = entry_map.keys().cloned().collect();
+                                            let selected_entry: String = Select::new("\nWhat stock would you like to sell", commands)
+                                                .prompt()
+                                                .unwrap()
+                                                .to_string();
+                                            let stock_id_to_update: u32 = entry_map.get(&selected_entry).expect("Stock not found!").to_owned();
+                                            
+                                            number_of_shares_sold = CustomType::<f32>::new("Enter number of shares sold: ")
+                                                .with_placeholder("00000.00")
+                                                .with_default(00000.00)
+                                                .with_error_message("Please type a valid amount!")
+                                                .prompt()
+                                                .unwrap();
+
+                                            let selected_record = record_map.get(&stock_id_to_update).expect("Stock record not found");
+                                            // let updated_stock_entry : StockRecord = StockRecord { 
+                                            //     ticker : selected_record.ticker.clone(),
+                                            //     shares : selected_record.shares - number_of_shares_sold,
+                                            //     costbasis : selected_record.costbasis,
+                                            //     date : selected_record.date.clone()
+                                            // };
+                                            let updated_shares = selected_record.shares - number_of_shares_sold;
+
+                                            if updated_shares == 0.0 { 
+                                                _db.drop_stock_by_id(stock_id_to_update);
+                                            } else {
+                                                _db.update_stock_shares(stock_id_to_update, updated_shares);
+                                            }
+
+                                        }
+                                        _ => {
+                                            panic!("Unrecognized input!");
+                                        }
+                                    }
+
+                                    let value_received = number_of_shares_sold * cost_basis_of_shares_sold;
+                                    let stock_cid = _db.get_category_id(aid, "Sold".to_string()).unwrap();
+                                    let payers = _db.get_people(aid, PeopleType::Payer).unwrap();
+                                    let mut stock_pid = 0;
+                                    if payers.is_empty() {
+                                        stock_pid = _db.add_person(aid, PeopleType::Payer, ticker.clone()).unwrap();
+                                    } else {
+                                        let mut payer_found = false;
+                                        for payer in payers { 
+                                            if payer == ticker.clone() {
+                                                stock_pid = _db.get_person_id(aid, payer).unwrap();
+                                                payer_found = true;
+                                                break;
+                                            }
+                                        }
+                                        if !payer_found { 
+                                            stock_pid = _db.add_person(aid, PeopleType::Payer, ticker.clone()).unwrap();
+                                        }
+                                    }
+
+                                    let sale = LedgerEntry { 
+                                        date: sale_date.as_ref().unwrap().to_string(), 
+                                        amount : value_received, 
+                                        transfer_type: TransferType::DepositFromInternalAccount,
+                                        payee_id : stock_pid,
+                                        category_id: stock_cid, 
+                                        description : format!("[Internal]: Sold {} shares of {} at ${} on {}.", number_of_shares_sold, ticker, sale_price, sale_date.as_ref().unwrap().clone().to_string())
+                                    };
+                                    _db.add_ledger_entry(aid, sale).unwrap();
+                                }
+                                _ => {
+
+                                }
+                            }
+
+                            let another: bool = Confirm::new("Add another stock to investment?")
+                                .with_default(false)
+                                .prompt()
+                                .unwrap();
+                            if false == another {
+                                break;
+                            }
                         }
                     }
-                }
-                _ => {
-                    panic!("Unrecognized input!");
+                    _ => {
+                        panic!("Unrecognized input!");
+                    }
                 }
             }
-        }
-        "none" => {
-            return;
-        }
-        _ => {
-            panic!("Invalid command!");
+            "none" => {
+                return;
+            }
+            _ => {
+                panic!("Invalid command!");
+            }
         }
     }
 }

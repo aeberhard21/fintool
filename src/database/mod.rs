@@ -11,7 +11,6 @@ pub mod db_ledger;
 pub mod db_people;
 pub mod budget;
 mod db_user;
-mod statements;
 
 const CURRENT_DATABASE_SCHEMA_VERSION: i32 = 0;
 pub const SQLITE_WILDCARD: &str = "%";
