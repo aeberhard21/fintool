@@ -6,16 +6,20 @@ use std::hash::Hash;
 use std::process::CommandArgs;
 
 use crate::database;
-use crate::database::db_accounts::AccountFilter;
-use crate::database::db_accounts::AccountType;
-use crate::database::db_investments::StockEntries;
-use crate::database::db_investments::StockRecord;
-use crate::database::db_ledger::LedgerEntry;
-use crate::database::db_ledger::TransferType;
-use crate::database::db_people::PeopleType;
+// use crate::database::db_accounts::AccountFilter;
+// use crate::database::db_accounts::AccountType;
+use crate::types::accounts::*;
+use crate::types::investments::StockRecord;
+use crate::types::investments::StockEntries;
+// use crate::database::db_ledger::LedgerEntry;
+// use crate::database::db_ledger::TransferType;
+use crate::types::ledger::*;
+use crate::types::transfer_types::TransferType;
+use crate::types::participants::ParticipantType;
 use crate::database::DbConn;
-use crate::ledger;
-use crate::ledger::Ledger;
+// use crate::ledger;
+// use crate::ledger::Ledger;
+use crate::types::ledger;
 use crate::stocks;
 use crate::tui::tui_accounts::*;
 use crate::tui::tui_ledger::*;
@@ -27,7 +31,7 @@ use yahoo_finance_api::Dividend;
 
 use self::tui_budgets::amend_budget;
 
-mod tui_accounts;
+pub mod tui_accounts;
 mod tui_ledger;
 pub mod tui_budgets;
 pub mod tui_user;
@@ -115,7 +119,7 @@ fn tui_create(_uid: u32, _db: &mut DbConn) {
         "Investment"|"Retirement"|"Health" => {
             aid = create_account(AccountType::from(command), _uid, _db);
             
-            _db.add_person(aid, PeopleType::Payee, "Fixed".to_string());
+            _db.add_participant(aid, ParticipantType::Payee, "Fixed".to_string());
             _db.add_category(aid, "Bought".to_string());
             _db.add_category(aid, "Cash Dividend".to_string());
             _db.add_category(aid, "Interest".to_string());
@@ -521,17 +525,17 @@ fn tui_report(_uid: u32, _db: &mut DbConn) {
             println!("The value of account {} is: {}", &account, value)
         }
         "health" => {
-            (aid, account) = select_account_by_type(_uid, _db, AccountType::Health);
-            let account = _db.get_account_name(_uid, aid).unwrap();
-            let acct = _db.get_hsa_value(aid).expect("Unable to get HSA account!");
-            let mut total_investment_value = 0.0;
-            for stock in acct.investments {
-                total_investment_value += stocks::get_stock_at_close(stock.ticker)
-                    .expect("Unable to retrieve stock value!")
-                    * (stock.shares as f64);
-            }
-            let value = acct.fixed.amount as f64 + total_investment_value;
-            println!("The value of account {} is: {}", &account, value);
+            // (aid, account) = select_account_by_type(_uid, _db, AccountType::Health);
+            // let account = _db.get_account_name(_uid, aid).unwrap();
+            // let acct = _db.get_hsa_value(aid).expect("Unable to get HSA account!");
+            // let mut total_investment_value = 0.0;
+            // for stock in acct.investments {
+            //     total_investment_value += stocks::get_stock_at_close(stock.ticker)
+            //         .expect("Unable to retrieve stock value!")
+            //         * (stock.shares as f64);
+            // }
+            // let value = acct.fixed.amount as f64 + total_investment_value;
+            // println!("The value of account {} is: {}", &account, value);
         }
         "growth" => {
             let account_types = vec![
@@ -606,4 +610,12 @@ fn tui_view(_user: u32, _db: &mut DbConn) {
     //         panic!("Invalid command!");
     //     }
     // }
+}
+
+pub trait AccountOperations {
+    fn create( account_id : u32, db : &mut DbConn );
+    fn record( account_id : u32, db : &mut DbConn );
+    fn modify( account_id : u32, db : &mut DbConn );
+    fn export( account_id : u32, db : &mut DbConn );
+    fn report( account_id : u32, db : &mut DbConn );
 }
