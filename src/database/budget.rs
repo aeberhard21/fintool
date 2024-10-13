@@ -1,6 +1,7 @@
 use super::DbConn;
 use rusqlite::{Result, Error};
-use crate::database::db_categories::*;
+// use crate::database::db_categories::*;
+use crate::types::categories;
 
 pub struct BudgetItem { 
     pub category_id : u32, 

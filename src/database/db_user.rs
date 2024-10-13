@@ -1,5 +1,4 @@
 use super::DbConn;
-use crate::user::User;
 use rusqlite::{params, Error};
 
 impl DbConn {

@@ -1,22 +1,25 @@
 use rusqlite::Connection;
 use std::path::Path;
+use std::sync::Arc;
+use std::sync::Mutex;
+// use crate::ledger;
 
-pub mod db_accounts;
+// pub mod db_accounts;
 pub mod db_banks;
-pub mod db_categories;
 pub mod db_cd;
 pub mod db_hsa;
-pub mod db_investments;
-pub mod db_ledger;
-pub mod db_people;
+// pub mod db_investments;
+// pub mod ledger;
+// pub mod db_people;
 pub mod budget;
 mod db_user;
 
 const CURRENT_DATABASE_SCHEMA_VERSION: i32 = 0;
 pub const SQLITE_WILDCARD: &str = "%";
 
+#[derive(Clone)]
 pub struct DbConn {
-    pub conn: Connection,
+    pub conn: Arc<Connection>,
 }
 
 impl DbConn {
@@ -26,7 +29,7 @@ impl DbConn {
         let mut conn;
         match rs {
             Ok(rs_conn) => {
-                conn = Self { conn: rs_conn };
+                conn = Self { conn: Arc::new(rs_conn) };
                 conn.initialize_database();
             }
             Err(error) => {
@@ -71,7 +74,8 @@ impl DbConn {
             sid     INTEGER NOT NULL,
             cid     INTEGER NOT NULL,
             pid     INTEGER NOT NULL,
-            bid     INTEGER NOT NULL
+            bid     INTEGER NOT NULL, 
+            lid     INTEGER NOT NULL
         )";
         self.conn.execute(sql, ())?;
         let sql = "SELECT uid FROM info";
@@ -79,8 +83,8 @@ impl DbConn {
         let exists = stmt.exists(())?;
         if !exists {
             let sql: &str =
-                "INSERT INTO info (uid, aid, sid, cid, pid, bid) VALUES ( ?1, ?2, ?3, ?4, ?5, ?6)";
-            match self.conn.execute(sql, (0, 0, 0, 0, 0, 0)) {
+                "INSERT INTO info (uid, aid, sid, cid, pid, bid, lid) VALUES ( ?1, ?2, ?3, ?4, ?5, ?6, ?7)";
+            match self.conn.execute(sql, (0, 0, 0, 0, 0, 0, 0)) {
                 Ok(rows_inserted) => {
                     println!("Initialized info table: {}!", rows_inserted);
                 }
@@ -189,12 +193,30 @@ impl DbConn {
                 Ok(id)
             }
             false => {
-                panic!("The next people ID within table 'info' does not exist.");
+                panic!("The next budget ID within table 'info' does not exist.");
             }
         }
     }
 
-    pub fn close(self) {
-        self.conn.close().unwrap();
+    pub fn get_next_ledger_id(&mut self) -> rusqlite::Result<u32> {
+        let sql = "SELECT lid FROM info";
+        let mut stmt = self.conn.prepare(sql)?;
+        let exists = stmt.exists(())?;
+        match exists {
+            true => {
+                let id = stmt.query_row((), |row| row.get::<_, u32>(0))?;
+                let sql = "UPDATE info SET lid = lid + 1";
+                self.conn.execute(sql, ())?;
+                Ok(id)
+            }
+            false => {
+                panic!("The next ledger ID within table 'info' does not exist.");
+            }
+        }
     }
+
+    // pub fn close(&mut self) {
+    //     self.conn.
+    //     self.conn.close().unwrap();
+    // }
 }

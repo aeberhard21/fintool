@@ -2,14 +2,12 @@ use std::fs::{self};
 use std::path::{Path, PathBuf};
 
 use crate::database::DbConn;
-use crate::user::User;
-// use crate::stocks::*;
 
 mod database;
-mod ledger;
 mod stocks;
 mod tui;
-mod user;
+mod types;
+mod accounts;
 
 fn main() {
     let db_dir: String = String::from("./db");
@@ -39,10 +37,9 @@ fn main() {
     }
 
     println!("Welcome to FinTool!");
-    let mut _user: User;
     let next_id: u32 = 0;
     {
         tui::menu(&mut _db);
     }
-    _db.close();
+    // _db.close();
 }
