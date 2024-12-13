@@ -1,12 +1,13 @@
 use core::panic;
 use std::collections::HashMap;
 
-use crate::database::db_accounts::AccountRecord;
-use crate::database::db_accounts::AccountType;
+// use crate::database::db_accounts::AccountRecord;
+// use crate::database::db_accounts::AccountType;
+use crate::types::accounts::*;
 use crate::database::db_banks::BankRecord;
 use crate::database::db_cd::CdRecord;
-use crate::database::db_hsa::HsaRecord;
-use crate::database::db_investments::StockRecord;
+// use crate::database::db_hsa::HsaRecord;
+use crate::types::investments::StockRecord;
 use crate::database::{self, *};
 use crate::tui::tui_budgets::create_budget;
 use crate::stocks;
@@ -20,7 +21,7 @@ use yahoo_finance_api::{YahooConnector, YahooError};
 use chrono::{Datelike, Days, Local, Utc};
 use time::{Duration, OffsetDateTime};
 
-use self::db_accounts::AccountFilter;
+// use self::db_accounts::AccountFilter;
 
 pub fn create_account(_atype: AccountType, _uid: u32, _db: &mut DbConn) -> u32 {
     let mut name: String = String::new();
@@ -193,7 +194,7 @@ pub fn record_f32_amount() -> BankRecord {
 //     };
 // }
 
-pub fn record_stock_purchase(_uid: u32) -> Option<StockRecord> {
+pub fn record_stock_purchase() -> Option<StockRecord> {
     let another = false;
     let mut ticker: String = String::new();
     loop {
@@ -227,13 +228,7 @@ pub fn record_stock_purchase(_uid: u32) -> Option<StockRecord> {
         }
     }
 
-    let date_input: Result<NaiveDate, InquireError> =
-        DateSelect::new("Enter date of purchase").prompt();
-    // let date = &date_input
-    //     .unwrap()
-    //     .and_hms_milli_opt(0, 0, 0, 0)
-    //     .unwrap()
-    //     .timestamp();
+    let date_input: Result<NaiveDate, InquireError> = DateSelect::new("Enter date of purchase").prompt();
 
     let shares: f32 = CustomType::<f32>::new("Enter number of shares purchased: ")
         .with_placeholder("0.00")
@@ -254,6 +249,7 @@ pub fn record_stock_purchase(_uid: u32) -> Option<StockRecord> {
         ticker: ticker,
         shares: shares,
         costbasis: costbasis,
+        remaining: shares
     });
 }
 

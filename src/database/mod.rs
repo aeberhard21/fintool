@@ -48,7 +48,9 @@ impl DbConn {
         Self::create_people_table(self);
         Self::create_ledger_table(self);
         Self::create_bank_table(self);
-        Self::create_investment_table(self);
+        Self::create_investment_purchase_table(self);
+        Self::create_investment_sale_table(self);
+        Self::create_investment_sale_allocation_table(self);
         Self::create_cd_table(self);
         Self::create_budget_table(self);
         Self::set_schema_version(&self.conn, CURRENT_DATABASE_SCHEMA_VERSION);
@@ -71,7 +73,9 @@ impl DbConn {
         let sql = "CREATE TABLE IF NOT EXISTS info (
             uid     INTEGER NOT NULL,
             aid     INTEGER NOT NULL,
-            sid     INTEGER NOT NULL,
+            spid    INTEGER NOT NULL,
+            ssid    INTEGER NOT NULL,
+            said    INTEGER NOT NULL,
             cid     INTEGER NOT NULL,
             pid     INTEGER NOT NULL,
             bid     INTEGER NOT NULL, 
@@ -83,8 +87,8 @@ impl DbConn {
         let exists = stmt.exists(())?;
         if !exists {
             let sql: &str =
-                "INSERT INTO info (uid, aid, sid, cid, pid, bid, lid) VALUES ( ?1, ?2, ?3, ?4, ?5, ?6, ?7)";
-            match self.conn.execute(sql, (0, 0, 0, 0, 0, 0, 0)) {
+                "INSERT INTO info (uid, aid, spid, ssid, said, cid, pid, bid, lid) VALUES ( ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)";
+            match self.conn.execute(sql, (0, 0, 0, 0, 0, 0, 0, 0, 0)) {
                 Ok(rows_inserted) => {
                     println!("Initialized info table: {}!", rows_inserted);
                 }
@@ -130,19 +134,53 @@ impl DbConn {
         }
     }
 
-    pub fn get_next_stock_id(&mut self) -> rusqlite::Result<u32> {
-        let sql = "SELECT sid FROM info";
+    pub fn get_next_stock_purchase_id(&mut self) -> rusqlite::Result<u32> {
+        let sql = "SELECT spid FROM info";
         let mut stmt = self.conn.prepare(sql)?;
         let exists = stmt.exists(())?;
         match exists {
             true => {
                 let id = stmt.query_row((), |row| row.get::<_, u32>(0))?;
-                let sql = "UPDATE info SET sid = sid + 1";
+                let sql = "UPDATE info SET spid = spid + 1";
                 self.conn.execute(sql, ())?;
                 Ok(id)
             }
             false => {
-                panic!("The next stock ID within table 'info' does not exist.");
+                panic!("The next stock purchase ID within table 'info' does not exist.");
+            }
+        }
+    }
+
+    pub fn get_next_stock_sale_id(&mut self) -> rusqlite::Result<u32> {
+        let sql = "SELECT ssid FROM info";
+        let mut stmt = self.conn.prepare(sql)?;
+        let exists = stmt.exists(())?;
+        match exists {
+            true => {
+                let id = stmt.query_row((), |row| row.get::<_, u32>(0))?;
+                let sql = "UPDATE info SET ssid = ssid + 1";
+                self.conn.execute(sql, ())?;
+                Ok(id)
+            }
+            false => {
+                panic!("The next stock sale ID within table 'info' does not exist.");
+            }
+        }
+    }
+
+    pub fn get_next_stock_sale_allocation_id(&mut self) -> rusqlite::Result<u32> {
+        let sql = "SELECT said FROM info";
+        let mut stmt = self.conn.prepare(sql)?;
+        let exists = stmt.exists(())?;
+        match exists {
+            true => {
+                let id = stmt.query_row((), |row| row.get::<_, u32>(0))?;
+                let sql = "UPDATE info SET said = said + 1";
+                self.conn.execute(sql, ())?;
+                Ok(id)
+            }
+            false => {
+                panic!("The next stock sale allocation ID within table 'info' does not exist.");
             }
         }
     }

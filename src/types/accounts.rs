@@ -1,6 +1,7 @@
 use rusqlite::{Error, Result};
+use crate::database::DbConn;
+use crate::tui::AccountOperations;
 
-use super::DbConn;
 pub enum AccountType {
     Ledger,
     Investment,

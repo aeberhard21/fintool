@@ -15,11 +15,11 @@ pub fn create_budget(_aid : u32, _db: &mut DbConn) {
         }    
     } else {
         for category in categories { 
-            let cid = _db.get_category_id(_aid, category.clone()).unwrap();
-            let value = set_budget_value(category.clone());
+            let cid = _db.get_category_id(_aid, category.clone().category.name).unwrap();
+            let value = set_budget_value(category.clone().category.name);
             let mut ignore = false;
             if value == 0.0 { 
-                let prompt = format!("Ignore {} from budget?", category.clone());
+                let prompt = format!("Ignore {} from budget?", category.clone().category.name);
                 ignore = Confirm::new(prompt.as_str()).with_default(false).prompt().unwrap();
             }
             if !ignore {

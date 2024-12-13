@@ -5,7 +5,7 @@ use yahoo::{YResponse, YahooConnector, YahooError};
 use yahoo_finance_api::{self as yahoo, Quote};
 // use time::OffsetDateTime;
 
-use crate::database::db_investments::StockRecord;
+use crate::types::investments::StockRecord;
 
 pub enum StockRange { 
     OneDay,

@@ -1,5 +1,5 @@
-use super::DbConn;
-use chrono::{NaiveDate, NaiveDateTime, Days};
+// use super::DbConn;
+use chrono::{Days, Month, NaiveDate, NaiveDateTime};
 use rusqlite::{Error, Result, ToSql, Transaction};
 use time::OffsetDateTime;
 use core::num;
@@ -10,6 +10,7 @@ use std::ops::Deref;
 use std::time::{Duration, UNIX_EPOCH};
 use std::{collections::{HashMap, HashSet}};
 use crate::stocks::{self, get_stock_history};
+use crate::database::DbConn;
 use yahoo_finance_api::Quote;
 
 pub struct StockRecord {
@@ -17,6 +18,7 @@ pub struct StockRecord {
     pub shares: f32,
     pub costbasis: f32,
     pub date: String,
+    pub remaining : f32
 }
 
 pub struct StockEntries {
@@ -25,14 +27,37 @@ pub struct StockEntries {
 }
 
 impl DbConn {
-    pub fn create_investment_table(&mut self) -> Result<()> {
-        let sql: &str = "CREATE TABLE IF NOT EXISTS investments (
-            id          INTEGER NOT NULL,
+
+    pub fn create_investment_purchase_table(&mut self) -> Result<()> {
+        let sql: &str = "CREATE TABLE IF NOT EXISTS stock_purchases (
+            id          INTEGER NOT NULL PRIMARY KEY,
             date        TEXT NOT NULL, 
             ticker      TEXT NOT NULL,
             shares      REAL NOT NULL,
             costbasis   REAL NOT NULL,
+            remaining   REAL NOT NULL,
             aid         INTEGER NOT NULL, 
+            FOREIGN     KEY (aid) REFERENCES accounts(id)
+        )";
+        match self.conn.execute(sql, ()) {
+            Ok(_) => {
+                println!("Created stocks table!");
+            }
+            Err(error) => {
+                panic!("Unable to create table 'stock_purchases' because: {}", error);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn create_investment_sale_table(&mut self) -> Result<()> {
+        let sql: &str = "CREATE TABLE IF NOT EXISTS stock_sales (
+            id          INTEGER NOT NULL PRIMARY KEY,
+            date        TEXT NOT NULL, 
+            ticker      TEXT NOT NULL,
+            shares      REAL NOT NULL,
+            price       REAL NOT NULL,
+            aid         INTEGER NOT NULL,
             FOREIGN     KEY (aid) REFERENCES accounts(id)
         )";
         match self.conn.execute(sql, ()) {
@@ -46,22 +71,43 @@ impl DbConn {
         Ok(())
     }
 
+    pub fn create_investment_sale_allocation_table(&mut self) -> Result<()> {
+        let sql: &str = "CREATE TABLE IF NOT EXISTS stock_sale_allocation (
+            id          INTEGER NOT NULL PRIMARY KEY,
+            purchase_id INTEGER NOT NULL, 
+            sale_id     INTEGER NOT NULL,
+            quantity    REAL NOT NULL,
+            FOREIGN KEY (purchase_id) REFERENCES stock_purchases(id), 
+            FOREIGN KEY (sale_id) REFERENCES stock_sales(id)
+        )";
+        match self.conn.execute(sql, ()) {
+            Ok(_) => {
+                println!("Created stocks allocation table!");
+            }
+            Err(error) => {
+                panic!("Unable to create table 'stock_sale_allocation' because: {}", error);
+            }
+        }
+        Ok(())
+    }
+
     pub fn add_stock(&mut self, aid: u32, record: StockRecord) -> Result<u32> {
-        let id = self.get_next_stock_id().unwrap();
+        let id = self.get_next_stock_purchase_id().unwrap();
         let p = rusqlite::params!(
             id,
             record.date,
             record.ticker.as_str(),
             record.shares,
             record.costbasis,
+            record.remaining,
             aid
         );
-        let sql = "INSERT INTO investments (id, date, ticker, shares, costbasis, aid) VALUES (?1, ?2, ?3, ?4, ?5, ?6)";
+        let sql = "INSERT INTO stock_purchases (id, date, ticker, shares, costbasis, remaining, aid) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)";
         match self.conn.execute(sql, p) {
             Ok(_) => Ok(id),
             Err(error) => {
                 panic!(
-                    "Unable to add stock {} for account {}: {}",
+                    "Unable to add purchase of stock {} for account {}: {}",
                     record.ticker.as_str(),
                     aid,
                     error
@@ -70,22 +116,54 @@ impl DbConn {
         }
     }
 
-    pub fn drop_stock(&mut self, aid : u32, ticker : String ) {
-        let p = rusqlite::params![aid, ticker];
-        let sql = "DELETE FROM investments WHERE aid = (?1) and ticker = (?2)";
+    pub fn sell_stock(&mut self, aid : u32, sale_record : StockRecord ) -> Result<u32> {
+        let id = self.get_next_stock_sale_id().unwrap();
+        let p = rusqlite::params!(
+            id,
+            sale_record.date,
+            sale_record.ticker.as_str(),
+            sale_record.shares,
+            sale_record.costbasis,
+            aid
+        );
+        let sql = "INSERT INTO stock_sales (id, date, ticker, shares, price, aid) VALUES (?1, ?2, ?3, ?4, ?5, ?6)";
+
         let mut stmt = self.conn.prepare(sql).unwrap();
-        stmt.execute(p).unwrap();
-        // let exists = stmt.exists(p).unwrap();
-        // if exists { 
-        //     stmt.execute(p);
-        // } else {
-        //     panic!("Stock {} does not exist in account {}!", ticker, aid);
-        // }
+        match self.conn.execute(sql, p) {
+            Ok(_) => Ok(id),
+            Err(error) => {
+                panic!(
+                    "Unable to add sale of stock {} for account {}: {}",
+                    sale_record.ticker.as_str(),
+                    aid,
+                    error
+                );
+            }
+        }
+    }
+
+    pub fn add_stock_sale_allocation(&mut self, buy_id : u32, sell_id : u32, shares_allocated : f32) -> Result<u32> {
+        let id = self.get_next_stock_sale_allocation_id().unwrap();
+        let p = rusqlite::params!(
+            id,
+            buy_id, 
+            sell_id, 
+            shares_allocated
+        );
+        let sql = "INSERT INTO stock_sale_allocation (id, purchase_id, sale_id, quantity) VALUES (?1, ?2, ?3, ?4)";
+        match self.conn.execute(sql, p) {
+            Ok(_) => Ok(id),
+            Err(error) => {
+                panic!(
+                    "Unable to add allocation of stock sale {}", error
+                );
+            }
+        }
     }
 
     pub fn drop_stock_by_id(&mut self, id : u32) {
         let p = rusqlite::params![id];
-        let sql = "DELETE FROM investments WHERE id = (?1)";
+        let sql = "DELETE FROM stock_purchases WHERE id = (?1)";
         let mut stmt = self.conn.prepare(sql).unwrap();
         let exists = stmt.exists(p).unwrap();
         if exists { 
@@ -95,14 +173,14 @@ impl DbConn {
         } 
     }
 
-    pub fn update_stock_shares(&mut self, id : u32, updated_shares : f32 ) -> Result<u32> {
+    pub fn update_stock_remaining(&mut self, id : u32, updated_shares : f32 ) -> Result<u32> {
         let p = rusqlite::params![id,updated_shares];
-        let sql = "UPDATE investments SET shares = (?2) WHERE id = (?1)";
+        let sql = "UPDATE stock_purchases SET remaining = (?2) WHERE id = (?1)";
         match self.conn.execute(sql, p) {
             Ok(_) => Ok(id),
             Err(error) => {
                 panic!(
-                    "Unable to update shares!"
+                    "Unable to update shares: {}", error
                 );
             }
         }
@@ -110,7 +188,7 @@ impl DbConn {
     
     pub fn get_stock_tickers(&mut self, aid: u32) -> Result<Vec<String>, rusqlite::Error> {
         let p = rusqlite::params![aid];
-        let sql = "SELECT ticker FROM investments WHERE aid = (?1)";
+        let sql = "SELECT ticker FROM stock_purchases WHERE aid = (?1)";
         let mut stmt = self.conn.prepare(sql)?;
         let exists = stmt.exists(p)?;
         let mut stocks: HashSet<String> = HashSet::new();
@@ -138,7 +216,7 @@ impl DbConn {
         ticker: String,
     ) -> Result<Vec<StockEntries>, rusqlite::Error> {
         let p = rusqlite::params![aid, ticker];
-        let sql = "SELECT * FROM investments WHERE aid = (?1) and ticker LIKE (?2)";
+        let sql = "SELECT * FROM stock_purchases WHERE aid = (?1) and ticker LIKE (?2)";
         let mut stmt = self.conn.prepare(sql)?;
         let exists = stmt.exists(p)?;
         let mut stocks = Vec::new();
@@ -150,10 +228,11 @@ impl DbConn {
                         Ok(StockEntries{
                             id: row.get(0)?, 
                             record: StockRecord {
-                            date: row.get(1)?,
-                            ticker: row.get(2)?,
-                            shares: row.get(3)?,
-                            costbasis: row.get(4)?,
+                                date: row.get(1)?,
+                                ticker: row.get(2)?,
+                                shares: row.get(3)?,
+                                costbasis: row.get(4)?,
+                                remaining: row.get(5)?
                         }})
                     })
                     .unwrap()
@@ -174,13 +253,13 @@ impl DbConn {
 
     pub fn get_stock_history(&mut self, aid: u32, ticker: String, start: NaiveDate, end : NaiveDate) ->rusqlite::Result<(Vec<StockRecord>, StockRecord), rusqlite::Error> {
         let p = rusqlite::params![aid, ticker, start.to_string(), end.to_string()];
-        let sql = "SELECT * FROM investments WHERE aid = (?1) and ticker LIKE (?2) and date >= (?3) and date <= (?4) ORDER BY date ASC";
+        let sql = "SELECT * FROM stock_purchases WHERE aid = (?1) and ticker LIKE (?2) and date >= (?3) and date <= (?4) ORDER BY date ASC";
 
         // let quotes = stocks::get_stock_history(ticker.clone(), start, end).unwrap();
         let mut stmt = self.conn.prepare(sql)?;
         let exists = stmt.exists(p)?;
         let mut stocks = Vec::new();
-        let mut initial: StockRecord = StockRecord{shares : 0.0, ticker : ticker.clone(), costbasis : 0.0, date : start.to_string()};
+        let mut initial: StockRecord = StockRecord{shares : 0.0, ticker : ticker.clone(), costbasis : 0.0, date : start.checked_sub_days(Days::new(1)).unwrap().to_string(), remaining : 0.0};
 
         match exists {
             true => {
@@ -192,6 +271,7 @@ impl DbConn {
                             ticker: row.get(2)?,
                             shares: row.get(3)?,
                             costbasis: row.get(4)?,
+                            remaining : row.get(5)?,
                         })
                     })
                     .unwrap()
@@ -211,7 +291,7 @@ impl DbConn {
 
         let mut final_stocks = VecDeque::from(stocks);
 
-        let sql: &str = "SELECT * FROM investments WHERE aid = (?1) and ticker LIKE (?2) and date < (?3) ORDER BY date ASC";
+        let sql: &str = "SELECT * FROM stock_purchases WHERE aid = (?1) and ticker LIKE (?2) and date < (?3) ORDER BY date ASC";
         let p = rusqlite::params![aid, ticker, start.to_string()];
         match self.conn.prepare(sql) {
             Ok(mut stmt) => {
@@ -223,6 +303,7 @@ impl DbConn {
                             ticker: row.get(2)?,
                             shares: row.get(3)?,
                             costbasis: row.get(4)?,
+                            remaining: row.get(5)?
                         })
                     })
                     .unwrap()
@@ -238,11 +319,8 @@ impl DbConn {
                     // in this case, the user has requested to analyze stock history with a date
                     // prior to any ownership of the requested stock
                     //
-                    // so, we will return first owned stock and update the period start date
-                    // to be the first date that ownership started
-                    let first_stock = final_stocks.pop_front().expect("Stocks not returned!");
-                    initial.shares = first_stock.shares;
-                    initial.date = first_stock.date;
+                    // so, we will return 0 and set just before start date.
+                    initial.shares = 0.0 as f32;
                 }
  
             }
@@ -253,6 +331,96 @@ impl DbConn {
 
         Ok((Vec::from(final_stocks), initial))
 
+        // return stocks;
+    }
+
+    pub fn get_stock_history_ascending(&mut self, aid: u32, ticker: String) ->rusqlite::Result<Vec<StockEntries>, rusqlite::Error> {
+        let p = rusqlite::params![aid, ticker];
+        let sql = "SELECT * FROM stock_purchases WHERE aid = (?1) and ticker LIKE (?2) ORDER BY date ASC";
+
+        // let quotes = stocks::get_stock_history(ticker.clone(), start, end).unwrap();
+        let mut stmt = self.conn.prepare(sql)?;
+        let exists = stmt.exists(p)?;
+        let mut stocks = Vec::new();
+
+        match exists {
+            true => {
+                stmt = self.conn.prepare(sql)?;
+                let tickers = stmt
+                    .query_map(p, |row| {
+                        Ok(StockEntries { 
+                            id : row.get(0)?, 
+                            record : StockRecord {
+                                date: row.get(1)?,
+                                ticker: row.get(2)?,
+                                shares: row.get(3)?,
+                                costbasis: row.get(4)?,
+                                remaining : row.get(5)?
+                        }})
+                    })
+                    .unwrap()
+                    .collect::<Vec<_>>();
+                for ticker in tickers {
+                    stocks.push(ticker.unwrap());
+                }
+                // Ok(stocks)
+            }
+            false => {
+                panic!(
+                    "A list of stocks do not exist for account {} and ticker {}",
+                    aid, ticker
+                );
+            }
+        }
+
+        // let mut final_stocks = VecDeque::from(stocks);
+        // Ok((Vec::from(final_stocks), initial))
+        Ok(stocks)
+        // return stocks;
+    }
+
+    pub fn get_stock_history_descending(&mut self, aid: u32, ticker: String) ->rusqlite::Result<Vec<StockEntries>, rusqlite::Error> {
+        let p = rusqlite::params![aid, ticker];
+        let sql = "SELECT * FROM stock_purchases WHERE aid = (?1) and ticker LIKE (?2) ORDER BY date DESC";
+
+        // let quotes = stocks::get_stock_history(ticker.clone(), start, end).unwrap();
+        let mut stmt = self.conn.prepare(sql)?;
+        let exists = stmt.exists(p)?;
+        let mut stocks = Vec::new();
+
+        match exists {
+            true => {
+                stmt = self.conn.prepare(sql)?;
+                let tickers = stmt
+                    .query_map(p, |row| {
+                        Ok(StockEntries { 
+                            id : row.get(0)?,
+                            record : StockRecord {
+                                date: row.get(1)?,
+                                ticker: row.get(2)?,
+                                shares: row.get(3)?,
+                                costbasis: row.get(4)?,
+                                remaining : row.get(5)?
+                        }})
+                    })
+                    .unwrap()
+                    .collect::<Vec<_>>();
+                for ticker in tickers {
+                    stocks.push(ticker.unwrap());
+                }
+                // Ok(stocks)
+            }
+            false => {
+                panic!(
+                    "A list of stocks do not exist for account {} and ticker {}",
+                    aid, ticker
+                );
+            }
+        }
+
+        // let mut final_stocks = VecDeque::from(stocks);
+        // Ok((Vec::from(final_stocks), initial))
+        Ok(stocks)
         // return stocks;
     }
 
@@ -277,6 +445,7 @@ impl DbConn {
                 shares: kv.1,
                 costbasis: 0.0,
                 date: "1970-01-01".to_string(),
+                remaining : kv.1
             });
         }
         return cumulated_stocks;

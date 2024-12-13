@@ -5,8 +5,8 @@ use chrono::{Datelike, NaiveDate};
 use type_aliases::Suggester;
 use yahoo_finance_api::PeriodInfo;
 use crate::database::DbConn;
-use crate::types::ledger::LedgerEntry;
-use crate::types::participants::{self, ParticipantType, ParticipantAutoCompleter};
+use crate::types::ledger::{LedgerEntry, ParticipantAutoCompleter};
+use crate::types::participants::{self, ParticipantType};
 use crate::types::transfer_types::TransferType;
 use crate::types::categories::CategoryAutoCompleter;
 
@@ -37,27 +37,11 @@ impl FixedAccount {
             .prompt()
             .unwrap();
 
-        let pid;
-        // let payees = db.get_participants(aid, ParticipantType::Payee).unwrap();
-        // if payees.len() > 0 {
-        //     let mut payee_names : Vec<String> = payees.iter().map(|payee| payee.participant.name).collect();
-        //     payee_names.push("New".to_string());
-
-        //     let selected_payee = Select::new("Select payee:", payee_names).prompt().unwrap().to_string();
-        //     if selected_payee == "New" {
-        //         let new_payee = Text::new("Enter payee:").prompt().unwrap().to_string();
-        //         pid = db.add_participant(aid, ParticipantType::Payee, new_payee).unwrap();
-        //     } else {
-        //         pid = payees.iter().find(|payee| payee.participant.name == selected_payee).expect("Payee not found!").id;
-        //     }
-        // } else {
-        //     let new_payee = Text::new("Enter payee:").prompt().unwrap().to_string();
-        //     pid = db.add_participant(aid, ParticipantType::Payee, new_payee).unwrap();
-        // }
         let selected_payee = Text::new("Enter payee:")
             .with_autocomplete(ParticipantAutoCompleter { aid : self.id, db : self.db.clone(), ptype : ParticipantType::Payee })
             .prompt().unwrap();
-        pid = self.db.check_and_add_participant(self.id, selected_payee, ParticipantType::Payee);
+
+        let pid = self.db.check_and_add_participant(self.id, selected_payee, ParticipantType::Payee);
 
         let cid;
         let selected_category = Text::new("Enter category:")
@@ -78,7 +62,7 @@ impl FixedAccount {
             date : date_input,
             amount : amount_input,
             transfer_type : TransferType::WidthdrawalToExternalAccount,
-            participant_id : pid, 
+            participant : pid, 
             category_id : cid, 
             description : description_input
         };
@@ -99,11 +83,12 @@ impl FixedAccount {
             .prompt()
             .unwrap();
 
-        let pid;
         let selected_payee = Text::new("Enter payer:")
-            .with_autocomplete(ParticipantAutoCompleter { aid : self.id, db : self.db.clone(), ptype : ParticipantType::Payee })
+            .with_autocomplete(ParticipantAutoCompleter { aid : self.id, db : self.db.clone(), ptype : ParticipantType::Payer })
             .prompt().unwrap();
-        pid = self.db.check_and_add_participant(self.id, selected_payee, ParticipantType::Payee);
+
+        let pid = self.db.check_and_add_participant(self.id, selected_payee, ParticipantType::Payer);
+
 
         let cid;
         let selected_category = Text::new("Enter category:")
@@ -125,7 +110,7 @@ impl FixedAccount {
             date : date_input,
             amount : amount_input,
             transfer_type : TransferType::DepositFromExternalAccount,
-            participant_id : pid, 
+            participant: pid, 
             category_id : cid, 
             description : description_input
         };
