@@ -1,7 +1,11 @@
+use chrono::NaiveDate;
+use rusqlite::functions::FunctionFlags;
 use rusqlite::Connection;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::Mutex;
+
+use crate::stocks::get_stock_at_close;
 // use crate::ledger;
 
 // pub mod db_accounts;
@@ -54,6 +58,35 @@ impl DbConn {
         Self::create_cd_table(self);
         Self::create_budget_table(self);
         Self::set_schema_version(&self.conn, CURRENT_DATABASE_SCHEMA_VERSION);
+
+
+        // register custom functions
+        let result = self.conn.create_scalar_function("get_stock_value", 1, FunctionFlags::SQLITE_INNOCUOUS, |ctx|  {
+            let ticker : String = ctx.get(0)?;
+            match crate::stocks::get_stock_at_close(ticker) {
+                Ok(price) => {
+                    Ok(price)
+                }
+                Err(e) => { 
+                    Err(rusqlite::Error::ToSqlConversionFailure(Box::new(e)))
+                }
+            }
+        }).unwrap();
+
+        let result = self.conn.create_scalar_function("get_stock_value_on_day", 2, FunctionFlags::SQLITE_DETERMINISTIC, |ctx| {
+            let ticker : String = ctx.get(0)?;
+            let date : String = ctx.get(1)?;
+            match crate::stocks::get_stock_quote(ticker, NaiveDate::parse_from_str(date.as_str(), "%Y-%m-%d").unwrap()) { 
+                Ok(value) => {
+                    Ok(value)
+                }
+                Err (e) => {
+                    Err(rusqlite::Error::ToSqlConversionFailure(Box::new(e)))
+                }
+            }
+        }).unwrap();
+
+    
         Ok(())
     }
 

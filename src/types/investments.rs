@@ -18,7 +18,8 @@ pub struct StockRecord {
     pub shares: f32,
     pub costbasis: f32,
     pub date: String,
-    pub remaining : f32
+    pub remaining : f32,
+    pub ledger_id : u32
 }
 
 pub struct StockEntries {
@@ -37,7 +38,9 @@ impl DbConn {
             costbasis   REAL NOT NULL,
             remaining   REAL NOT NULL,
             aid         INTEGER NOT NULL, 
+            lid         INTEGER NOT NULL,
             FOREIGN     KEY (aid) REFERENCES accounts(id)
+            FOREIGN     KEY (lid) REFERENCES ledgers(lid)
         )";
         match self.conn.execute(sql, ()) {
             Ok(_) => {
@@ -58,7 +61,9 @@ impl DbConn {
             shares      REAL NOT NULL,
             price       REAL NOT NULL,
             aid         INTEGER NOT NULL,
+            lid         INTEGER NOT NULL,
             FOREIGN     KEY (aid) REFERENCES accounts(id)
+            FOREIGN     KEY (lid) REFERENCES ledgers(id)
         )";
         match self.conn.execute(sql, ()) {
             Ok(_) => {
@@ -232,7 +237,8 @@ impl DbConn {
                                 ticker: row.get(2)?,
                                 shares: row.get(3)?,
                                 costbasis: row.get(4)?,
-                                remaining: row.get(5)?
+                                remaining: row.get(5)?,
+                                ledger_id : row.get(7)?
                         }})
                     })
                     .unwrap()
@@ -259,7 +265,7 @@ impl DbConn {
         let mut stmt = self.conn.prepare(sql)?;
         let exists = stmt.exists(p)?;
         let mut stocks = Vec::new();
-        let mut initial: StockRecord = StockRecord{shares : 0.0, ticker : ticker.clone(), costbasis : 0.0, date : start.checked_sub_days(Days::new(1)).unwrap().to_string(), remaining : 0.0};
+        let mut initial: StockRecord = StockRecord{shares : 0.0, ticker : ticker.clone(), costbasis : 0.0, date : start.checked_sub_days(Days::new(1)).unwrap().to_string(), remaining : 0.0, ledger_id : 0};
 
         match exists {
             true => {
@@ -272,6 +278,7 @@ impl DbConn {
                             shares: row.get(3)?,
                             costbasis: row.get(4)?,
                             remaining : row.get(5)?,
+                            ledger_id : row.get(7)?
                         })
                     })
                     .unwrap()
@@ -303,7 +310,8 @@ impl DbConn {
                             ticker: row.get(2)?,
                             shares: row.get(3)?,
                             costbasis: row.get(4)?,
-                            remaining: row.get(5)?
+                            remaining: row.get(5)?,
+                            ledger_id : row.get(7)?
                         })
                     })
                     .unwrap()
@@ -355,7 +363,8 @@ impl DbConn {
                                 ticker: row.get(2)?,
                                 shares: row.get(3)?,
                                 costbasis: row.get(4)?,
-                                remaining : row.get(5)?
+                                remaining : row.get(5)?,
+                                ledger_id : row.get(7)?
                         }})
                     })
                     .unwrap()
@@ -400,7 +409,8 @@ impl DbConn {
                                 ticker: row.get(2)?,
                                 shares: row.get(3)?,
                                 costbasis: row.get(4)?,
-                                remaining : row.get(5)?
+                                remaining : row.get(5)?,
+                                ledger_id : row.get(7)?
                         }})
                     })
                     .unwrap()
@@ -424,6 +434,92 @@ impl DbConn {
         // return stocks;
     }
 
+    pub fn get_stock_current_value(&mut self, aid : u32) -> rusqlite::Result<f32,rusqlite::Error> { 
+        let mut sum : f32 = 0.0;
+        let p = rusqlite::params![aid];
+        let sql = "
+            SELECT SUM(get_stock_value(ticker) * remaining) as total_value
+            FROM stock_purchases WHERE aid = (?1)";
+        let mut stmt = self.conn.prepare(sql)?;
+        if stmt.exists(p)? { 
+            sum = stmt.query_row(p, |row| row.get(0))?;
+        } else { 
+            panic!("Not found!");
+        }
+        Ok(sum)
+    }
+
+    pub fn get_portfolio_value_before_date(&mut self, aid : u32, date : NaiveDate) -> rusqlite::Result<f32, rusqlite::Error> { 
+        let mut sum : f32 = 0.0;
+        let p = rusqlite::params![aid, date.to_string()];
+        let sql = 
+            "WITH 
+                -- Purchases (converting purchases into positive amounts)
+                purchases AS (
+                    SELECT 
+                        p.ticker as ticker, 
+                        p.date AS transaction_date, 
+                        p.shares, 
+                        'purchase' AS transaction_type
+                    FROM stock_purchases p WHERE aid = (?1)
+                ),
+                
+                -- Sales (converting sales into negative amounts)
+                sales AS (
+                    SELECT 
+                        s.ticker as ticker, 
+                        s.date AS transaction_date, 
+                        -s.shares AS shares, 
+                        'sale' AS transaction_type
+                    FROM stock_sales s WHERE aid = (?1)
+                ),
+                
+                -- Combining Purchases and Sales for all tickers
+                transactions AS (
+                    SELECT ticker, transaction_date, shares, transaction_type
+                    FROM purchases
+                    UNION ALL
+                    SELECT ticker, transaction_date, shares, transaction_type
+                    FROM sales
+                ),
+                
+                -- Cumulative Ownership Calculation per ticker (window function)
+                cumulative AS (
+                    SELECT 
+                        t.ticker as ticker, 
+                        t.transaction_date,
+                        t.shares,
+                        SUM(t.shares) OVER (PARTITION BY t.ticker ORDER BY t.transaction_date) AS cumulative_shares_owned
+                    FROM transactions t
+                    -- Only include transactions up to the specific date
+                    WHERE t.transaction_date <= (?2)
+                ),
+
+                -- returns last recorded amount of stocks owned
+                residual as (
+                    SELECT
+                        c.ticker,
+                        MAX(transaction_date) AS final_transaction_date,
+                        LAST_VALUE(cumulative_shares_owned) OVER (PARTITION BY c.ticker ORDER BY c.transaction_date ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS final_shares_owned
+                    FROM cumulative as c 
+                    GROUP BY c.ticker
+                )
+
+            -- Final query to get the cumulative shares owned for each ticker by the target date
+            SELECT
+                SUM(get_stock_value_on_day(ticker, (?2)) * final_shares_owned)
+            FROM residual";
+
+        
+        let mut stmt = self.conn.prepare(sql)?;
+        if stmt.exists(p)? { 
+            sum = stmt.query_row(p, |row| row.get(0)).unwrap();
+        } else { 
+            panic!("Not found!");
+        }
+        Ok(sum)
+    }
+
     pub fn cumulate_stocks(self: &mut DbConn, aid: u32, ticker: String) -> Vec<StockRecord> {
         let err_str = format!("Unable to retrieve stock information for account {}.", aid);
         let stocks = self.get_stocks(aid, ticker).expect(err_str.as_str());
@@ -445,7 +541,8 @@ impl DbConn {
                 shares: kv.1,
                 costbasis: 0.0,
                 date: "1970-01-01".to_string(),
-                remaining : kv.1
+                remaining : kv.1,
+                ledger_id : 0
             });
         }
         return cumulated_stocks;

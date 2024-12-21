@@ -249,7 +249,8 @@ pub fn record_stock_purchase() -> Option<StockRecord> {
         ticker: ticker,
         shares: shares,
         costbasis: costbasis,
-        remaining: shares
+        remaining: shares, 
+        ledger_id : 0
     });
 }
 
@@ -446,7 +447,6 @@ pub fn get_growth(aid: u32, _db: &mut DbConn) {
         }
     }
 
-    println!("aid is {}", aid.clone());
     let account = _db.get_account(aid).unwrap();
 
     let (mut bank_history, bank_initial) : (Vec<BankRecord>, BankRecord);

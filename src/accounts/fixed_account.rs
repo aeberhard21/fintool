@@ -30,7 +30,7 @@ impl FixedAccount {
         let date_input: String = DateSelect::new("Enter date")
             .prompt().unwrap().to_string();
 
-        let amount_input: f32 = CustomType::<f32>::new("Enter deposit amount")
+        let amount_input: f32 = CustomType::<f32>::new("Enter withdrawal amount")
             .with_placeholder("00000.00")
             .with_default(00000.00)
             .with_error_message("Please type a valid amount!")
@@ -116,6 +116,10 @@ impl FixedAccount {
         };
 
         self.db.add_ledger_entry(self.id, withdrawal).unwrap();
+    }
+
+    pub fn get_current_value(&mut self) -> f32 { 
+        return self.db.get_current_value(self.id).unwrap();
     }
 
     pub fn simple_rate_of_return(&mut self, start_date : NaiveDate, end_date : NaiveDate) -> f32 {

@@ -50,7 +50,7 @@ impl DbConn {
         Ok(())
     }
 
-    pub fn add_ledger_entry(&mut self, aid: u32, entry: LedgerEntry) -> rusqlite::Result<()> {
+    pub fn add_ledger_entry(&mut self, aid: u32, entry: LedgerEntry) -> rusqlite::Result<u32, rusqlite::Error> {
         let sql: &str;
         let id = self.get_next_ledger_id().unwrap();
         sql = "INSERT INTO ledgers ( id, date, amount, transfer_type, pid, cid, desc, aid) VALUES ( ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)";
@@ -75,7 +75,7 @@ impl DbConn {
                 println!("Unable to add ledger: {}", Error);
             }
         }
-        Ok(())
+        Ok(id)
     }
 
     pub fn get_ledger_entries_within_timestamps(&mut self, aid : u32, start : NaiveDate, end : NaiveDate) -> rusqlite::Result<Vec<LedgerEntry>, rusqlite::Error> {
@@ -111,44 +111,49 @@ impl DbConn {
         }
     }
 
-    pub fn get_cumulative_total_of_ledger_before_date(&mut self, aid : u32, end : NaiveDate) -> rusqlite::Result<f32, rusqlite::Error> {
-        let p = rusqlite::params![aid, end.to_string()];
-        let sql = "SELECT * FROM ledgers WHERE aid = (?1) and date <= (?3) ORDER by date ASC";
+    pub fn get_current_value(&mut self, aid : u32) -> rusqlite::Result<f32, rusqlite::Error> {
+        let p = rusqlite::params![aid];
+        let mut sum: f32 = 0.0;
+        let sql = 
+            "SELECT SUM(CASE
+                WHEN transfer_type == 0 or transfer_type = 2 THEN -amount    -- withdrawal
+                WHEN transfer_type == 1 or transfer_type = 3 THEN amount     -- deposit from external account
+                ELSE 0 
+            END) as total_balanace FROM ledgers WHERE aid = (?1);";
 
         let mut stmt = self.conn.prepare(sql)?;
-        let exists = stmt.exists(p)?;
-        let mut entries: Vec<LedgerEntry> = Vec::new();
-        let mut amount = 0.0;
-        match exists { 
-            true => {
-                let found_entries = stmt.query_map( p, |row| {
-                    Ok( LedgerEntry { 
-                        date : row.get(1)?, 
-                        amount : row.get(2)?, 
-                        transfer_type : TransferType::from(row.get::<_, u32>(3)? as u32),
-                        participant : row.get(4)?,
-                        category_id : row.get(5)?, 
-                        description : row.get(6)?
-                    })
-                })
-                .unwrap()
-                .collect::<Vec<_>>();
-
-                for entry in found_entries { 
-                    amount += entry.unwrap().amount;
-                }
-                Ok(amount)
-            }
-            false => {
-                return Ok(amount);
-            }
+        if stmt.exists(p)? { 
+            sum = stmt.query_row(p, |row| row.get(0))?;
+        } else { 
+            panic!("Not found!");
         }
+
+        Ok(sum)
+    }
+
+    pub fn get_cumulative_total_of_ledger_before_date(&mut self, aid : u32, end : NaiveDate) -> rusqlite::Result<f32, rusqlite::Error> {
+        let p = rusqlite::params![aid, end.to_string()];
+        let mut sum : f32 = 0.0;
+        let sql = 
+        "SELECT SUM(CASE
+            WHEN transfer_type == 0 or transfer_type = 2 THEN -amount    -- withdrawal
+            WHEN transfer_type == 1 or transfer_type = 3 THEN amount     -- deposit from external account
+            ELSE 0 
+        END) as total_balanace FROM ledgers WHERE aid = (?1) and date <= (?2);";
+
+        let mut stmt = self.conn.prepare(sql)?;
+        if stmt.exists(p)? { 
+            sum = stmt.query_row(p, |row| row.get(0))?;
+        } else { 
+            panic!("Not found!");
+        }
+        Ok(sum)
     }
 
     pub fn get_participants(&mut self, aid: u32, transfer_type: TransferType) -> Result<Vec<String>, rusqlite::Error> {
         let sql;
         let p = rusqlite::params![aid, transfer_type as u32];
-        sql = "SELECT name FROM people WHERE aid = (?1) and transfer_type = (?2)";
+        sql = "SELECT p.name FROM people p JOIN ledgers l ON p.id = l.cid WHERE l.aid = (?1) and l.transfer_type = (?2)";
 
         let mut stmt = self.conn.prepare(sql)?;
         let exists = stmt.exists(p)?;

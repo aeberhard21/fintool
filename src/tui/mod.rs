@@ -241,17 +241,9 @@ fn tui_report(_uid: u32, _db: &mut DbConn) {
             .with_default(false)
             .prompt()
             .unwrap();
-            let mut ticker = database::SQLITE_WILDCARD.to_string();
-            if !report_all {
-                ticker = select_stock(
-                    _db.get_stock_tickers(aid)
-                        .expect("Unable to retrieve stock tickers for this account!"),
-                );
-            }
-            println!(
-                "Value at last closing: {}",
-                get_total_of_stocks(aid, _db, ticker)
-            );
+            let mut acct = InvestmentAccountManager::new(aid, _db);
+            acct.report();
+            
         }
         "ledger" => {
             // println!("Balance of account: {}", _ledger.sum());

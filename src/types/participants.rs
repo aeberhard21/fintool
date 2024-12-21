@@ -168,50 +168,50 @@ pub struct ParticipantAutoCompleter {
     pub ptype : ParticipantType
 }
 
-impl Autocomplete for ParticipantAutoCompleter { 
-    fn get_suggestions(&mut self, input: &str) -> Result<Vec<String>, CustomUserError> {
-        let suggestions : Vec<String>;
-        match self.ptype { 
-            ParticipantType::Payee => {
-                suggestions = self.db.get_participants(self.aid, ParticipantType::Payee)
-                    .unwrap().into_iter()
-                    .map(|payee| payee.participant.name)
-                    .filter(|name| name.starts_with(input))
-                    .collect();
-            }
-            ParticipantType::Payer => {
-                suggestions = self.db.get_participants(self.aid, ParticipantType::Payer)
-                    .unwrap().into_iter()
-                    .map(|payer| payer.participant.name)
-                    .filter(|name| name.starts_with(input))
-                    .collect();
-            }
-            _ => {
-                panic!("Unable to match ParticipantType in Autocomplete!");
-            }
-        }
-        Ok(suggestions)
-    }
+// impl Autocomplete for ParticipantAutoCompleter { 
+//     fn get_suggestions(&mut self, input: &str) -> Result<Vec<String>, CustomUserError> {
+//         let suggestions : Vec<String>;
+//         match self.ptype { 
+//             ParticipantType::Payee => {
+//                 suggestions = self.db.get_participants(self.aid, ParticipantType::Payee)
+//                     .unwrap().into_iter()
+//                     .map(|payee| payee.participant.name)
+//                     .filter(|name| name.starts_with(input))
+//                     .collect();
+//             }
+//             ParticipantType::Payer => {
+//                 suggestions = self.db.get_participants(self.aid, ParticipantType::Payer)
+//                     .unwrap().into_iter()
+//                     .map(|payer| payer.participant.name)
+//                     .filter(|name| name.starts_with(input))
+//                     .collect();
+//             }
+//             _ => {
+//                 panic!("Unable to match ParticipantType in Autocomplete!");
+//             }
+//         }
+//         Ok(suggestions)
+//     }
 
-    fn get_completion(
-            &mut self,
-            input: &str,
-            highlighted_suggestion: Option<String>,
-        ) -> Result<autocompletion::Replacement, CustomUserError> {
+//     fn get_completion(
+//             &mut self,
+//             input: &str,
+//             highlighted_suggestion: Option<String>,
+//         ) -> Result<autocompletion::Replacement, CustomUserError> {
 
-        Ok ( match highlighted_suggestion { 
-            Some(suggestion) => {
-                Replacement::Some(suggestion)
-            }
-            None => {
-                let suggestions = self.get_suggestions(input).unwrap();
-                if suggestions.len() == 0 {
-                    autocompletion::Replacement::None
-                } else {
-                    Some(suggestions[0].clone())
-                }
-            }
-        })
-    }
+//         Ok ( match highlighted_suggestion { 
+//             Some(suggestion) => {
+//                 Replacement::Some(suggestion)
+//             }
+//             None => {
+//                 let suggestions = self.get_suggestions(input).unwrap();
+//                 if suggestions.len() == 0 {
+//                     autocompletion::Replacement::None
+//                 } else {
+//                     Some(suggestions[0].clone())
+//                 }
+//             }
+//         })
+//     }
 
-}
+// }

@@ -3,7 +3,7 @@ use chrono::{Days, NaiveDate};
 use inquire::*;
 use rusqlite::Transaction;
 use tokio::signal;
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::{collections::HashMap, fmt::Formatter};
 use std::time::{Duration, UNIX_EPOCH};
 use time::OffsetDateTime;
@@ -70,32 +70,36 @@ impl VariableAccount {
             .prompt()
             .unwrap();
 
-        let stock_record = StockRecord {
-            date: date_input.unwrap().to_string(),
-            ticker: ticker.clone(),
-            shares: shares,
-            costbasis: costbasis,
-            remaining: shares
-        };
-
-        let pid = self.db.check_and_add_participant(self.id, stock_record.ticker.clone(), ParticipantType::Payee);
+        let pid = self.db.check_and_add_participant(self.id, ticker.clone(), ParticipantType::Payee);
         let cid = self.db.check_and_add_category(self.id, "Bought".to_string());
 
+        let date = date_input.unwrap().to_string();
+
         purchase = LedgerEntry {
-            date : stock_record.date.to_string(),
-            amount :  stock_record.shares * stock_record.costbasis,
+            date : date.clone(),
+            amount :  shares * costbasis,
             transfer_type : TransferType::WidthdrawalToInternalAccount,
             participant : pid,
             category_id : cid,
             description : format!("Purchase {} shares of {} at ${} on {}",
-                stock_record.shares,
-                stock_record.ticker,
-                stock_record.costbasis,
-                stock_record.date)
+                shares,
+                ticker,
+                costbasis,
+                date.clone())
+        };
+
+        let ledger_id = self.db.add_ledger_entry(self.id, purchase).unwrap();
+
+        let stock_record = StockRecord {
+            date: date.clone(),
+            ticker: ticker.clone(),
+            shares: shares,
+            costbasis: costbasis,
+            remaining: shares,
+            ledger_id : ledger_id
         };
 
         self.db.add_stock(self.id, stock_record).unwrap();
-        self.db.add_ledger_entry(self.id, purchase);
 
     }
 
@@ -125,12 +129,27 @@ impl VariableAccount {
             .prompt()
             .unwrap();
 
+        let value_received = number_of_shares_sold * sale_price;
+        let stock_cid = self.db.get_category_id(self.id, "Sold".to_string()).unwrap();
+
+        let sale = LedgerEntry { 
+            date: sale_date.to_string(), 
+            amount : value_received, 
+            transfer_type: TransferType::DepositFromInternalAccount,
+            participant : pid,
+            category_id: stock_cid, 
+            description : format!("[Internal]: Sold {} shares of {} at ${} on {}.", number_of_shares_sold, ticker, sale_price, sale_date.to_string())
+        };
+
+        let ledger_id = self.db.add_ledger_entry(self.id, sale).unwrap();
+
         let sale_record = StockRecord { 
             ticker : ticker.clone(), 
             shares : number_of_shares_sold,
             costbasis : sale_price,
             date    : sale_date.to_string(),
-            remaining : 0.0
+            remaining : 0.0,
+            ledger_id : ledger_id
         };
 
         let sale_id = self.db.sell_stock(self.id, sale_record).unwrap();
@@ -180,21 +199,62 @@ impl VariableAccount {
             if num_shares_remaining_to_allocate == 0.0 { break; }
         }
 
-        let value_received = number_of_shares_sold * sale_price;
-        let stock_cid = self.db.get_category_id(self.id, "Sold".to_string()).unwrap();
-
-        let sale = LedgerEntry { 
-            date: sale_date.to_string(), 
-            amount : value_received, 
-            transfer_type: TransferType::DepositFromInternalAccount,
-            participant : pid,
-            category_id: stock_cid, 
-            description : format!("[Internal]: Sold {} shares of {} at ${} on {}.", number_of_shares_sold, ticker, sale_price, sale_date.to_string())
-        };
-
-        self.db.add_ledger_entry(self.id, sale);
-
     }
+
+    pub fn get_current_value(&mut self) -> f32 { 
+        let fixed_value = self.fixed.get_current_value();
+        let variable_value = self.db.get_stock_current_value(self.id).unwrap();
+        return fixed_value + variable_value;
+    }
+
+    pub fn time_weighted_return(&mut self, period_start : NaiveDate, period_end : NaiveDate) -> f32 {
+        let rate : f32 = 0.0;
+        let mut cf : f32 = 0.0;
+        let mut hps : Vec<f32> = Vec::new();
+
+        let fixed_transactions = self.db.get_ledger_entries_within_timestamps(self.id, period_start , period_end).unwrap();
+        let mut iter = fixed_transactions.iter().peekable();
+
+        // calculate value before date
+        let fixed_value = self.db.get_cumulative_total_of_ledger_before_date(self.id, period_start.checked_sub_days(Days::new(1)).expect("Invalid date!")).unwrap();
+        let variable_value = self.db.get_portfolio_value_before_date(self.id, period_start).unwrap();
+        let mut vi = fixed_value + variable_value;
+
+        while let Some(txn) = iter.next() { 
+            let tt: &TransferType= &txn.transfer_type;
+            cf += match tt {
+                // positive cash flow
+                TransferType::DepositFromExternalAccount => txn.amount,
+                // all cash stays within account so cash flow is 0
+                TransferType::DepositFromInternalAccount => 0.0 ,
+                // withdrawing from account to cash flow is negative
+                TransferType::WidthdrawalToExternalAccount => -txn.amount, 
+                // all cash stays within account so cash flow is 0
+                TransferType::WidthdrawalToInternalAccount => 0.0
+            };
+
+            if let Some(&nxt) = iter.peek() {
+                if nxt.date != txn.date {
+                    // next transaction is for a new period, so we can 
+                    // calculate the Hp and reset
+                    let end_of_period : NaiveDate = NaiveDate::parse_from_str(&txn.date.as_str(), "%Y-%m-%d").expect("Invalid date!");
+                    let vf_fixed = self.db.get_cumulative_total_of_ledger_before_date(self.id, end_of_period).unwrap();
+                    let vf_variable = self.db.get_portfolio_value_before_date(self.id, end_of_period).unwrap();
+                    let vf = vf_fixed + vf_variable;
+
+                    let hp = (vf - (cf + vi))/(cf + vi);
+                    hps.push(hp);
+
+                    cf = 0.0;
+                }
+            }
+        }
+        let hp1 = hps.pop().expect("No valid cash flow periods!");
+        let twr = hps.iter().fold((1.0 + hp1), |acc,hp| { acc * (1.0 + hp) }) - 1.0;
+        return twr * 100.0;
+    }
+
+    
 
     // pub fn time_weighted_return(&mut self, period_start : NaiveDate, period_end : NaiveDate, ticker : Option<String>) -> f32 {
     //     let mut rate : f32 = 0.0;
