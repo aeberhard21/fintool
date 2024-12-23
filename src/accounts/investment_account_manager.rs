@@ -2,6 +2,7 @@ use inquire::Select;
 use inquire::DateSelect;
 use inquire::Confirm;
 use inquire::InquireError;
+use inquire::Text;
 
 use crate::OffsetDateTime;
 use chrono::{Datelike, Days, Local, Utc};
@@ -13,6 +14,10 @@ use crate::types::accounts;
 use crate::types::participants::ParticipantType;
 use crate::types::transfer_types;
 use crate::types::transfer_types::TransferType;
+use crate::types::accounts::AccountRecord;
+use crate::tui::AccountCreation;
+use crate::tui::query_user_for_analysis_period;
+use crate::types::accounts::AccountType;
 
 use super::variable_account;
 use super::variable_account::VariableAccount;
@@ -23,37 +28,82 @@ pub struct InvestmentAccountManager {
     variable : VariableAccount,
 }
 
+impl AccountCreation for InvestmentAccountManager {
+    fn create() -> AccountRecord {
+        let mut name: String = String::new();
+        loop {
+            name = Text::new("Enter investment account name:")
+                .prompt()
+                .unwrap()
+                .to_string();
+            if name.len() == 0 {
+                println!("Invalid account name!")
+            } else {
+                break;
+            }
+        }
+        let mut has_bank = true;
+        let mut has_stocks = true;
+        let mut has_ledger = false;
+        let mut has_budget = false;
+    
+        let account: AccountRecord = AccountRecord {
+            atype: AccountType::Investment,
+            name: name,
+            has_stocks: has_stocks,
+            has_bank: has_bank,
+            has_ledger: has_ledger,
+            has_budget: has_budget
+        };
+
+        return account;
+    }
+}
+
 
 impl InvestmentAccountManager {
     pub fn new(id : u32, db : &mut DbConn) -> Self {
-        Self { 
+        let mut acct = Self { 
             id : id, 
             db : db.clone(),
             variable : VariableAccount::new(id, db)
-        }
+        };
+
+        // acct.db.add_participant(id, ParticipantType::Payee, "Fixed".to_string());
+        // acct.db.add_participant(id, ParticipantType::Payer, "Fixed".to_string());
+        // acct.db.add_category(id, "Bought".to_string());
+        // acct.db.add_category(id, "Cash Dividend".to_string());
+        // acct.db.add_category(id, "Interest".to_string());
+        // acct.db.add_category(id, "Dividend-Reinvest".to_string());
+        // acct.db.add_category(id, "Sold".to_string());
+        // acct.db.add_category(id, "Deposit".to_string());
+        // acct.db.add_category(id, "Withdrawal".to_string());
+
+        acct
     }
 }
 
 impl AccountOperations for InvestmentAccountManager {
-    fn create( account_id : u32, db : &mut DbConn ) {
-        let mut acct = Self::new(account_id, db);
-        // record several payees and payer types for use
-        db.add_participant(account_id, ParticipantType::Payee, "Fixed".to_string());
-        db.add_participant(account_id, ParticipantType::Payer, "Fixed".to_string());
-        db.add_category(account_id, "Bought".to_string());
-        db.add_category(account_id, "Cash Dividend".to_string());
-        db.add_category(account_id, "Interest".to_string());
-        db.add_category(account_id, "Dividend-Reinvest".to_string());
-        db.add_category(account_id, "Sold".to_string());
-        db.add_category(account_id, "Deposit".to_string());
-        db.add_category(account_id, "Withdrawal".to_string());
+    // fn create( account_id : u32, db : &mut DbConn ) {
+    //     let mut acct: InvestmentAccountManager = Self::new(account_id, db);
+    //     // record several payees and payer types for use
+    //     db.add_participant(account_id, ParticipantType::Payee, "Fixed".to_string());
+    //     db.add_participant(account_id, ParticipantType::Payer, "Fixed".to_string());
+    //     db.add_category(account_id, "Bought".to_string());
+    //     db.add_category(account_id, "Cash Dividend".to_string());
+    //     db.add_category(account_id, "Interest".to_string());
+    //     db.add_category(account_id, "Dividend-Reinvest".to_string());
+    //     db.add_category(account_id, "Sold".to_string());
+    //     db.add_category(account_id, "Deposit".to_string());
+    //     db.add_category(account_id, "Withdrawal".to_string());
 
-        acct.record();
-    }
+    //     acct.record();
+    // }
 
     fn record( &mut self ) {
+        const RECORD_OPTIONS : [&'static str; 4] = ["Deposit", "Withdrawal", "Purchase", "Sale"];
         loop { 
-            let action = Select::new("\nWhat transaction would you like to record?", vec!["Deposit", "Withdrawal", "Purchase", "Sale"])
+            let action = Select::new("\nWhat transaction would you like to record?", RECORD_OPTIONS.to_vec())
                 .prompt().unwrap().to_string();
             match action.as_str() {
                 "Deposit" => {
@@ -90,149 +140,23 @@ impl AccountOperations for InvestmentAccountManager {
 
     fn report( &mut self ) {
 
-        let periods: Vec<&str> = vec!["1 Day", "1 Week", "1 Month", "3 Months", "6 Months", "1 Year", "2 Year", "10 Year", "YTD", "Custom" ];
-        let command: String = Select::new("What period would you like to analyze:", periods)
-            .prompt()
-            .unwrap()
-            .to_string();
-
-        let period_end = OffsetDateTime::from_unix_timestamp(Utc::now().timestamp()).unwrap();
-        let mut period_start = period_end;
-
-        match command.as_str() {
-            "1 Day" => {
-                period_start = period_start.checked_sub(Duration::days(1)).unwrap();
-            },
-            "1 Week" => {
-                period_start = period_start.checked_sub(Duration::days(7)).unwrap();
-            },
-            "1 Month" => {
-                let mut year = period_end.year();
-                let mut month = period_end.month() as i32 - 1;
-                let mut day = period_end.day();
-                month -= 1;
-                while month < 0 {
-                    year -= 1;
-                    month += 12;
-                }
-                let month_as_enum = time::Month::try_from((month+1) as u8).ok().unwrap();
-                let last_day_of_month = time::util::days_in_year_month(year, month_as_enum) as i32;
-                day = if day > last_day_of_month as u8 {
-                    last_day_of_month as u8
-                } else {
-                    day
-                };
-
-                period_start = period_start.replace_year(year).unwrap();
-                period_start = period_start.replace_month(month_as_enum).unwrap();
-                period_start = period_start.replace_day(day).unwrap();
-            },
-            "3 Months" => {
-                let mut year = period_end.year();
-                let mut month = period_end.month() as i32 - 1;
-                let mut day = period_end.day();
-                month -= 3;
-                while month < 0 {
-                    year -= 1;
-                    month += 12;
-                }
-                let month_as_enum = time::Month::try_from((month+1) as u8).ok().unwrap();
-                let last_day_of_month = time::util::days_in_year_month(year, month_as_enum) as i32;
-                day = if day > last_day_of_month as u8 {
-                    last_day_of_month as u8
-                } else {
-                    day
-                };
-
-                period_start = period_start.replace_year(year).unwrap();
-                period_start = period_start.replace_month(month_as_enum).unwrap();
-                period_start = period_start.replace_day(day).unwrap();
-            },
-            "6 Months" => {
-                let mut year = period_end.year();
-                let mut month = period_end.month() as i32 - 1;
-                let mut day = period_end.day();
-                month -= 6;
-                while month < 0 {
-                    year -= 1;
-                    month += 12;
-                }
-                let month_as_enum = time::Month::try_from((month+1) as u8).ok().unwrap();
-                let last_day_of_month = time::util::days_in_year_month(year, month_as_enum) as i32;
-                day = if day > last_day_of_month as u8 {
-                    last_day_of_month as u8
-                } else {
-                    day
-                };
-
-                period_start = period_start.replace_year(year).unwrap();
-                period_start = period_start.replace_month(month_as_enum).unwrap();
-                period_start = period_start.replace_day(day).unwrap();        
-            },
-            "1 Year" => {
-                let month = period_start.month();
-                let year = period_start.year();
-                let day = period_start.day();
-                if month == time::Month::February && time::util::is_leap_year(year) && day == 29 {
-                    // this handles the case of leap day
-                    period_start = period_start.replace_month(time::Month::March).unwrap();
-                    period_start = period_start.replace_day(1).unwrap();
-                }
-                period_start = period_start.replace_year(period_start.year()-1).unwrap();
-            },
-            "2 Year" => {
-                let month = period_start.month();
-                let year = period_start.year();
-                let day = period_start.day();
-                if month == time::Month::February && time::util::is_leap_year(year) && day == 29 {
-                    // this handles the case of leap day
-                    period_start = period_start.replace_month(time::Month::March).unwrap();
-                    period_start = period_start.replace_day(1).unwrap();
-                }
-                period_start = period_start.replace_year(period_start.year()-2).unwrap();
-            },
-            "5 Year" => {
-                let month = period_start.month();
-                let year = period_start.year();
-                let day = period_start.day();
-                if month == time::Month::February && time::util::is_leap_year(year) && day == 29 {
-                    // this handles the case of leap day
-                    period_start = period_start.replace_month(time::Month::March).unwrap();
-                    period_start = period_start.replace_day(1).unwrap();
-                }
-                period_start = period_start.replace_year(period_start.year()-5).unwrap();
-            },
-            "10 Year" => {
-                let month = period_start.month();
-                let year = period_start.year();
-                let day = period_start.day();
-                if month == time::Month::February && time::util::is_leap_year(year) && day == 29 {
-                    // this handles the case of leap day
-                    period_start = period_start.replace_month(time::Month::March).unwrap();
-                    period_start = period_start.replace_day(1).unwrap();
-                }
-                period_start = period_start.replace_year(period_start.year()-10).unwrap();
+        const REPORT_OPTIONS :[&'static str; 2] = ["Total Value", "Time-Weighted Rate of Return"];
+        let choice = Select::new("What would you like to report: ", REPORT_OPTIONS.to_vec())
+            .prompt().unwrap().to_string();
+        match choice.as_str() { 
+            "Total Value" => {
+                let value = self.variable.get_current_value();
+                println!("\tTotal Account Value: {}", value);
             }
-            "YTD" => {
-                period_start = period_start.replace_month(time::Month::January).unwrap().replace_day(1).unwrap();
-            },
-            // "Custom" | _ => {
-            //     let date_input: NaiveDate = DateSelect::new("Enter date").prompt().unwrap();
-            //     period_start = date_input;
-            //     // let time = NaiveTime::from_hms_opt(0,0,0).unwrap();
-            //     // let date_time = NaiveDateTime::new(date_input.unwrap(), time);
-            //     // period_start = OffsetDateTime::from_unix_timestamp(Utc.from_utc_datetime(&date_time).timestamp()).unwrap();
-            // }
+            "Time-Weighted Rate of Return" => {
+                let (period_start, period_end) = query_user_for_analysis_period();
+                let twr = self.variable.time_weighted_return(period_start, period_end);
+                println!("\tRate of return: {}%", twr);
+            }
             _ => {
-                panic!("Not found!");
+                panic!("Unrecognized input!");
             }
         }
-        println!("Account value: {}", self.variable.get_current_value());
-        let twr = self.variable.time_weighted_return(
-            NaiveDate::parse_from_str(period_start.date().to_string().as_str(), "%Y-%m-%d").unwrap(), 
-            NaiveDate::parse_from_str(period_end.date().to_string().as_str(), "%Y-%m-%d").unwrap()
-        );
-        println!("TWR = {}", twr);
     }
 
 }

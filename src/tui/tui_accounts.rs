@@ -89,7 +89,6 @@ pub fn create_account(_atype: AccountType, _uid: u32, _db: &mut DbConn) -> u32 {
         }
     }
     let account = AccountRecord {
-        aid: None,
         atype: _atype,
         name: name,
         has_stocks: has_stocks,
@@ -97,7 +96,7 @@ pub fn create_account(_atype: AccountType, _uid: u32, _db: &mut DbConn) -> u32 {
         has_ledger: has_ledger,
         has_budget: has_budget
     };
-    let aid = _db.add_account(_uid, account).unwrap();
+    let aid = _db.add_account(_uid, &account).unwrap();
 
     if has_budget {
         println!("Creating budget...");
@@ -302,11 +301,11 @@ pub fn get_net_wealth(uid: u32, _db: &mut DbConn) -> f64 {
         .get_user_account_info(uid)
         .expect("Unable to retrieve user accounts!");
     for account in accounts {
-        if account.has_bank {
-            nw += _db.get_bank_value(account.aid.expect("Account ID required!")).expect("Unable to retrieve bank account!").amount as f64
+        if account.record.has_bank {
+            nw += _db.get_bank_value(account.id as u32).unwrap().amount as f64
         }
-        if account.has_stocks {
-            nw += get_total_of_stocks(account.aid.expect("Account ID required!"), _db, database::SQLITE_WILDCARD.to_string());
+        if account.record.has_stocks {
+            nw += get_total_of_stocks(account.id, _db, database::SQLITE_WILDCARD.to_string());
         }
     }
     return nw;
@@ -452,7 +451,7 @@ pub fn get_growth(aid: u32, _db: &mut DbConn) {
     let (mut bank_history, bank_initial) : (Vec<BankRecord>, BankRecord);
     let bank_growth : f32;
 
-    if account.has_bank {
+    if account.record.has_bank {
         (bank_history, bank_initial) = _db.get_bank_history(aid, period_start.date().to_string(), period_end.date().to_string()).unwrap();
         bank_history.reverse();
         let bank_end_amount = bank_history.get(0).unwrap().amount;
@@ -460,7 +459,7 @@ pub fn get_growth(aid: u32, _db: &mut DbConn) {
         println!("Initial: {} End: {} Growth: {}", bank_initial.amount, bank_end_amount, bank_growth)
     }
 
-    if account.has_stocks {
+    if account.record.has_stocks {
         let tickers = _db.get_stock_tickers(aid).unwrap();
         let ticker = Select::new("Select ticker:", tickers).prompt().unwrap().to_string();
         let stock_growth = _db.get_stock_growth(aid, ticker, 

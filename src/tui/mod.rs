@@ -1,9 +1,16 @@
 use core::num;
+use chrono::Datelike;
+use chrono::Days;
+use chrono::FixedOffset;
+use chrono::Local;
+use chrono::Months;
+use time::convert::Day;
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::fmt::format;
 use std::hash::Hash;
 use std::process::CommandArgs;
+use std::vec;
 
 use crate::accounts::bank_account;
 use crate::accounts::bank_account::BankAccount;
@@ -28,6 +35,8 @@ use crate::tui::tui_accounts::*;
 use crate::tui::tui_ledger::*;
 use crate::tui::tui_user::*;
 use chrono::NaiveDate;
+use chrono::NaiveDateTime;
+use chrono::Utc;
 use inquire::*;
 use tokio::runtime::EnterGuard;
 use yahoo_finance_api::Dividend;
@@ -45,33 +54,33 @@ pub fn menu(_db: &mut DbConn) {
     // set current user first!
     uid = tui_set_user(_db);
 
+    let mut menu_options: Vec<&str> = Vec::new();
+    if _db.is_admin(uid).unwrap() { 
+        menu_options = vec!["Create User", "Change User", "Access Account(s)", "Exit"];
+    } else { 
+        menu_options = vec!["Change User", "Account Operations", "Exit"];
+    }
+
+    let rf = &menu_options;
+
     loop {
-        let commands: Vec<&str> = vec!["create", "change", "modify", "record", "report", "view", "exit"];
-        let command: String = Select::new("What would you like to do:", commands)
+
+        let command: String = Select::new("What would you like to do:",rf.to_vec())
             .prompt()
             .unwrap()
             .to_string();
 
         match command.as_str() {
-            "create" => {
-                tui_create(uid, _db);
+            "Create User" => {
+                create_user(_db);
             }
-            "change" => {
+            "Change User" => {
                 uid = tui_set_user(_db);
             }
-            "record" => {
-                tui_record(uid, _db);
+            "Access Account(s)" => {
+                access_account(uid, _db);
             }
-            "modify" => {
-                tui_modify(uid, _db);
-            }
-            "report" => {
-                tui_report(uid, _db);
-            }
-            "view" => {
-                tui_view(uid, _db);
-            }
-            "exit" => {
+            "Exit" => {
                 println!("Exiting...");
                 break;
             }
@@ -80,6 +89,99 @@ pub fn menu(_db: &mut DbConn) {
             }
         }
     }
+}
+
+fn access_account(uid : u32, db : &mut DbConn) {
+    const ACCOUNT_OPTIONS : [&'static str; 3] = ["Create Account", "Select Account", "Exit"];
+    let mut accounts: Vec<AccountEntry> = db.get_user_account_info(uid).unwrap();
+    let mut acct: Box<dyn AccountOperations>;
+    let mut new_account;
+    let mut choice;
+    const ACCT_ACTIONS : [&'static str; 2] = ["Record", "Report"];
+
+    let mut accounts_is_empty = accounts.is_empty();
+
+    loop {
+
+        if accounts_is_empty { 
+            choice = ACCOUNT_OPTIONS[0].to_string();
+        } else {
+            choice = Select::new("What would you like to do:", ACCOUNT_OPTIONS.to_vec()).prompt().unwrap().to_string();
+        }
+
+        match choice.as_str() {
+            "Create Account" => {
+                const ACCOUNT_TYPES : [&'static str; 2] = ["Bank Account", "Investment Account"];
+                let selected_account_type = Select::new("What account type would you like to create: ", ACCOUNT_TYPES.to_vec()).prompt().unwrap().to_string();
+                let mut id;
+                match selected_account_type.as_str() { 
+                    "Bank Account" => {
+                        new_account = BankAccount::create();
+                        id = db.add_account(uid, &new_account).unwrap();
+                        acct = Box::new(BankAccount::new(id, db));
+
+                    }
+                    "Investment Account" => {
+                        new_account = InvestmentAccountManager::create();
+                        id = db.add_account(uid, &new_account).unwrap();
+                        acct = Box::new(InvestmentAccountManager::new(id, db));
+                    }
+                    _ => {
+                        panic!("Unrecognized input!");
+                    }
+                }
+                accounts.push( AccountEntry { id : id, record : new_account });
+                accounts_is_empty = false;
+                acct.record();
+
+                let more = Confirm::new("More actions?").prompt().unwrap();
+                if !more { 
+                    continue;
+                }
+            }
+            "Select Account" => { 
+
+                let mut account_map : HashMap<String, AccountEntry> = HashMap::new();
+                let mut account_names : Vec<String> = Vec::new();
+                for account in accounts.iter() { 
+                    account_names.push(account.record.name.clone());
+                    account_map.insert(account.record.name.clone(), account.clone());
+                }
+
+                // add none clause
+                account_names.push("None".to_string());
+                let selected_account = Select::new("Select account:", account_names).prompt().unwrap().to_string();
+
+                if selected_account == "None" {
+                    continue;
+                }
+
+                let acctx = account_map.get(&selected_account).expect("Account not found!");
+                acct = decode_and_create_account_type(db, acctx);
+                // acct.record();                
+            }
+            "Exit" => {
+                return;
+            }
+            _ => {
+                panic!("Invalid option!");
+            }
+        }
+
+        let selected_menu_item = Select::new("Select action: ", ACCT_ACTIONS.to_vec()).prompt().unwrap().to_string();
+        match selected_menu_item.as_str() { 
+            "Record" => {
+                acct.record();
+            }
+            "Report" => {
+                acct.report();
+            }
+            _ => { 
+                panic!("Invalid menu option!");
+            }
+        }
+    }
+
 }
 
 fn tui_create(_uid: u32, _db: &mut DbConn) {
@@ -113,11 +215,11 @@ fn tui_create(_uid: u32, _db: &mut DbConn) {
         }
         "Bank" => {
             aid = create_account(AccountType::from(command), _uid, _db);
-            let bank = BankAccount::create(aid, _db);
+            // let bank = BankAccount::create(aid, _db);
         }
         "Investment" => {
             aid = create_account(AccountType::from(command), _uid, _db);
-            let investment_account = InvestmentAccountManager::create(aid, _db);
+            // let investment_account = InvestmentAccountManager::create(aid, _db);
         }
         "none" => return,
         _ => {
@@ -282,9 +384,87 @@ fn tui_view(_user: u32, _db: &mut DbConn) {
 }
 
 pub trait AccountOperations {
-    fn create( account_id : u32, db : &mut DbConn );
+    // fn create( account_id : u32, db : &mut DbConn );
     fn record( &mut self );
     fn modify( &mut self );
     fn export( &mut self );
     fn report( &mut self );
+}
+
+pub fn decode_and_create_account_type(db : & mut DbConn, account : &AccountEntry) -> Box<dyn AccountOperations> {
+    match account.record.atype {
+        AccountType::Bank => {
+            Box::new(BankAccount::new(account.id, db))
+        }
+        AccountType::Investment => {
+            println!("Here");
+            Box::new(InvestmentAccountManager::new(account.id, db))
+        }
+        _ => {
+            panic!("Invalid account type!");
+        }
+    }   
+}
+
+pub trait AccountCreation { 
+    fn create() -> AccountRecord;
+}
+
+pub fn query_user_for_analysis_period() -> (NaiveDate, NaiveDate) { 
+    
+    const PERIOD_CHOICES: [&'static str; 10] = ["1 Day", "1 Week", "1 Month", "3 Months", "6 Months", "1 Year", "2 Year", "10 Year", "YTD", "Custom" ];
+    let choice: String = Select::new("What period would you like to analyze:", PERIOD_CHOICES.to_vec())
+        .prompt()
+        .unwrap()
+        .to_string();
+
+    // let period_end = Utc::now().naive_local().and_local_timezone(FixedOffset::west_opt(5  * 3600).unwrap())
+    // println!("Today's date: {}", period_end);
+    // let mut period_start = period_end;
+    let mut period_end = Local::now().date_naive();
+    let mut period_start = period_end;
+
+    match choice.as_str() {
+        "1 Day" => {
+            period_start = period_start.checked_sub_days(Days::new(1)).unwrap();
+        },
+        "1 Week" => {
+            period_start = period_start.checked_sub_days(Days::new(7)).unwrap();
+        },
+        "1 Month" => {
+            period_start = period_start.checked_sub_months(Months::new(1)).unwrap();
+        },
+        "3 Months" => {
+            period_start = period_start.checked_sub_months(Months::new(3)).unwrap();
+        },
+        "6 Months" => {
+            period_start = period_start.checked_sub_months(Months::new(6)).unwrap();
+        },
+        "1 Year" => {
+            period_start = period_start.with_year(period_start.year()-1).unwrap();
+        },
+        "2 Year" => {
+            period_start = period_start.with_year(period_start.year()-2).unwrap();
+        },
+        "5 Year" => {
+            // plus 1 accounts for leap year
+            period_start = period_start.with_year(period_start.year()-5).unwrap();
+        },
+        "10 Year" => {
+            period_start = period_start.with_year(period_start.year()-10).unwrap();
+        }
+        "YTD" => {
+            // set as January 1st
+            period_start = period_start.with_day(1).unwrap();
+            period_start = period_start.with_month(1).unwrap();
+        },
+        "Custom" | _ => {
+            period_end = DateSelect::new("Enter ending date").prompt().unwrap();
+            period_start = DateSelect::new("Enter starting date").prompt().unwrap();
+        }
+        _ => {
+            panic!("Not found!");
+        }
+    }
+    return (period_start, period_end);
 }

@@ -40,7 +40,7 @@ impl DbConn {
             aid         INTEGER NOT NULL, 
             lid         INTEGER NOT NULL,
             FOREIGN     KEY (aid) REFERENCES accounts(id)
-            FOREIGN     KEY (lid) REFERENCES ledgers(lid)
+            FOREIGN     KEY (lid) REFERENCES ledgers(id)
         )";
         match self.conn.execute(sql, ()) {
             Ok(_) => {
@@ -105,9 +105,10 @@ impl DbConn {
             record.shares,
             record.costbasis,
             record.remaining,
-            aid
+            aid,
+            record.ledger_id
         );
-        let sql = "INSERT INTO stock_purchases (id, date, ticker, shares, costbasis, remaining, aid) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)";
+        let sql = "INSERT INTO stock_purchases (id, date, ticker, shares, costbasis, remaining, aid, lid) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)";
         match self.conn.execute(sql, p) {
             Ok(_) => Ok(id),
             Err(error) => {
@@ -129,9 +130,10 @@ impl DbConn {
             sale_record.ticker.as_str(),
             sale_record.shares,
             sale_record.costbasis,
-            aid
+            aid, 
+            sale_record.ledger_id
         );
-        let sql = "INSERT INTO stock_sales (id, date, ticker, shares, price, aid) VALUES (?1, ?2, ?3, ?4, ?5, ?6)";
+        let sql = "INSERT INTO stock_sales (id, date, ticker, shares, price, aid, lid) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)";
 
         let mut stmt = self.conn.prepare(sql).unwrap();
         match self.conn.execute(sql, p) {

@@ -30,7 +30,7 @@ pub fn get_stock_at_close(ticker: String) -> Result<f64, YahooError> {
 
 pub fn get_stock_history(ticker: String, period_start : NaiveDate, period_end : NaiveDate) -> Result<Vec<Quote>, YahooError> {
     let provider = YahooConnector::new().unwrap();
-
+    
     let start  = OffsetDateTime::from_unix_timestamp(
         period_start
         .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap())

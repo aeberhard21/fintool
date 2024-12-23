@@ -25,7 +25,7 @@ impl DbConn {
     pub fn create_ledger_table(&mut self) -> Result<()> {
         let sql: &str;
         sql = "CREATE TABLE IF NOT EXISTS ledgers (
-                id          INTEGER NOT NULL,
+                id          INTEGER NOT NULL PRIMARY KEY,
                 date        TEXT NOT NULL, 
                 amount      REAL NOT NULL, 
                 transfer_type INTEGER NOT NULL, 
@@ -115,11 +115,11 @@ impl DbConn {
         let p = rusqlite::params![aid];
         let mut sum: f32 = 0.0;
         let sql = 
-            "SELECT SUM(CASE
+            "SELECT COALESCE(SUM(CASE
                 WHEN transfer_type == 0 or transfer_type = 2 THEN -amount    -- withdrawal
                 WHEN transfer_type == 1 or transfer_type = 3 THEN amount     -- deposit from external account
                 ELSE 0 
-            END) as total_balanace FROM ledgers WHERE aid = (?1);";
+            END), 0) as total_balance FROM ledgers WHERE aid = (?1);";
 
         let mut stmt = self.conn.prepare(sql)?;
         if stmt.exists(p)? { 
@@ -135,11 +135,11 @@ impl DbConn {
         let p = rusqlite::params![aid, end.to_string()];
         let mut sum : f32 = 0.0;
         let sql = 
-        "SELECT SUM(CASE
+        "SELECT COALESCE(SUM(CASE
             WHEN transfer_type == 0 or transfer_type = 2 THEN -amount    -- withdrawal
             WHEN transfer_type == 1 or transfer_type = 3 THEN amount     -- deposit from external account
             ELSE 0 
-        END) as total_balanace FROM ledgers WHERE aid = (?1) and date <= (?2);";
+        END), 0) as total_balance FROM ledgers WHERE aid = (?1) and date <= (?2);";
 
         let mut stmt = self.conn.prepare(sql)?;
         if stmt.exists(p)? { 

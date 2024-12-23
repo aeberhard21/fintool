@@ -1,7 +1,11 @@
 use rusqlite::{Error, Result};
 use crate::database::DbConn;
+use crate::stocks::StockRange;
 use crate::tui::AccountOperations;
+use core::fmt;
+use std::slice::Iter;
 
+#[derive(Clone, Copy)]
 pub enum AccountType {
     Ledger,
     Investment,
@@ -10,6 +14,13 @@ pub enum AccountType {
     Retirement,
     Health,
     Custom,
+}
+
+impl AccountType { 
+    pub fn iterator() -> Iter<'static, AccountType> { 
+        static ACCOUNT_TYPES: [AccountType; 2] = [AccountType::Bank, AccountType::Investment];
+        ACCOUNT_TYPES.iter()
+    }
 }
 
 pub enum AccountFilter { 
@@ -48,14 +59,20 @@ impl From<String> for AccountType {
     }
 }
 
+#[derive(Clone)]
 pub struct AccountRecord {
-    pub aid: Option<u32>,
     pub atype: AccountType,
     pub name: String,
     pub has_stocks: bool,
     pub has_bank: bool,
     pub has_ledger: bool,
     pub has_budget: bool,
+}
+
+#[derive(Clone)]
+pub struct AccountEntry { 
+    pub id : u32, 
+    pub record : AccountRecord,
 }
 
 impl DbConn {
@@ -83,7 +100,7 @@ impl DbConn {
         Ok(())
     }
 
-    pub fn add_account(&mut self, uid: u32, info: AccountRecord) -> Result<u32> {
+    pub fn add_account(&mut self, uid: u32, info: &AccountRecord) -> Result<u32> {
         let aid = self.get_next_account_id().unwrap();
         let p = rusqlite::params![aid, info.atype as usize, info.name, info.has_stocks, info.has_bank, info.has_ledger, info.has_budget, uid]; 
         let sql: &str = "SELECT * FROM accounts WHERE uid = (?1) and name = (?2)";
@@ -110,26 +127,27 @@ impl DbConn {
     pub fn get_user_account_info(
         &mut self,
         uid: u32,
-    ) -> rusqlite::Result<Vec<AccountRecord>, Error> {
+    ) -> rusqlite::Result<Vec<AccountEntry>, Error> {
         let sql: &str = "SELECT * FROM accounts WHERE uid = (?1)";
         let p = rusqlite::params![uid];
         let mut stmt = self.conn.prepare(sql)?;
         let exists = stmt.exists(p)?;
-        let mut accounts: Vec<AccountRecord> = Vec::new();
+        let mut accounts: Vec<AccountEntry> = Vec::new();
         match exists {
             true => {
                 stmt = self.conn.prepare(sql)?;
-                let names: Vec<Result<AccountRecord, Error>> = stmt
+                let names: Vec<Result<AccountEntry, Error>> = stmt
                     .query_map(p, |row| {
-                        Ok(AccountRecord {
-                            aid: row.get(0)?,
-                            atype: AccountType::from(row.get::<_, u32>(0)? as u32),
-                            name: row.get(1)?,
-                            has_stocks: row.get(2)?,
-                            has_bank: row.get(3)?,
-                            has_ledger: row.get(4)?,
-                            has_budget: row.get(5)?
-                        })
+                        Ok(AccountEntry { 
+                            id: row.get(0)?,
+                            record : AccountRecord {
+                            atype: AccountType::from(row.get::<_, u32>(1)? as u32),
+                            name: row.get(2)?,
+                            has_stocks: row.get(3)?,
+                            has_bank: row.get(4)?,
+                            has_ledger: row.get(5)?,
+                            has_budget: row.get(6)?
+                    }})
                     })
                     .unwrap()
                     .collect::<Vec<_>>();
@@ -260,7 +278,7 @@ impl DbConn {
             }
         }
     }
-    pub fn get_account(&mut self, aid: u32) -> rusqlite::Result<AccountRecord, Error> {
+    pub fn get_account(&mut self, aid: u32) -> rusqlite::Result<AccountEntry, Error> {
         let sql: &str = "SELECT * from accounts WHERE id = (?1)";
         let p = rusqlite::params![aid];
         let mut stmt = self.conn.prepare(sql)?;
@@ -268,17 +286,18 @@ impl DbConn {
         match exists {
             true => {
                 stmt = self.conn.prepare(sql)?;
-                let acct: Result<AccountRecord, Error> = stmt
+                let acct: Result<AccountEntry, Error> = stmt
                     .query_row(p, |row| {
-                        Ok(AccountRecord {
-                            aid: row.get(0)?,
+                        Ok(AccountEntry { 
+                            id : row.get(0)?,
+                            record : AccountRecord {
                             atype: AccountType::from(row.get::<_, u32>(1)?),
                             name: row.get(2)?,
                             has_stocks: row.get(3)?,
                             has_bank: row.get(4)?,
                             has_ledger: row.get(5)?,
                             has_budget: row.get(6)?
-                        })});
+            }})});
                 return acct;
             }
             false => {

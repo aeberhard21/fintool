@@ -211,6 +211,7 @@ impl VariableAccount {
         let rate : f32 = 0.0;
         let mut cf : f32 = 0.0;
         let mut hps : Vec<f32> = Vec::new();
+        let mut hp : f32;
 
         let fixed_transactions = self.db.get_ledger_entries_within_timestamps(self.id, period_start , period_end).unwrap();
         let mut iter = fixed_transactions.iter().peekable();
@@ -219,6 +220,21 @@ impl VariableAccount {
         let fixed_value = self.db.get_cumulative_total_of_ledger_before_date(self.id, period_start.checked_sub_days(Days::new(1)).expect("Invalid date!")).unwrap();
         let variable_value = self.db.get_portfolio_value_before_date(self.id, period_start).unwrap();
         let mut vi = fixed_value + variable_value;
+        let mut vf: f32 = 0.0;
+        println!("Initial: {}", vi);
+
+        let final_fixed_value = self.db.get_cumulative_total_of_ledger_before_date(self.id, period_end).unwrap();;
+        let final_portfolio_value = self.db.get_portfolio_value_before_date(self.id, period_end).unwrap();
+        let final_vf = final_fixed_value + final_portfolio_value;
+        println!("Final: {}", final_vf);
+
+
+        if iter.peek().is_none() {
+            // no transactions during analyzed period, so 
+            // calculate regular growth rate
+            hp = (final_vf - vi)/(vi);
+            return ((1.0 + hp)-1.0)*100 as f32;
+        }
 
         while let Some(txn) = iter.next() { 
             let tt: &TransferType= &txn.transfer_type;
@@ -233,24 +249,32 @@ impl VariableAccount {
                 TransferType::WidthdrawalToInternalAccount => 0.0
             };
 
-            if let Some(&nxt) = iter.peek() {
-                if nxt.date != txn.date {
-                    // next transaction is for a new period, so we can 
-                    // calculate the Hp and reset
-                    let end_of_period : NaiveDate = NaiveDate::parse_from_str(&txn.date.as_str(), "%Y-%m-%d").expect("Invalid date!");
-                    let vf_fixed = self.db.get_cumulative_total_of_ledger_before_date(self.id, end_of_period).unwrap();
-                    let vf_variable = self.db.get_portfolio_value_before_date(self.id, end_of_period).unwrap();
-                    let vf = vf_fixed + vf_variable;
+            if iter.peek().is_none() { 
+                // no more left so calculate with account value at end of analysis period
+                vf = final_vf;
+                hp =  (vf - (cf + vi))/(cf + vi);
+                hps.push(hp);
+            } else {
+                let nxt = iter.peek().expect("Item found, but not available");
+                // in the event that there is a second transaction in this period, we will add this all to the cash flow
+                if nxt.date == txn.date { continue } ;
 
-                    let hp = (vf - (cf + vi))/(cf + vi);
-                    hps.push(hp);
+                // next transaction is for a new period, so we can calculate the Hp and reset
+                let end_of_period : NaiveDate = NaiveDate::parse_from_str(&txn.date.as_str(), "%Y-%m-%d").expect("Invalid date!");
+                let vf_fixed = self.db.get_cumulative_total_of_ledger_before_date(self.id, end_of_period).unwrap();
+                let vf_variable = self.db.get_portfolio_value_before_date(self.id, end_of_period).unwrap();
+                vf = vf_fixed + vf_variable;
 
-                    cf = 0.0;
-                }
+                hp = (vf - (cf + vi))/(cf + vi);
+                hps.push(hp);
+
+                cf = 0.0;
             }
+
+            vi = vf;
         }
         let hp1 = hps.pop().expect("No valid cash flow periods!");
-        let twr = hps.iter().fold((1.0 + hp1), |acc,hp| { acc * (1.0 + hp) }) - 1.0;
+        let twr = hps.iter().fold(1.0 + hp1, |acc,hp| { acc * (1.0 + hp) }) - 1.0;
         return twr * 100.0;
     }
 
