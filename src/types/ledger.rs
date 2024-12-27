@@ -7,7 +7,8 @@ use super::participants::ParticipantType;
 use super::participants::ParticipantRecord;
 use super::transfer_types::{self, TransferType};
 
-pub struct LedgerEntry {
+#[derive(Clone)]
+pub struct LedgerInfo {
     pub date: String,
     pub amount: f32,
     pub transfer_type: TransferType,
@@ -16,9 +17,10 @@ pub struct LedgerEntry {
     pub description: String,
 }
 
-pub struct Ledger { 
+#[derive(Clone)]
+pub struct LedgerRecord { 
     pub id : u32, 
-    pub entry : LedgerEntry
+    pub info : LedgerInfo
 }
 
 impl DbConn {
@@ -29,7 +31,7 @@ impl DbConn {
                 date        TEXT NOT NULL, 
                 amount      REAL NOT NULL, 
                 transfer_type INTEGER NOT NULL, 
-                pid   INTEGER NOT NULL, 
+                pid         INTEGER NOT NULL, 
                 cid         INTEGER NOT NULL,
                 desc        TEXT,
                 aid         INTEGER NOT NULL,
@@ -50,7 +52,7 @@ impl DbConn {
         Ok(())
     }
 
-    pub fn add_ledger_entry(&mut self, aid: u32, entry: LedgerEntry) -> rusqlite::Result<u32, rusqlite::Error> {
+    pub fn add_ledger_entry(&mut self, aid: u32, entry: LedgerInfo) -> rusqlite::Result<u32, rusqlite::Error> {
         let sql: &str;
         let id = self.get_next_ledger_id().unwrap();
         sql = "INSERT INTO ledgers ( id, date, amount, transfer_type, pid, cid, desc, aid) VALUES ( ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)";
@@ -78,17 +80,17 @@ impl DbConn {
         Ok(id)
     }
 
-    pub fn get_ledger_entries_within_timestamps(&mut self, aid : u32, start : NaiveDate, end : NaiveDate) -> rusqlite::Result<Vec<LedgerEntry>, rusqlite::Error> {
+    pub fn get_ledger_entries_within_timestamps(&mut self, aid : u32, start : NaiveDate, end : NaiveDate) -> rusqlite::Result<Vec<LedgerInfo>, rusqlite::Error> {
         let p = rusqlite::params![aid, start.to_string(), end.to_string()];
         let sql = "SELECT * FROM ledgers WHERE aid = (?1) and date >= (?2) and date <= (?3) ORDER by date ASC";
 
         let mut stmt = self.conn.prepare(sql)?;
         let exists = stmt.exists(p)?;
-        let mut entries: Vec<LedgerEntry> = Vec::new();
+        let mut entries: Vec<LedgerInfo> = Vec::new();
         match exists { 
             true => {
                 let found_entries = stmt.query_map( p, |row| {
-                    Ok( LedgerEntry { 
+                    Ok( LedgerInfo { 
                         date : row.get(1)?, 
                         amount : row.get(2)?, 
                         transfer_type : TransferType::from(row.get::<_, u32>(3)? as u32),
@@ -260,7 +262,7 @@ impl Autocomplete for ParticipantAutoCompleter {
 
 }
 
-// pub fn record_ledger_entry(_aid: u32, _db: &mut DbConn, action : Option<TransferType> ) -> LedgerEntry {
+// pub fn record_ledger_entry(_aid: u32, _db: &mut DbConn, action : Option<TransferType> ) -> LedgerInfo {
 //     // this function returns either "Ok" or "Err". "Ok" indicates that the type T in Result<T, E>
 //     // is okay to be used.
 //     let date_input: Result<NaiveDate, InquireError> = DateSelect::new("Enter date").prompt();
@@ -428,7 +430,7 @@ impl Autocomplete for ParticipantAutoCompleter {
 //         .unwrap()
 //         .to_string();
 
-//     let entry = LedgerEntry {
+//     let entry = LedgerInfo {
 //         date: date,
 //         amount: amount,
 //         transfer_type: transfer_type,

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use autocompletion::Replacement;
 use chrono::format::Fixed;
 use inquire::*;
@@ -5,20 +6,24 @@ use chrono::{Datelike, NaiveDate};
 use type_aliases::Suggester;
 use yahoo_finance_api::PeriodInfo;
 use crate::database::DbConn;
-use crate::types::ledger::{LedgerEntry, ParticipantAutoCompleter};
+use crate::types::ledger::{LedgerInfo, LedgerRecord, ParticipantAutoCompleter};
 use crate::types::participants::{self, ParticipantType};
 use crate::types::transfer_types::TransferType;
 use crate::types::categories::CategoryAutoCompleter;
+use crate::types::accounts::AccountRecord;
+use crate::tui::decode_and_create_account_type;
 
 pub struct FixedAccount { 
     pub id : u32,
+    pub uid : u32,
     pub db : DbConn,        
 }
 
 impl FixedAccount { 
 
-    pub fn new( id : u32, db : DbConn ) -> Self {
+    pub fn new( uid : u32, id : u32, db : DbConn ) -> Self {
         let acct = Self { 
+            uid : uid,
             id : id, 
             db : db
         };
@@ -58,7 +63,7 @@ impl FixedAccount {
             .unwrap()
             .to_string();
 
-        let withdrawal = LedgerEntry {
+        let withdrawal = LedgerInfo {
             date : date_input,
             amount : amount_input,
             transfer_type : TransferType::WidthdrawalToExternalAccount,
@@ -67,7 +72,29 @@ impl FixedAccount {
             description : description_input
         };
 
-        self.db.add_ledger_entry(self.id, withdrawal).unwrap();
+        let link = Confirm::new("Link transaction to another account?").prompt().unwrap();
+        let id = self.db.add_ledger_entry(self.id, withdrawal.clone()).unwrap();
+        let entry = LedgerRecord { id : id, info : withdrawal};
+
+        if link {
+            let accounts = self.db.get_user_account_info(self.uid).unwrap();
+            let mut account_map : HashMap<String, AccountRecord> = HashMap::new();
+            let mut account_names : Vec<String> = Vec::new();
+            for account in accounts.iter() { 
+                account_names.push(account.info.name.clone());
+                account_map.insert(account.info.name.clone(), account.clone());
+            }
+
+            // add none clause
+            account_names.push("None".to_string());
+            let selected_account = Select::new("Select account:", account_names).prompt().unwrap().to_string();
+            let acctx = account_map.get(&selected_account).expect("Account not found!");
+            let mut acct = decode_and_create_account_type(self.uid, &mut self.db, acctx);
+
+            if acct.link(self.id, entry).is_none() { 
+                println!("Unable to link transactions. Please review!");
+            };
+        }
 
     }
     
@@ -89,7 +116,6 @@ impl FixedAccount {
 
         let pid = self.db.check_and_add_participant(self.id, selected_payee, ParticipantType::Payer);
 
-
         let cid;
         let selected_category = Text::new("Enter category:")
             .with_autocomplete( CategoryAutoCompleter {
@@ -106,7 +132,7 @@ impl FixedAccount {
             .unwrap()
             .to_string();
 
-        let withdrawal = LedgerEntry {
+        let deposit = LedgerInfo {
             date : date_input,
             amount : amount_input,
             transfer_type : TransferType::DepositFromExternalAccount,
@@ -115,7 +141,28 @@ impl FixedAccount {
             description : description_input
         };
 
-        self.db.add_ledger_entry(self.id, withdrawal).unwrap();
+        let link = Confirm::new("Link transaction to another account?").prompt().unwrap();
+        let id = self.db.add_ledger_entry(self.id, deposit.clone()).unwrap();
+        let entry = LedgerRecord { id : id, info : deposit};
+
+        if link {
+            let accounts = self.db.get_user_account_info(self.uid).unwrap();
+            let mut account_map : HashMap<String, AccountRecord> = HashMap::new();
+            let mut account_names : Vec<String> = Vec::new();
+            for account in accounts.iter() { 
+                account_names.push(account.info.name.clone());
+                account_map.insert(account.info.name.clone(), account.clone());
+            }
+
+            // add none clause
+            account_names.push("None".to_string());
+            let selected_account = Select::new("Select account:", account_names).prompt().unwrap().to_string();
+            let acctx = account_map.get(&selected_account).expect("Account not found!");
+            let mut acct = decode_and_create_account_type(self.uid, &mut self.db, acctx);
+
+            acct.link(self.id, entry);
+        }
+
     }
 
     pub fn get_current_value(&mut self) -> f32 { 

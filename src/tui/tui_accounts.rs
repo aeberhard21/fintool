@@ -7,7 +7,7 @@ use crate::types::accounts::*;
 use crate::database::db_banks::BankRecord;
 use crate::database::db_cd::CdRecord;
 // use crate::database::db_hsa::HsaRecord;
-use crate::types::investments::StockRecord;
+use crate::types::investments::StockInfo;
 use crate::database::{self, *};
 use crate::tui::tui_budgets::create_budget;
 use crate::stocks;
@@ -88,7 +88,7 @@ pub fn create_account(_atype: AccountType, _uid: u32, _db: &mut DbConn) -> u32 {
                 .unwrap();
         }
     }
-    let account = AccountRecord {
+    let account = AccountInfo {
         atype: _atype,
         name: name,
         has_stocks: has_stocks,
@@ -171,7 +171,7 @@ pub fn record_f32_amount() -> BankRecord {
 //         .with_default(false)
 //         .prompt()
 //         .unwrap();
-//     let mut stocks: Vec<StockRecord> = Vec::new();
+//     let mut stocks: Vec<StockInfo> = Vec::new();
 //     loop {
 //         if add_stocks {
 //             match record_stock_purchase(_uid) {
@@ -193,7 +193,7 @@ pub fn record_f32_amount() -> BankRecord {
 //     };
 // }
 
-pub fn record_stock_purchase() -> Option<StockRecord> {
+pub fn record_stock_purchase() -> Option<StockInfo> {
     let another = false;
     let mut ticker: String = String::new();
     loop {
@@ -243,7 +243,7 @@ pub fn record_stock_purchase() -> Option<StockRecord> {
         .prompt()
         .unwrap();
 
-    return Some(StockRecord {
+    return Some(StockInfo {
         date: date_input.unwrap().to_string(),
         ticker: ticker,
         shares: shares,
@@ -301,10 +301,10 @@ pub fn get_net_wealth(uid: u32, _db: &mut DbConn) -> f64 {
         .get_user_account_info(uid)
         .expect("Unable to retrieve user accounts!");
     for account in accounts {
-        if account.record.has_bank {
+        if account.info.has_bank {
             nw += _db.get_bank_value(account.id as u32).unwrap().amount as f64
         }
-        if account.record.has_stocks {
+        if account.info.has_stocks {
             nw += get_total_of_stocks(account.id, _db, database::SQLITE_WILDCARD.to_string());
         }
     }
@@ -451,7 +451,7 @@ pub fn get_growth(aid: u32, _db: &mut DbConn) {
     let (mut bank_history, bank_initial) : (Vec<BankRecord>, BankRecord);
     let bank_growth : f32;
 
-    if account.record.has_bank {
+    if account.info.has_bank {
         (bank_history, bank_initial) = _db.get_bank_history(aid, period_start.date().to_string(), period_end.date().to_string()).unwrap();
         bank_history.reverse();
         let bank_end_amount = bank_history.get(0).unwrap().amount;
@@ -459,7 +459,7 @@ pub fn get_growth(aid: u32, _db: &mut DbConn) {
         println!("Initial: {} End: {} Growth: {}", bank_initial.amount, bank_end_amount, bank_growth)
     }
 
-    if account.record.has_stocks {
+    if account.info.has_stocks {
         let tickers = _db.get_stock_tickers(aid).unwrap();
         let ticker = Select::new("Select ticker:", tickers).prompt().unwrap().to_string();
         let stock_growth = _db.get_stock_growth(aid, ticker, 

@@ -1,4 +1,4 @@
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub enum TransferType {
     WidthdrawalToExternalAccount,
     DepositFromExternalAccount,

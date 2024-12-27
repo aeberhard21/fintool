@@ -60,7 +60,7 @@ impl From<String> for AccountType {
 }
 
 #[derive(Clone)]
-pub struct AccountRecord {
+pub struct AccountInfo {
     pub atype: AccountType,
     pub name: String,
     pub has_stocks: bool,
@@ -70,9 +70,16 @@ pub struct AccountRecord {
 }
 
 #[derive(Clone)]
-pub struct AccountEntry { 
+pub struct AccountRecord { 
     pub id : u32, 
-    pub record : AccountRecord,
+    pub info : AccountInfo,
+}
+
+pub struct AccountTransaction { 
+    pub from_account: u32, 
+    pub to_account: u32, 
+    pub from_ledger : u32, 
+    pub to_ledger : u32
 }
 
 impl DbConn {
@@ -100,7 +107,33 @@ impl DbConn {
         Ok(())
     }
 
-    pub fn add_account(&mut self, uid: u32, info: &AccountRecord) -> Result<u32> {
+    pub fn create_account_transaction_table(&mut self) -> Result<()> { 
+        let sql: &str = "CREATE TABLE IF NOT EXISTS account_transactions (
+            id              INTEGER NOT NULL PRIMARY KEY,
+            from_account_id INTEGER NOT NULL, 
+            from_ledger_id  INTEGER NOT NULL, 
+            to_account_id   INTEGER NOT NULL,
+            to_ledger_id    INTEGER NOT NULL, 
+            FOREIGN KEY (from_account_id) REFERENCES ledgers(id),
+            FOREIGN KEY (to_account_id) REFERENCES ledgers(id)
+            FOREIGN KEY (from_ledger_id) REFERENCES ledgers(id),
+            FOREIGN KEY (to_ledger_id) REFERENCES ledgers(id)
+        )";
+
+        let rs = self.conn.execute(sql, ());
+        match rs {
+            Ok(_) => {
+                println!("Created account transactions table!")
+            }
+            Err(error) => {
+                panic!("Unable to create: {}", error)
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn add_account(&mut self, uid: u32, info: &AccountInfo) -> Result<u32> {
         let aid = self.get_next_account_id().unwrap();
         let p = rusqlite::params![aid, info.atype as usize, info.name, info.has_stocks, info.has_bank, info.has_ledger, info.has_budget, uid]; 
         let sql: &str = "SELECT * FROM accounts WHERE uid = (?1) and name = (?2)";
@@ -124,23 +157,39 @@ impl DbConn {
         }
     }
 
+    pub fn add_account_transaction(&mut self, info: AccountTransaction) -> Result<u32> {
+        let tid = self.get_next_transaction_id().unwrap();
+        let p = rusqlite::params![tid, info.from_account, info.to_account, info.from_ledger, info.to_ledger];
+        let sql = "INSERT INTO account_transactions (id, from_account_id, to_account_id, from_ledger_id, to_ledger_id) VALUES (?1, ?2, ?3, ?4, ?5)";
+        let rs = self.conn.execute(sql, p);
+        match rs {
+            Ok(_) => Ok(tid),
+            Err(error) => {
+                panic!(
+                    "Unable to add transaction between {} and {}!",
+                    &info.from_account, &info.to_account
+                );
+            }
+        }
+    }
+
     pub fn get_user_account_info(
         &mut self,
         uid: u32,
-    ) -> rusqlite::Result<Vec<AccountEntry>, Error> {
+    ) -> rusqlite::Result<Vec<AccountRecord>, Error> {
         let sql: &str = "SELECT * FROM accounts WHERE uid = (?1)";
         let p = rusqlite::params![uid];
         let mut stmt = self.conn.prepare(sql)?;
         let exists = stmt.exists(p)?;
-        let mut accounts: Vec<AccountEntry> = Vec::new();
+        let mut accounts: Vec<AccountRecord> = Vec::new();
         match exists {
             true => {
                 stmt = self.conn.prepare(sql)?;
-                let names: Vec<Result<AccountEntry, Error>> = stmt
+                let names: Vec<Result<AccountRecord, Error>> = stmt
                     .query_map(p, |row| {
-                        Ok(AccountEntry { 
+                        Ok(AccountRecord { 
                             id: row.get(0)?,
-                            record : AccountRecord {
+                            info :AccountInfo {
                             atype: AccountType::from(row.get::<_, u32>(1)? as u32),
                             name: row.get(2)?,
                             has_stocks: row.get(3)?,
@@ -278,7 +327,7 @@ impl DbConn {
             }
         }
     }
-    pub fn get_account(&mut self, aid: u32) -> rusqlite::Result<AccountEntry, Error> {
+    pub fn get_account(&mut self, aid: u32) -> rusqlite::Result<AccountRecord, Error> {
         let sql: &str = "SELECT * from accounts WHERE id = (?1)";
         let p = rusqlite::params![aid];
         let mut stmt = self.conn.prepare(sql)?;
@@ -286,11 +335,11 @@ impl DbConn {
         match exists {
             true => {
                 stmt = self.conn.prepare(sql)?;
-                let acct: Result<AccountEntry, Error> = stmt
+                let acct: Result<AccountRecord, Error> = stmt
                     .query_row(p, |row| {
-                        Ok(AccountEntry { 
+                        Ok(AccountRecord { 
                             id : row.get(0)?,
-                            record : AccountRecord {
+                            info :AccountInfo {
                             atype: AccountType::from(row.get::<_, u32>(1)?),
                             name: row.get(2)?,
                             has_stocks: row.get(3)?,

@@ -4,6 +4,9 @@ use inquire::Confirm;
 use inquire::InquireError;
 use inquire::Text;
 
+use crate::types::accounts::AccountTransaction;
+use crate::types::ledger::LedgerInfo;
+use crate::types::ledger::LedgerRecord;
 use crate::OffsetDateTime;
 use chrono::{Datelike, Days, Local, Utc};
 use chrono::{Date, NaiveDate, NaiveTime, NaiveDateTime, Weekday};
@@ -14,7 +17,7 @@ use crate::types::accounts;
 use crate::types::participants::ParticipantType;
 use crate::types::transfer_types;
 use crate::types::transfer_types::TransferType;
-use crate::types::accounts::AccountRecord;
+use crate::types::accounts::AccountInfo;
 use crate::tui::AccountCreation;
 use crate::tui::query_user_for_analysis_period;
 use crate::types::accounts::AccountType;
@@ -23,13 +26,14 @@ use super::variable_account;
 use super::variable_account::VariableAccount;
 
 pub struct InvestmentAccountManager {
+    uid   : u32, 
     id    : u32,
     db    : DbConn,
     variable : VariableAccount,
 }
 
 impl AccountCreation for InvestmentAccountManager {
-    fn create() -> AccountRecord {
+    fn create() -> AccountInfo {
         let mut name: String = String::new();
         loop {
             name = Text::new("Enter investment account name:")
@@ -47,7 +51,7 @@ impl AccountCreation for InvestmentAccountManager {
         let mut has_ledger = false;
         let mut has_budget = false;
     
-        let account: AccountRecord = AccountRecord {
+        let account: AccountInfo = AccountInfo {
             atype: AccountType::Investment,
             name: name,
             has_stocks: has_stocks,
@@ -62,11 +66,12 @@ impl AccountCreation for InvestmentAccountManager {
 
 
 impl InvestmentAccountManager {
-    pub fn new(id : u32, db : &mut DbConn) -> Self {
+    pub fn new(uid : u32, id : u32, db : &mut DbConn) -> Self {
         let mut acct = Self { 
+            uid : uid, 
             id : id, 
             db : db.clone(),
-            variable : VariableAccount::new(id, db)
+            variable : VariableAccount::new(uid, id, db)
         };
 
         // acct.db.add_participant(id, ParticipantType::Payee, "Fixed".to_string());
@@ -97,7 +102,7 @@ impl AccountOperations for InvestmentAccountManager {
     //     db.add_category(account_id, "Deposit".to_string());
     //     db.add_category(account_id, "Withdrawal".to_string());
 
-    //     acct.record();
+    //     acct.info();
     // }
 
     fn record( &mut self ) {
@@ -157,6 +162,35 @@ impl AccountOperations for InvestmentAccountManager {
                 panic!("Unrecognized input!");
             }
         }
+    }
+    fn link( &mut self, transacting_account : u32, entry : LedgerRecord ) -> Option<u32> {
+        let mut my_entry = entry.clone();
+        let mut from_account;
+        let mut to_account;
+
+        match my_entry.info.transfer_type { 
+            TransferType::DepositFromExternalAccount => {
+                my_entry.info.transfer_type = TransferType::WidthdrawalToExternalAccount;
+                from_account = self.id;
+                to_account = transacting_account;
+            } TransferType::WidthdrawalToExternalAccount =>{
+                my_entry.info.transfer_type = TransferType::DepositFromExternalAccount;
+                from_account = transacting_account;
+                to_account = self.id;
+            }
+            _ => {
+                return None;
+            }
+        }
+
+        let transaction_record = AccountTransaction { 
+            from_account : from_account,
+            to_account : to_account, 
+            from_ledger : entry.id,
+            to_ledger : self.db.add_ledger_entry(self.id, my_entry.info).unwrap()
+        };
+
+        return Some(self.db.add_account_transaction(transaction_record).unwrap());
     }
 
 }

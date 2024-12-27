@@ -1,9 +1,9 @@
-// use super::{db_banks::BankRecord, db_investments::StockRecord, DbConn, SQLITE_WILDCARD};
+// use super::{db_banks::BankRecord, db_investments::StockInfo, DbConn, SQLITE_WILDCARD};
 // use rusqlite::{Error, Result};
 
 // pub struct HsaRecord {
 //     pub fixed: BankRecord,
-//     pub investments: Vec<StockRecord>,
+//     pub investments: Vec<StockInfo>,
 // }
 
 // impl DbConn {

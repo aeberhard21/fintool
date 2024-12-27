@@ -5,7 +5,7 @@ use yahoo::{YResponse, YahooConnector, YahooError};
 use yahoo_finance_api::{self as yahoo, Quote};
 // use time::OffsetDateTime;
 
-use crate::types::investments::StockRecord;
+use crate::types::investments::StockInfo;
 
 pub enum StockRange { 
     OneDay,
@@ -49,7 +49,7 @@ pub fn get_stock_history(ticker: String, period_start : NaiveDate, period_end : 
     return rs.quotes();
 } 
 
-pub fn return_stock_values(stocks: Vec<StockRecord>) -> f64 {
+pub fn return_stock_values(stocks: Vec<StockInfo>) -> f64 {
     let mut value: f64 = 0.0;
     for s in stocks {
         value += get_stock_at_close(s.ticker).unwrap() * s.shares as f64;

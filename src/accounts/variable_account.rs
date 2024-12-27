@@ -11,8 +11,8 @@ use yahoo_finance_api::Quote;
 use regex::Regex;
 
 use crate::{database::DbConn, types::transfer_types};
-use crate::types::investments::{StockEntries, StockRecord};
-use crate::types::ledger::LedgerEntry;
+use crate::types::investments::{StockRecord, StockInfo};
+use crate::types::ledger::LedgerInfo;
 use crate::types::participants::ParticipantType;
 use crate::types::transfer_types::TransferType;
 use crate::stocks;
@@ -21,24 +21,26 @@ use super::fixed_account::{self, FixedAccount};
 
 pub struct VariableAccount {
     pub id : u32,
+    pub uid : u32, 
     pub db : DbConn,
     pub fixed : FixedAccount
 }
 
 impl VariableAccount {
 
-    pub fn new(id : u32, db : &mut DbConn) -> Self {
+    pub fn new(uid : u32, id : u32, db : &mut DbConn) -> Self {
         let acct : VariableAccount = Self { 
             id : id, 
+            uid : uid,
             db : db.clone(), 
-            fixed : FixedAccount::new(id, db.clone())
+            fixed : FixedAccount::new(uid, id, db.clone())
         };
         acct
     }
 
     pub fn purchase_stock(&mut self) {
 
-        let purchase : LedgerEntry;
+        let purchase : LedgerInfo;
 
         let mut ticker: String = String::new();
         ticker = Text::new("Enter stock ticker: ")
@@ -75,7 +77,7 @@ impl VariableAccount {
 
         let date = date_input.unwrap().to_string();
 
-        purchase = LedgerEntry {
+        purchase = LedgerInfo {
             date : date.clone(),
             amount :  shares * costbasis,
             transfer_type : TransferType::WidthdrawalToInternalAccount,
@@ -90,7 +92,7 @@ impl VariableAccount {
 
         let ledger_id = self.db.add_ledger_entry(self.id, purchase).unwrap();
 
-        let stock_record = StockRecord {
+        let stock_record = StockInfo {
             date: date.clone(),
             ticker: ticker.clone(),
             shares: shares,
@@ -111,7 +113,7 @@ impl VariableAccount {
             .to_string();
         let pid = self.db.check_and_add_participant(self.id, ticker.clone(), ParticipantType::Payer);
 
-        // let owned_stocks: Vec<StockEntries> = self.db.get_stocks(self.id, ticker.clone()).unwrap();
+        // let owned_stocks: Vec<StockEntry> = self.db.get_stocks(self.id, ticker.clone()).unwrap();
         
         let sale_date  = DateSelect::new("Enter date of purchase").prompt().unwrap();
 
@@ -132,7 +134,7 @@ impl VariableAccount {
         let value_received = number_of_shares_sold * sale_price;
         let stock_cid = self.db.get_category_id(self.id, "Sold".to_string()).unwrap();
 
-        let sale = LedgerEntry { 
+        let sale = LedgerInfo { 
             date: sale_date.to_string(), 
             amount : value_received, 
             transfer_type: TransferType::DepositFromInternalAccount,
@@ -143,7 +145,7 @@ impl VariableAccount {
 
         let ledger_id = self.db.add_ledger_entry(self.id, sale).unwrap();
 
-        let sale_record = StockRecord { 
+        let sale_record = StockInfo { 
             ticker : ticker.clone(), 
             shares : number_of_shares_sold,
             costbasis : sale_price,
@@ -159,7 +161,7 @@ impl VariableAccount {
             .unwrap()
             .to_string();
 
-        let mut stocks : Vec<StockEntries> = Vec::new();
+        let mut stocks : Vec<StockRecord> = Vec::new();
         match sell_method.as_str() { 
             "LIFO" => {
                 stocks = self.db.get_stock_history_ascending(self.id, ticker.clone()).unwrap();
@@ -181,16 +183,16 @@ impl VariableAccount {
             let purchase_id = stock.id;
 
             // can't sell what you don't have
-            if stock.record.remaining == 0.0 { continue; }
+            if stock.info.remaining == 0.0 { continue; }
             
-            if stock.record.remaining > num_shares_remaining_to_allocate  { 
-                stock.record.remaining -= num_shares_remaining_to_allocate;
+            if stock.info.remaining > num_shares_remaining_to_allocate  { 
+                stock.info.remaining -= num_shares_remaining_to_allocate;
                 num_shares_allocated = num_shares_remaining_to_allocate;
             } else { 
-                stock.record.remaining = 0.0;
-                num_shares_allocated = stock.record.remaining;
+                stock.info.remaining = 0.0;
+                num_shares_allocated = stock.info.remaining;
             }
-            self.db.update_stock_remaining(purchase_id.clone(), stock.record.remaining).unwrap();
+            self.db.update_stock_remaining(purchase_id.clone(), stock.info.remaining).unwrap();
             self.db.add_stock_sale_allocation(purchase_id, sale_id, num_shares_allocated).unwrap();
             num_shares_remaining_to_allocate -= num_shares_allocated;
 
@@ -284,7 +286,7 @@ impl VariableAccount {
     //     let mut rate : f32 = 0.0;
     //     let mut owned_shares : HashMap<String, f32> = HashMap::new();
     //     let mut stock_values : HashMap<String, HashMap<String, Quote>> = HashMap::new();
-    //     let mut share_txns   : HashMap<String, Vec<StockRecord>> = HashMap::new();
+    //     let mut share_txns   : HashMap<String, Vec<StockInfo>> = HashMap::new();
     //     let mut vi: f32 = 0.0;
     //     let mut single_ticker : bool = false;
     //     let mut tickers = Vec::new();

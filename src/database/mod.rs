@@ -57,6 +57,7 @@ impl DbConn {
         Self::create_investment_sale_allocation_table(self);
         Self::create_cd_table(self);
         Self::create_budget_table(self);
+        Self::create_account_transaction_table(self);
         Self::set_schema_version(&self.conn, CURRENT_DATABASE_SCHEMA_VERSION);
 
 
@@ -112,7 +113,8 @@ impl DbConn {
             cid     INTEGER NOT NULL,
             pid     INTEGER NOT NULL,
             bid     INTEGER NOT NULL, 
-            lid     INTEGER NOT NULL
+            lid     INTEGER NOT NULL, 
+            tid     INTEGER NOT NULL
         )";
         self.conn.execute(sql, ())?;
         let sql = "SELECT uid FROM info";
@@ -120,8 +122,8 @@ impl DbConn {
         let exists = stmt.exists(())?;
         if !exists {
             let sql: &str =
-                "INSERT INTO info (uid, aid, spid, ssid, said, cid, pid, bid, lid) VALUES ( ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)";
-            match self.conn.execute(sql, (0, 0, 0, 0, 0, 0, 0, 0, 0)) {
+                "INSERT INTO info (uid, aid, spid, ssid, said, cid, pid, bid, lid, tid) VALUES ( ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)";
+            match self.conn.execute(sql, (0, 0, 0, 0, 0, 0, 0, 0, 0, 0)) {
                 Ok(rows_inserted) => {
                     println!("Initialized info table: {}!", rows_inserted);
                 }
@@ -282,6 +284,23 @@ impl DbConn {
             }
             false => {
                 panic!("The next ledger ID within table 'info' does not exist.");
+            }
+        }
+    }
+
+    pub fn get_next_transaction_id(&mut self) -> rusqlite::Result<u32> {
+        let sql = "SELECT tid FROM info";
+        let mut stmt = self.conn.prepare(sql)?;
+        let exists = stmt.exists(())?;
+        match exists {
+            true => {
+                let id = stmt.query_row((), |row| row.get::<_, u32>(0))?;
+                let sql = "UPDATE info SET tid = tid + 1";
+                self.conn.execute(sql, ())?;
+                Ok(id)
+            }
+            false => {
+                panic!("The next transaction ID within table 'info' does not exist.");
             }
         }
     }

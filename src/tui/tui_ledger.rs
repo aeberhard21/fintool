@@ -1,6 +1,6 @@
 // // use crate::database::db_accounts::AccountType;
 // use crate::types::accounts::*;
-// // use crate::database::db_ledger::LedgerEntry;
+// // use crate::database::db_ledger::LedgerInfo;
 // // use crate::ledger;
 // use crate::types::participants::PeopleType;
 // use crate::database::*;
@@ -12,7 +12,7 @@
 
 // // use self::db_accounts::AccountRecord;
 
-// pub fn record_ledger_entry(_aid: u32, _db: &mut DbConn, action : Option<TransferType> ) -> LedgerEntry {
+// pub fn record_ledger_entry(_aid: u32, _db: &mut DbConn, action : Option<TransferType> ) -> LedgerInfo {
 //     // this function returns either "Ok" or "Err". "Ok" indicates that the type T in Result<T, E>
 //     // is okay to be used.
 //     let date_input: Result<NaiveDate, InquireError> = DateSelect::new("Enter date").prompt();
@@ -180,7 +180,7 @@
 //         .unwrap()
 //         .to_string();
 
-//     let entry = LedgerEntry {
+//     let entry = LedgerInfo {
 //         date: date,
 //         amount: amount,
 //         transfer_type: transfer_type,

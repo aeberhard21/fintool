@@ -13,7 +13,7 @@ use crate::stocks::{self, get_stock_history};
 use crate::database::DbConn;
 use yahoo_finance_api::Quote;
 
-pub struct StockRecord {
+pub struct StockInfo {
     pub ticker: String,
     pub shares: f32,
     pub costbasis: f32,
@@ -22,9 +22,9 @@ pub struct StockRecord {
     pub ledger_id : u32
 }
 
-pub struct StockEntries {
+pub struct StockRecord {
     pub id: u32,
-    pub record: StockRecord, 
+    pub info: StockInfo, 
 }
 
 impl DbConn {
@@ -96,7 +96,7 @@ impl DbConn {
         Ok(())
     }
 
-    pub fn add_stock(&mut self, aid: u32, record: StockRecord) -> Result<u32> {
+    pub fn add_stock(&mut self, aid: u32, record: StockInfo) -> Result<u32> {
         let id = self.get_next_stock_purchase_id().unwrap();
         let p = rusqlite::params!(
             id,
@@ -122,7 +122,7 @@ impl DbConn {
         }
     }
 
-    pub fn sell_stock(&mut self, aid : u32, sale_record : StockRecord ) -> Result<u32> {
+    pub fn sell_stock(&mut self, aid : u32, sale_record : StockInfo ) -> Result<u32> {
         let id = self.get_next_stock_sale_id().unwrap();
         let p = rusqlite::params!(
             id,
@@ -221,7 +221,7 @@ impl DbConn {
         &mut self,
         aid: u32,
         ticker: String,
-    ) -> Result<Vec<StockEntries>, rusqlite::Error> {
+    ) -> Result<Vec<StockRecord>, rusqlite::Error> {
         let p = rusqlite::params![aid, ticker];
         let sql = "SELECT * FROM stock_purchases WHERE aid = (?1) and ticker LIKE (?2)";
         let mut stmt = self.conn.prepare(sql)?;
@@ -232,9 +232,9 @@ impl DbConn {
                 stmt = self.conn.prepare(sql)?;
                 let tickers = stmt
                     .query_map(p, |row| {
-                        Ok(StockEntries{
+                        Ok(StockRecord{
                             id: row.get(0)?, 
-                            record: StockRecord {
+                            info: StockInfo {
                                 date: row.get(1)?,
                                 ticker: row.get(2)?,
                                 shares: row.get(3)?,
@@ -259,7 +259,7 @@ impl DbConn {
         }
     }
 
-    pub fn get_stock_history(&mut self, aid: u32, ticker: String, start: NaiveDate, end : NaiveDate) ->rusqlite::Result<(Vec<StockRecord>, StockRecord), rusqlite::Error> {
+    pub fn get_stock_history(&mut self, aid: u32, ticker: String, start: NaiveDate, end : NaiveDate) ->rusqlite::Result<(Vec<StockInfo>, StockInfo), rusqlite::Error> {
         let p = rusqlite::params![aid, ticker, start.to_string(), end.to_string()];
         let sql = "SELECT * FROM stock_purchases WHERE aid = (?1) and ticker LIKE (?2) and date >= (?3) and date <= (?4) ORDER BY date ASC";
 
@@ -267,14 +267,14 @@ impl DbConn {
         let mut stmt = self.conn.prepare(sql)?;
         let exists = stmt.exists(p)?;
         let mut stocks = Vec::new();
-        let mut initial: StockRecord = StockRecord{shares : 0.0, ticker : ticker.clone(), costbasis : 0.0, date : start.checked_sub_days(Days::new(1)).unwrap().to_string(), remaining : 0.0, ledger_id : 0};
+        let mut initial: StockInfo = StockInfo{shares : 0.0, ticker : ticker.clone(), costbasis : 0.0, date : start.checked_sub_days(Days::new(1)).unwrap().to_string(), remaining : 0.0, ledger_id : 0};
 
         match exists {
             true => {
                 stmt = self.conn.prepare(sql)?;
                 let tickers = stmt
                     .query_map(p, |row| {
-                        Ok(StockRecord {
+                        Ok(StockInfo {
                             date: row.get(1)?,
                             ticker: row.get(2)?,
                             shares: row.get(3)?,
@@ -307,7 +307,7 @@ impl DbConn {
                 let exists = stmt.exists(p)?;
                 if exists {
                     let previously_purchased_stock = stmt .query_map(p, |row| {
-                        Ok(StockRecord {
+                        Ok(StockInfo {
                             date: row.get(1)?,
                             ticker: row.get(2)?,
                             shares: row.get(3)?,
@@ -344,7 +344,7 @@ impl DbConn {
         // return stocks;
     }
 
-    pub fn get_stock_history_ascending(&mut self, aid: u32, ticker: String) ->rusqlite::Result<Vec<StockEntries>, rusqlite::Error> {
+    pub fn get_stock_history_ascending(&mut self, aid: u32, ticker: String) ->rusqlite::Result<Vec<StockRecord>, rusqlite::Error> {
         let p = rusqlite::params![aid, ticker];
         let sql = "SELECT * FROM stock_purchases WHERE aid = (?1) and ticker LIKE (?2) ORDER BY date ASC";
 
@@ -358,9 +358,9 @@ impl DbConn {
                 stmt = self.conn.prepare(sql)?;
                 let tickers = stmt
                     .query_map(p, |row| {
-                        Ok(StockEntries { 
+                        Ok(StockRecord { 
                             id : row.get(0)?, 
-                            record : StockRecord {
+                            info : StockInfo {
                                 date: row.get(1)?,
                                 ticker: row.get(2)?,
                                 shares: row.get(3)?,
@@ -390,7 +390,7 @@ impl DbConn {
         // return stocks;
     }
 
-    pub fn get_stock_history_descending(&mut self, aid: u32, ticker: String) ->rusqlite::Result<Vec<StockEntries>, rusqlite::Error> {
+    pub fn get_stock_history_descending(&mut self, aid: u32, ticker: String) ->rusqlite::Result<Vec<StockRecord>, rusqlite::Error> {
         let p = rusqlite::params![aid, ticker];
         let sql = "SELECT * FROM stock_purchases WHERE aid = (?1) and ticker LIKE (?2) ORDER BY date DESC";
 
@@ -404,9 +404,9 @@ impl DbConn {
                 stmt = self.conn.prepare(sql)?;
                 let tickers = stmt
                     .query_map(p, |row| {
-                        Ok(StockEntries { 
+                        Ok(StockRecord { 
                             id : row.get(0)?,
-                            record : StockRecord {
+                            info : StockInfo {
                                 date: row.get(1)?,
                                 ticker: row.get(2)?,
                                 shares: row.get(3)?,
@@ -522,23 +522,23 @@ impl DbConn {
         Ok(sum)
     }
 
-    pub fn cumulate_stocks(self: &mut DbConn, aid: u32, ticker: String) -> Vec<StockRecord> {
+    pub fn cumulate_stocks(self: &mut DbConn, aid: u32, ticker: String) -> Vec<StockInfo> {
         let err_str = format!("Unable to retrieve stock information for account {}.", aid);
         let stocks = self.get_stocks(aid, ticker).expect(err_str.as_str());
         let mut map = HashMap::new();
         let mut cumulated_stocks = Vec::new();
         for stock in stocks {
-            match map.insert(stock.record.ticker.clone(), stock.record.shares) {
+            match map.insert(stock.info.ticker.clone(), stock.info.shares) {
                 None => {
                     continue;
                 }
                 Some(shares) => {
-                    map.insert(stock.record.ticker, stock.record.shares + shares);
+                    map.insert(stock.info.ticker, stock.info.shares + shares);
                 }
             }
         }
         for kv in map {
-            cumulated_stocks.push(StockRecord {
+            cumulated_stocks.push(StockInfo {
                 ticker: kv.0,
                 shares: kv.1,
                 costbasis: 0.0,
@@ -550,7 +550,7 @@ impl DbConn {
         return cumulated_stocks;
     }
 
-    pub fn time_weighted_return(self : &mut DbConn, quotes : Vec<Quote>, transactions : Vec<StockRecord>, initial: StockRecord) -> f32
+    pub fn time_weighted_return(self : &mut DbConn, quotes : Vec<Quote>, transactions : Vec<StockInfo>, initial: StockInfo) -> f32
     {
         let mut quote_lookup : HashMap<String, Quote> = HashMap::new();
         for quote in quotes {

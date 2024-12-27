@@ -19,9 +19,9 @@ use crate::database;
 // use crate::database::db_accounts::AccountFilter;
 // use crate::database::db_accounts::AccountType;
 use crate::types::accounts::*;
+use crate::types::investments::StockInfo;
 use crate::types::investments::StockRecord;
-use crate::types::investments::StockEntries;
-// use crate::database::db_ledger::LedgerEntry;
+// use crate::database::db_ledger::LedgerInfo;
 // use crate::database::db_ledger::TransferType;
 use crate::types::ledger::*;
 use crate::types::transfer_types::TransferType;
@@ -93,11 +93,11 @@ pub fn menu(_db: &mut DbConn) {
 
 fn access_account(uid : u32, db : &mut DbConn) {
     const ACCOUNT_OPTIONS : [&'static str; 3] = ["Create Account", "Select Account", "Exit"];
-    let mut accounts: Vec<AccountEntry> = db.get_user_account_info(uid).unwrap();
+    let mut accounts: Vec<AccountRecord> = db.get_user_account_info(uid).unwrap();
     let mut acct: Box<dyn AccountOperations>;
     let mut new_account;
     let mut choice;
-    const ACCT_ACTIONS : [&'static str; 2] = ["Record", "Report"];
+    const ACCT_ACTIONS : [&'static str; 3] = ["Record", "Report", "None"];
 
     let mut accounts_is_empty = accounts.is_empty();
 
@@ -118,19 +118,19 @@ fn access_account(uid : u32, db : &mut DbConn) {
                     "Bank Account" => {
                         new_account = BankAccount::create();
                         id = db.add_account(uid, &new_account).unwrap();
-                        acct = Box::new(BankAccount::new(id, db));
+                        acct = Box::new(BankAccount::new(uid, id, db));
 
                     }
                     "Investment Account" => {
                         new_account = InvestmentAccountManager::create();
                         id = db.add_account(uid, &new_account).unwrap();
-                        acct = Box::new(InvestmentAccountManager::new(id, db));
+                        acct = Box::new(InvestmentAccountManager::new(uid, id, db));
                     }
                     _ => {
                         panic!("Unrecognized input!");
                     }
                 }
-                accounts.push( AccountEntry { id : id, record : new_account });
+                accounts.push( AccountRecord { id : id, info :new_account });
                 accounts_is_empty = false;
                 acct.record();
 
@@ -141,11 +141,11 @@ fn access_account(uid : u32, db : &mut DbConn) {
             }
             "Select Account" => { 
 
-                let mut account_map : HashMap<String, AccountEntry> = HashMap::new();
+                let mut account_map : HashMap<String, AccountRecord> = HashMap::new();
                 let mut account_names : Vec<String> = Vec::new();
                 for account in accounts.iter() { 
-                    account_names.push(account.record.name.clone());
-                    account_map.insert(account.record.name.clone(), account.clone());
+                    account_names.push(account.info.name.clone());
+                    account_map.insert(account.info.name.clone(), account.clone());
                 }
 
                 // add none clause
@@ -157,8 +157,8 @@ fn access_account(uid : u32, db : &mut DbConn) {
                 }
 
                 let acctx = account_map.get(&selected_account).expect("Account not found!");
-                acct = decode_and_create_account_type(db, acctx);
-                // acct.record();                
+                acct = decode_and_create_account_type(uid, db, acctx);
+                // acct.info();                
             }
             "Exit" => {
                 return;
@@ -175,6 +175,9 @@ fn access_account(uid : u32, db : &mut DbConn) {
             }
             "Report" => {
                 acct.report();
+            }
+            "None" => { 
+                continue;
             }
             _ => { 
                 panic!("Invalid menu option!");
@@ -270,12 +273,12 @@ fn tui_record(_uid: u32, _db: &mut DbConn) {
         match command.as_str() {
             "Bank" => {
                 let (aid, account) = select_account_by_type(_uid, _db, AccountType::Bank);
-                let mut bank_account : BankAccount = BankAccount::new(aid, _db);
+                let mut bank_account : BankAccount = BankAccount::new(_uid, aid, _db);
                 bank_account.record();
             }
             "Retirement"|"Investment"|"Health" => {
                 let (aid, account) = select_account_by_type(_uid, _db, AccountType::from(command));
-                let mut investment_account : InvestmentAccountManager = InvestmentAccountManager::new(aid, _db);
+                let mut investment_account : InvestmentAccountManager = InvestmentAccountManager::new(_uid, aid, _db);
                 investment_account.record();
             }
             "none" => {
@@ -343,7 +346,7 @@ fn tui_report(_uid: u32, _db: &mut DbConn) {
             .with_default(false)
             .prompt()
             .unwrap();
-            let mut acct = InvestmentAccountManager::new(aid, _db);
+            let mut acct = InvestmentAccountManager::new(_uid, aid, _db);
             acct.report();
             
         }
@@ -389,16 +392,17 @@ pub trait AccountOperations {
     fn modify( &mut self );
     fn export( &mut self );
     fn report( &mut self );
+    fn link (&mut self, transacting_account : u32, ledger : LedgerRecord) -> Option<u32>;
 }
 
-pub fn decode_and_create_account_type(db : & mut DbConn, account : &AccountEntry) -> Box<dyn AccountOperations> {
-    match account.record.atype {
+pub fn decode_and_create_account_type(uid : u32, db : & mut DbConn, account : &AccountRecord) -> Box<dyn AccountOperations> {
+    match account.info.atype {
         AccountType::Bank => {
-            Box::new(BankAccount::new(account.id, db))
+            Box::new(BankAccount::new(uid, account.id, db))
         }
         AccountType::Investment => {
             println!("Here");
-            Box::new(InvestmentAccountManager::new(account.id, db))
+            Box::new(InvestmentAccountManager::new(uid, account.id, db))
         }
         _ => {
             panic!("Invalid account type!");
@@ -407,7 +411,7 @@ pub fn decode_and_create_account_type(db : & mut DbConn, account : &AccountEntry
 }
 
 pub trait AccountCreation { 
-    fn create() -> AccountRecord;
+    fn create() -> AccountInfo;
 }
 
 pub fn query_user_for_analysis_period() -> (NaiveDate, NaiveDate) { 
