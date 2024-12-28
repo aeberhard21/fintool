@@ -95,8 +95,8 @@ fn access_account(uid : u32, db : &mut DbConn) {
     const ACCOUNT_OPTIONS : [&'static str; 3] = ["Create Account", "Select Account", "Exit"];
     let mut accounts: Vec<AccountRecord> = db.get_user_account_info(uid).unwrap();
     let mut acct: Box<dyn AccountOperations>;
-    let mut new_account;
     let mut choice;
+    let mut new_account;
     const ACCT_ACTIONS : [&'static str; 3] = ["Record", "Report", "None"];
 
     let mut accounts_is_empty = accounts.is_empty();
@@ -111,26 +111,9 @@ fn access_account(uid : u32, db : &mut DbConn) {
 
         match choice.as_str() {
             "Create Account" => {
-                const ACCOUNT_TYPES : [&'static str; 2] = ["Bank Account", "Investment Account"];
-                let selected_account_type = Select::new("What account type would you like to create: ", ACCOUNT_TYPES.to_vec()).prompt().unwrap().to_string();
-                let mut id;
-                match selected_account_type.as_str() { 
-                    "Bank Account" => {
-                        new_account = BankAccount::create();
-                        id = db.add_account(uid, &new_account).unwrap();
-                        acct = Box::new(BankAccount::new(uid, id, db));
 
-                    }
-                    "Investment Account" => {
-                        new_account = InvestmentAccountManager::create();
-                        id = db.add_account(uid, &new_account).unwrap();
-                        acct = Box::new(InvestmentAccountManager::new(uid, id, db));
-                    }
-                    _ => {
-                        panic!("Unrecognized input!");
-                    }
-                }
-                accounts.push( AccountRecord { id : id, info :new_account });
+                (acct, new_account) = create_new_account(uid, db);
+                accounts.push( new_account );
                 accounts_is_empty = false;
                 acct.record();
 
@@ -471,4 +454,30 @@ pub fn query_user_for_analysis_period() -> (NaiveDate, NaiveDate) {
         }
     }
     return (period_start, period_end);
+}
+
+pub fn create_new_account(uid : u32, db : &mut DbConn) -> (Box<dyn AccountOperations>, AccountRecord) { 
+    const ACCOUNT_TYPES : [&'static str; 2] = ["Bank Account", "Investment Account"];
+    let selected_account_type = Select::new("What account type would you like to create: ", ACCOUNT_TYPES.to_vec()).prompt().unwrap().to_string();
+    let mut id;
+    let mut new_account;
+    let mut acct : Box<dyn AccountOperations>;
+    match selected_account_type.as_str() { 
+        "Bank Account" => {
+            new_account = BankAccount::create();
+            id = db.add_account(uid, &new_account).unwrap();
+            acct = Box::new(BankAccount::new(uid, id, db));
+
+        }
+        "Investment Account" => {
+            new_account = InvestmentAccountManager::create();
+            id = db.add_account(uid, &new_account).unwrap();
+            acct = Box::new(InvestmentAccountManager::new(uid, id, db));
+        }
+        _ => {
+            panic!("Unrecognized input!");
+        }
+    }
+
+    return (acct, AccountRecord { id : id, info: new_account} );
 }

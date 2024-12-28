@@ -11,7 +11,7 @@ use crate::types::participants::{self, ParticipantType};
 use crate::types::transfer_types::TransferType;
 use crate::types::categories::CategoryAutoCompleter;
 use crate::types::accounts::AccountRecord;
-use crate::tui::decode_and_create_account_type;
+use crate::tui::{create_new_account, decode_and_create_account_type, AccountOperations};
 
 pub struct FixedAccount { 
     pub id : u32,
@@ -84,12 +84,25 @@ impl FixedAccount {
                 account_names.push(account.info.name.clone());
                 account_map.insert(account.info.name.clone(), account.clone());
             }
+            
+            // add new account
+            account_names.push("New Account".to_string());
 
             // add none clause
             account_names.push("None".to_string());
             let selected_account = Select::new("Select account:", account_names).prompt().unwrap().to_string();
-            let acctx = account_map.get(&selected_account).expect("Account not found!");
-            let mut acct = decode_and_create_account_type(self.uid, &mut self.db, acctx);
+            
+            if selected_account.clone() == "None" {
+                return;
+            }
+            
+            let mut acct : Box<dyn AccountOperations>;
+            if selected_account.clone() == "New Account" {
+                (acct, _) = create_new_account(self.uid, &mut self.db);
+            } else { 
+                let acctx = account_map.get(&selected_account).expect("Account not found!");
+                acct = decode_and_create_account_type(self.uid, &mut self.db, acctx);
+            }
 
             if acct.link(self.id, entry).is_none() { 
                 println!("Unable to link transactions. Please review!");
