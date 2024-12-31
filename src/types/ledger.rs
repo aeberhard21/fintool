@@ -1,11 +1,10 @@
+use super::participants::ParticipantType;
+use super::transfer_types::TransferType;
+use crate::database::DbConn;
 use chrono::NaiveDate;
+use inquire::autocompletion::Replacement;
 use inquire::*;
 use rusqlite::Result;
-use crate::database::DbConn;
-use inquire::autocompletion::Replacement;
-use super::participants::ParticipantType;
-use super::participants::ParticipantRecord;
-use super::transfer_types::{self, TransferType};
 
 #[derive(Clone)]
 pub struct LedgerInfo {
@@ -18,9 +17,9 @@ pub struct LedgerInfo {
 }
 
 #[derive(Clone)]
-pub struct LedgerRecord { 
-    pub id : u32, 
-    pub info : LedgerInfo
+pub struct LedgerRecord {
+    pub id: u32,
+    pub info: LedgerInfo,
 }
 
 impl DbConn {
@@ -43,7 +42,6 @@ impl DbConn {
         let rs = self.conn.execute(sql, ());
         match rs {
             Ok(_) => {
-                println!("Created!")
             }
             Err(error) => {
                 panic!("Unable to create: {}", error)
@@ -52,7 +50,11 @@ impl DbConn {
         Ok(())
     }
 
-    pub fn add_ledger_entry(&mut self, aid: u32, entry: LedgerInfo) -> rusqlite::Result<u32, rusqlite::Error> {
+    pub fn add_ledger_entry(
+        &mut self,
+        aid: u32,
+        entry: LedgerInfo,
+    ) -> rusqlite::Result<u32, rusqlite::Error> {
         let sql: &str;
         let id = self.get_next_ledger_id().unwrap();
         sql = "INSERT INTO ledgers ( id, date, amount, transfer_type, pid, cid, desc, aid) VALUES ( ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)";
@@ -80,29 +82,35 @@ impl DbConn {
         Ok(id)
     }
 
-    pub fn get_ledger_entries_within_timestamps(&mut self, aid : u32, start : NaiveDate, end : NaiveDate) -> rusqlite::Result<Vec<LedgerInfo>, rusqlite::Error> {
+    pub fn get_ledger_entries_within_timestamps(
+        &mut self,
+        aid: u32,
+        start: NaiveDate,
+        end: NaiveDate,
+    ) -> rusqlite::Result<Vec<LedgerInfo>, rusqlite::Error> {
         let p = rusqlite::params![aid, start.to_string(), end.to_string()];
         let sql = "SELECT * FROM ledgers WHERE aid = (?1) and date >= (?2) and date <= (?3) ORDER by date ASC";
 
         let mut stmt = self.conn.prepare(sql)?;
         let exists = stmt.exists(p)?;
         let mut entries: Vec<LedgerInfo> = Vec::new();
-        match exists { 
+        match exists {
             true => {
-                let found_entries = stmt.query_map( p, |row| {
-                    Ok( LedgerInfo { 
-                        date : row.get(1)?, 
-                        amount : row.get(2)?, 
-                        transfer_type : TransferType::from(row.get::<_, u32>(3)? as u32),
-                        participant : row.get(4)?,
-                        category_id : row.get(5)?, 
-                        description : row.get(6)?
+                let found_entries = stmt
+                    .query_map(p, |row| {
+                        Ok(LedgerInfo {
+                            date: row.get(1)?,
+                            amount: row.get(2)?,
+                            transfer_type: TransferType::from(row.get::<_, u32>(3)? as u32),
+                            participant: row.get(4)?,
+                            category_id: row.get(5)?,
+                            description: row.get(6)?,
+                        })
                     })
-                })
-                .unwrap()
-                .collect::<Vec<_>>();
+                    .unwrap()
+                    .collect::<Vec<_>>();
 
-                for entry in found_entries { 
+                for entry in found_entries {
                     entries.push(entry.unwrap());
                 }
                 Ok(entries)
@@ -113,46 +121,52 @@ impl DbConn {
         }
     }
 
-    pub fn get_current_value(&mut self, aid : u32) -> rusqlite::Result<f32, rusqlite::Error> {
+    pub fn get_current_value(&mut self, aid: u32) -> rusqlite::Result<f32, rusqlite::Error> {
         let p = rusqlite::params![aid];
         let mut sum: f32 = 0.0;
-        let sql = 
-            "SELECT COALESCE(SUM(CASE
+        let sql: &str ="SELECT COALESCE(SUM(CASE
                 WHEN transfer_type == 0 or transfer_type = 2 THEN -amount    -- withdrawal
                 WHEN transfer_type == 1 or transfer_type = 3 THEN amount     -- deposit from external account
                 ELSE 0 
             END), 0) as total_balance FROM ledgers WHERE aid = (?1);";
 
         let mut stmt = self.conn.prepare(sql)?;
-        if stmt.exists(p)? { 
+        if stmt.exists(p)? {
             sum = stmt.query_row(p, |row| row.get(0))?;
-        } else { 
+        } else {
             panic!("Not found!");
         }
 
         Ok(sum)
     }
 
-    pub fn get_cumulative_total_of_ledger_before_date(&mut self, aid : u32, end : NaiveDate) -> rusqlite::Result<f32, rusqlite::Error> {
+    pub fn get_cumulative_total_of_ledger_before_date(
+        &mut self,
+        aid: u32,
+        end: NaiveDate,
+    ) -> rusqlite::Result<f32, rusqlite::Error> {
         let p = rusqlite::params![aid, end.to_string()];
-        let mut sum : f32 = 0.0;
-        let sql = 
-        "SELECT COALESCE(SUM(CASE
+        let mut sum: f32 = 0.0;
+        let sql = "SELECT COALESCE(SUM(CASE
             WHEN transfer_type == 0 or transfer_type = 2 THEN -amount    -- withdrawal
             WHEN transfer_type == 1 or transfer_type = 3 THEN amount     -- deposit from external account
             ELSE 0 
         END), 0) as total_balance FROM ledgers WHERE aid = (?1) and date <= (?2);";
 
         let mut stmt = self.conn.prepare(sql)?;
-        if stmt.exists(p)? { 
+        if stmt.exists(p)? {
             sum = stmt.query_row(p, |row| row.get(0))?;
-        } else { 
+        } else {
             panic!("Not found!");
         }
         Ok(sum)
     }
 
-    pub fn get_participants(&mut self, aid: u32, transfer_type: TransferType) -> Result<Vec<String>, rusqlite::Error> {
+    pub fn get_participants(
+        &mut self,
+        aid: u32,
+        transfer_type: TransferType,
+    ) -> Result<Vec<String>, rusqlite::Error> {
         let sql;
         let p = rusqlite::params![aid, transfer_type as u32];
         sql = "SELECT p.name FROM people p JOIN ledgers l ON p.id = l.cid WHERE l.aid = (?1) and l.transfer_type = (?2)";
@@ -164,9 +178,7 @@ impl DbConn {
             true => {
                 stmt = self.conn.prepare(sql)?;
                 let party = stmt
-                    .query_map(p, |row| Ok(
-                                row.get(0)?,
-                        ))
+                    .query_map(p, |row| Ok(row.get(0)?))
                     .unwrap()
                     .collect::<Vec<_>>();
                 for participant in party {
@@ -177,60 +189,83 @@ impl DbConn {
         }
         Ok(participants)
     }
-    
 }
 
 #[derive(Clone)]
 pub struct ParticipantAutoCompleter {
-    pub aid : u32, 
-    pub db : DbConn,
-    pub ptype : ParticipantType
+    pub aid: u32,
+    pub db: DbConn,
+    pub ptype: ParticipantType,
 }
 
-impl Autocomplete for ParticipantAutoCompleter { 
+impl Autocomplete for ParticipantAutoCompleter {
     fn get_suggestions(&mut self, input: &str) -> Result<Vec<String>, CustomUserError> {
-        let mut suggestions : Vec<String>;
-        match self.ptype { 
+        let mut suggestions: Vec<String>;
+        match self.ptype {
             ParticipantType::Payee => {
-                let x: Vec<String> = self.db.get_participants(self.aid, TransferType::WidthdrawalToExternalAccount)
-                    .unwrap().into_iter()
+                let x: Vec<String> = self
+                    .db
+                    .get_participants(self.aid, TransferType::WidthdrawalToExternalAccount)
+                    .unwrap()
+                    .into_iter()
                     .filter(|name| name.starts_with(input))
                     .collect();
-                let y: Vec<String> = self.db.get_participants(self.aid, TransferType::WidthdrawalToInternalAccount)
-                    .unwrap().into_iter()
+                let y: Vec<String> = self
+                    .db
+                    .get_participants(self.aid, TransferType::WidthdrawalToInternalAccount)
+                    .unwrap()
+                    .into_iter()
                     .filter(|name| name.starts_with(input))
                     .collect();
-                suggestions = [x,y].concat();
+                suggestions = [x, y].concat();
             }
             ParticipantType::Payer => {
-                let x: Vec<String> = self.db.get_participants(self.aid, TransferType::DepositFromExternalAccount)
-                    .unwrap().into_iter()
+                let x: Vec<String> = self
+                    .db
+                    .get_participants(self.aid, TransferType::DepositFromExternalAccount)
+                    .unwrap()
+                    .into_iter()
                     .filter(|name| name.starts_with(input))
                     .collect();
-                let y: Vec<String> = self.db.get_participants(self.aid, TransferType::DepositFromExternalAccount)
-                    .unwrap().into_iter()
+                let y: Vec<String> = self
+                    .db
+                    .get_participants(self.aid, TransferType::DepositFromExternalAccount)
+                    .unwrap()
+                    .into_iter()
                     .filter(|name| name.starts_with(input))
                     .collect();
-                suggestions = [x,y].concat();
+                suggestions = [x, y].concat();
             }
             ParticipantType::Both => {
-                let w: Vec<String> = self.db.get_participants(self.aid, TransferType::WidthdrawalToExternalAccount)
-                    .unwrap().into_iter()
+                let w: Vec<String> = self
+                    .db
+                    .get_participants(self.aid, TransferType::WidthdrawalToExternalAccount)
+                    .unwrap()
+                    .into_iter()
                     .filter(|name| name.starts_with(input))
                     .collect();
-                let x: Vec<String> = self.db.get_participants(self.aid, TransferType::WidthdrawalToInternalAccount)
-                    .unwrap().into_iter()
+                let x: Vec<String> = self
+                    .db
+                    .get_participants(self.aid, TransferType::WidthdrawalToInternalAccount)
+                    .unwrap()
+                    .into_iter()
                     .filter(|name| name.starts_with(input))
                     .collect();
-                let y: Vec<String> = self.db.get_participants(self.aid, TransferType::DepositFromExternalAccount)
-                    .unwrap().into_iter()
+                let y: Vec<String> = self
+                    .db
+                    .get_participants(self.aid, TransferType::DepositFromExternalAccount)
+                    .unwrap()
+                    .into_iter()
                     .filter(|name| name.starts_with(input))
                     .collect();
-                let z: Vec<String> = self.db.get_participants(self.aid, TransferType::DepositFromExternalAccount)
-                    .unwrap().into_iter()
+                let z: Vec<String> = self
+                    .db
+                    .get_participants(self.aid, TransferType::DepositFromExternalAccount)
+                    .unwrap()
+                    .into_iter()
                     .filter(|name| name.starts_with(input))
                     .collect();
-                suggestions = [[w,x].concat(), [y,z].concat()].concat();
+                suggestions = [[w, x].concat(), [y, z].concat()].concat();
             }
             _ => {
                 panic!("Unable to match ParticipantType in Autocomplete!");
@@ -240,15 +275,12 @@ impl Autocomplete for ParticipantAutoCompleter {
     }
 
     fn get_completion(
-            &mut self,
-            input: &str,
-            highlighted_suggestion: Option<String>,
-        ) -> Result<autocompletion::Replacement, CustomUserError> {
-
-        Ok ( match highlighted_suggestion { 
-            Some(suggestion) => {
-                Replacement::Some(suggestion)
-            }
+        &mut self,
+        input: &str,
+        highlighted_suggestion: Option<String>,
+    ) -> Result<autocompletion::Replacement, CustomUserError> {
+        Ok(match highlighted_suggestion {
+            Some(suggestion) => Replacement::Some(suggestion),
             None => {
                 let suggestions = self.get_suggestions(input).unwrap();
                 if suggestions.len() == 0 {
@@ -259,7 +291,6 @@ impl Autocomplete for ParticipantAutoCompleter {
             }
         })
     }
-
 }
 
 // pub fn record_ledger_entry(_aid: u32, _db: &mut DbConn, action : Option<TransferType> ) -> LedgerInfo {
@@ -290,7 +321,7 @@ impl Autocomplete for ParticipantAutoCompleter {
 //             .prompt()
 //             .unwrap()
 //             .to_string();
-        
+
 //         if deposit_type == "Widthdrawal" {
 //             transfer_type = TransferType::WidthdrawalToExternalAccount;
 //         } else {
@@ -366,7 +397,7 @@ impl Autocomplete for ParticipantAutoCompleter {
 //             } else {
 //                 participant = Text::new("Enter withdrawal beneficiary:").prompt().unwrap().to_string();
 //                 pid = _db.add_person(_aid, ParticipantType::participant, participant).unwrap();
-//             } 
+//             }
 //         }
 //         TransferType::WidthdrawalToInternalAccount => {
 //             let mut participants = _db.get_participants(_aid, ParticipantType::participant).unwrap();
@@ -388,7 +419,7 @@ impl Autocomplete for ParticipantAutoCompleter {
 //             } else {
 //                 participant = Text::new("Enter deposit source:").prompt().unwrap().to_string();
 //                 pid = _db.add_person(_aid, ParticipantType::participant, participant).unwrap();
-//             } 
+//             }
 //         }
 //         _ => {
 //             panic!("Invalid entry.");

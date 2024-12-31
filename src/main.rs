@@ -1,18 +1,14 @@
 use std::fs::{self};
 use std::path::{Path, PathBuf};
 
-use chrono::NaiveDate;
-use time::OffsetDateTime;
-// use stocks::get_stock_history;
-
 use crate::database::DbConn;
 // use crate::stocks;
 
+mod accounts;
 mod database;
 mod stocks;
 mod tui;
 mod types;
-mod accounts;
 
 fn main() {
     let db_dir: String = String::from("./db");

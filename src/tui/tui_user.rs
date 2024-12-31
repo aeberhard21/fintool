@@ -1,5 +1,4 @@
 use crate::database::DbConn;
-use chrono::{NaiveDate, Weekday};
 use inquire::*;
 
 pub fn create_user(_db: &mut DbConn) -> u32 {

@@ -1,22 +1,20 @@
-use inquire::Autocomplete;
-use inquire::autocompletion::*;
 use inquire::autocompletion;
+use inquire::autocompletion::*;
+use inquire::Autocomplete;
 use inquire::CustomUserError;
 use rusqlite::Result;
 
 use crate::database::DbConn;
 
-use super::participants::ParticipantType;
-
 #[derive(Clone)]
 pub struct Category {
-    pub name : String
+    pub name: String,
 }
 
 #[derive(Clone)]
 pub struct CategoryRecord {
-    pub id : u32, 
-    pub category : Category
+    pub id: u32,
+    pub category: Category,
 }
 
 impl DbConn {
@@ -56,13 +54,12 @@ impl DbConn {
             true => {
                 stmt = self.conn.prepare(sql)?;
                 let cats = stmt
-                    .query_map(p, |row| Ok(
-                        CategoryRecord {
-                            id : row.get(0)?,
-                            category : Category {
-                                name : row.get(1)?
-                            }
-                        }))
+                    .query_map(p, |row| {
+                        Ok(CategoryRecord {
+                            id: row.get(0)?,
+                            category: Category { name: row.get(1)? },
+                        })
+                    })
                     .unwrap()
                     .collect::<Vec<_>>();
                 for cat in cats {
@@ -77,7 +74,7 @@ impl DbConn {
     pub fn get_category_name(
         &mut self,
         aid: u32,
-        cid: u32
+        cid: u32,
     ) -> rusqlite::Result<String, rusqlite::Error> {
         let sql: &str = "SELECT category FROM categories WHERE aid = (?1) AND id = (?2)";
         let p = rusqlite::params![aid, cid];
@@ -130,7 +127,7 @@ impl DbConn {
         }
     }
 
-    pub fn check_and_add_category(&mut self, aid : u32, name: String) -> u32 {
+    pub fn check_and_add_category(&mut self, aid: u32, name: String) -> u32 {
         let sql = "SELECT id FROM categories WHERE aid = (?1) and category = (?2)";
         let conn = self.conn.clone();
         let p = rusqlite::params![aid, name];
@@ -139,7 +136,9 @@ impl DbConn {
             Ok(mut stmt) => {
                 if let Ok(entry_found) = stmt.exists(p) {
                     if entry_found {
-                        if let id = stmt.query_row(p, |row: &rusqlite::Row<'_>| row.get::<_, u32>(0)) {
+                        if let id =
+                            stmt.query_row(p, |row: &rusqlite::Row<'_>| row.get::<_, u32>(0))
+                        {
                             return id.unwrap();
                         } else {
                             panic!("Unable to query row!");
@@ -152,39 +151,43 @@ impl DbConn {
                 }
             }
             Err(e) => {
-                panic!("SQLITE error {} while executing searching for category {}.", e.to_string(), name);
+                panic!(
+                    "SQLITE error {} while executing searching for category {}.",
+                    e.to_string(),
+                    name
+                );
             }
         }
     }
 }
 
 #[derive(Clone)]
-pub struct CategoryAutoCompleter { 
-    pub aid : u32, 
-    pub db : DbConn, 
+pub struct CategoryAutoCompleter {
+    pub aid: u32,
+    pub db: DbConn,
 }
 
-impl Autocomplete for CategoryAutoCompleter { 
+impl Autocomplete for CategoryAutoCompleter {
     fn get_suggestions(&mut self, input: &str) -> Result<Vec<String>, CustomUserError> {
-        let suggestions : Vec<String>;
-        suggestions = self.db.get_categories(self.aid)
-            .unwrap().into_iter()
-            .map(|category| category.category.name )
-            .filter(|cname|cname.starts_with(input))
+        let suggestions: Vec<String>;
+        suggestions = self
+            .db
+            .get_categories(self.aid)
+            .unwrap()
+            .into_iter()
+            .map(|category| category.category.name)
+            .filter(|cname| cname.starts_with(input))
             .collect();
         Ok(suggestions)
     }
 
     fn get_completion(
-            &mut self,
-            input: &str,
-            highlighted_suggestion: Option<String>,
-        ) -> Result<autocompletion::Replacement, CustomUserError> {
-
-        Ok ( match highlighted_suggestion { 
-            Some(suggestion) => {
-                Replacement::Some(suggestion)
-            }
+        &mut self,
+        input: &str,
+        highlighted_suggestion: Option<String>,
+    ) -> Result<autocompletion::Replacement, CustomUserError> {
+        Ok(match highlighted_suggestion {
+            Some(suggestion) => Replacement::Some(suggestion),
             None => {
                 let suggestions = self.get_suggestions(input).unwrap();
                 if suggestions.len() == 0 {
@@ -195,6 +198,4 @@ impl Autocomplete for CategoryAutoCompleter {
             }
         })
     }
-
 }
-

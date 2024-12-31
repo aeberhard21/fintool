@@ -20,7 +20,6 @@ impl DbConn {
         )";
         match self.conn.execute(sql, ()) {
             Ok(_) => {
-                println!("Created CDs table!");
             }
             Err(error) => {
                 panic!("Unable to create table 'CDs' because {}", error);

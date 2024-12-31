@@ -1,8 +1,6 @@
-use std::ptr::null;
-
 use super::DbConn;
-use rusqlite::Result;
 use chrono::NaiveDate;
+use rusqlite::Result;
 
 pub struct BankRecord {
     pub amount: f32,
@@ -20,7 +18,6 @@ impl DbConn {
         let rs = self.conn.execute(sql, ());
         match rs {
             Ok(_) => {
-                println!("Created bank table!");
             }
             Err(error) => {
                 panic!("Unable to create banks table: {}", error);
@@ -68,7 +65,10 @@ impl DbConn {
                     let mut latest_record = entries.pop().unwrap().unwrap();
                     for entry in entries {
                         let record = entry.unwrap();
-                        if NaiveDate::parse_from_str(record.date.as_str(), "%Y-%m-%d").unwrap() > NaiveDate::parse_from_str(latest_record.date.as_str(), "%Y-%m-%d").unwrap() {
+                        if NaiveDate::parse_from_str(record.date.as_str(), "%Y-%m-%d").unwrap()
+                            > NaiveDate::parse_from_str(latest_record.date.as_str(), "%Y-%m-%d")
+                                .unwrap()
+                        {
                             latest_record = record;
                         }
                     }
@@ -83,15 +83,23 @@ impl DbConn {
             }
         }
     }
-    
+
     // returns a vector of bank history within period and the just before that time
-    pub fn get_bank_history(&mut self, aid: u32, date_start : String, date_end : String) -> Result<(Vec<BankRecord>, BankRecord), rusqlite::Error> {
+    pub fn get_bank_history(
+        &mut self,
+        aid: u32,
+        date_start: String,
+        date_end: String,
+    ) -> Result<(Vec<BankRecord>, BankRecord), rusqlite::Error> {
         let sql: &str = "SELECT * FROM banks WHERE aid = (?1) and date >= (?2) and date <= (?3) ORDER BY date ASC";
         let p = rusqlite::params![aid, date_start, date_end];
-        
-        let mut history : Vec<BankRecord> = Vec::new();
-        let mut initial : BankRecord = BankRecord { amount: 0.00, date: "1970-01-01".to_string() };
-        
+
+        let mut history: Vec<BankRecord> = Vec::new();
+        let mut initial: BankRecord = BankRecord {
+            amount: 0.00,
+            date: "1970-01-01".to_string(),
+        };
+
         match self.conn.prepare(sql) {
             Ok(mut stmt) => {
                 let exists = stmt.exists(p)?;
@@ -112,7 +120,6 @@ impl DbConn {
                         record = entry.unwrap();
                         history.push(record);
                     }
-
                 } else {
                     panic!("Unable to find entries for the account id: {}", aid);
                 }
@@ -121,14 +128,15 @@ impl DbConn {
                 panic!("Unable to retrieve bank account information: {}", error);
             }
         }
-        
+
         let sql: &str = "SELECT * FROM banks WHERE aid = (?1) and date <= (?2) ORDER BY date DESC";
         let p = rusqlite::params![aid, date_start];
         match self.conn.prepare(sql) {
             Ok(mut stmt) => {
                 let exists = stmt.exists(p)?;
                 if exists {
-                    initial = stmt.query_row(p, |row| {
+                    initial = stmt
+                        .query_row(p, |row| {
                             Ok(BankRecord {
                                 date: row.get(0)?,
                                 amount: row.get(1)?,
@@ -138,7 +146,7 @@ impl DbConn {
                 } else {
                     // choosing not to do nothing for now in the event that a user
                     // chooses a date range that does not return a value
-                    // this will return an initial value of 0 indicating 
+                    // this will return an initial value of 0 indicating
                     // that the account did not exist
                     // may want to do more in the future, but its good enough
                     // for now
@@ -150,6 +158,5 @@ impl DbConn {
         }
 
         Ok((history, initial))
-
     }
 }

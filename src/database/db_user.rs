@@ -12,7 +12,6 @@ impl DbConn {
         let rs = self.conn.execute(sql, ());
         match rs {
             Ok(_) => {
-                println!("Created users table!");
             }
             Err(error) => {
                 panic!("Unable to create users table: {}!", error);

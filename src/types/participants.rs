@@ -1,10 +1,4 @@
-use std::path::PrefixComponent;
-
 use rusqlite::Result;
-use inquire::Autocomplete;
-use inquire::autocompletion::*;
-use inquire::autocompletion;
-use inquire::CustomUserError;
 
 use crate::database::DbConn;
 
@@ -16,13 +10,13 @@ pub enum ParticipantType {
 }
 
 struct Participant {
-    pub name : String, 
-    pub ptype : ParticipantType,
+    pub name: String,
+    pub ptype: ParticipantType,
 }
 
 pub struct ParticipantRecord {
-    pub id : u32,
-    pub participant : Participant
+    pub id: u32,
+    pub participant: Participant,
 }
 
 impl ParticipantType {
@@ -30,17 +24,17 @@ impl ParticipantType {
         match self {
             Self::Payee => "Payee".to_string(),
             Self::Payer => "Payer".to_string(),
-            Self::Both  => "Both".to_string()
+            Self::Both => "Both".to_string(),
         }
     }
 }
 
 impl From<u32> for ParticipantType {
-    fn from(value : u32) -> Self {
+    fn from(value: u32) -> Self {
         match value {
-            0 => ParticipantType::Payee, 
+            0 => ParticipantType::Payee,
             1 => ParticipantType::Payer,
-            _ => panic!("Invalid numeric value for ParticipantType!")
+            _ => panic!("Invalid numeric value for ParticipantType!"),
         }
     }
 }
@@ -63,7 +57,12 @@ impl DbConn {
         Ok(())
     }
 
-    pub fn add_participant(&mut self, aid: u32, ptype: ParticipantType, name: String) -> Result<u32> {
+    pub fn add_participant(
+        &mut self,
+        aid: u32,
+        ptype: ParticipantType,
+        name: String,
+    ) -> Result<u32> {
         let id = self.get_next_people_id().unwrap();
         let p = rusqlite::params!(id, aid, ptype as u32, name);
         let sql = "INSERT INTO people (id, aid, type, name) VALUES (?1, ?2, ?3, ?4)";
@@ -112,7 +111,12 @@ impl DbConn {
     //     Ok(participants)
     // }
 
-    pub fn get_participant_id(&mut self, aid : u32, name: String, ptype : ParticipantType) -> Option<u32> {
+    pub fn get_participant_id(
+        &mut self,
+        aid: u32,
+        name: String,
+        ptype: ParticipantType,
+    ) -> Option<u32> {
         let sql = "SELECT id FROM people WHERE aid = (?1) and name = (?2) and type = (?3)";
         let p = rusqlite::params![aid, name, ptype as u32];
         let conn = self.conn.clone();
@@ -121,9 +125,11 @@ impl DbConn {
             Ok(mut stmt) => {
                 if let Ok(entry_found) = stmt.exists(p) {
                     if entry_found {
-                        let id = stmt.query_row(p, |row: &rusqlite::Row<'_>| row.get::<_, u32>(0)).unwrap();
+                        let id = stmt
+                            .query_row(p, |row: &rusqlite::Row<'_>| row.get::<_, u32>(0))
+                            .unwrap();
                         return Some(id);
-                    } else { 
+                    } else {
                         return None;
                     }
                 } else {
@@ -131,12 +137,21 @@ impl DbConn {
                 }
             }
             Err(e) => {
-                panic!("SQLITE error {} while executing searching for person {}.", e.to_string(), name);
+                panic!(
+                    "SQLITE error {} while executing searching for person {}.",
+                    e.to_string(),
+                    name
+                );
             }
         }
     }
 
-    pub fn check_and_add_participant(&mut self, aid : u32, name: String, ptype : ParticipantType) -> u32 {
+    pub fn check_and_add_participant(
+        &mut self,
+        aid: u32,
+        name: String,
+        ptype: ParticipantType,
+    ) -> u32 {
         let sql = "SELECT id FROM people WHERE aid = (?1) and name = (?2) and type = (?3)";
         let p = rusqlite::params![aid, name, ptype as u32];
         let conn = self.conn.clone();
@@ -145,7 +160,9 @@ impl DbConn {
             Ok(mut stmt) => {
                 if let Ok(entry_found) = stmt.exists(p) {
                     if entry_found {
-                        let id = stmt.query_row(p, |row: &rusqlite::Row<'_>| row.get::<_, u32>(0)).unwrap();
+                        let id = stmt
+                            .query_row(p, |row: &rusqlite::Row<'_>| row.get::<_, u32>(0))
+                            .unwrap();
                         return id;
                     } else {
                         self.add_participant(aid, ptype, name).unwrap()
@@ -155,7 +172,11 @@ impl DbConn {
                 }
             }
             Err(e) => {
-                panic!("SQLITE error {} while executing searching for person {}.", e.to_string(), name);
+                panic!(
+                    "SQLITE error {} while executing searching for person {}.",
+                    e.to_string(),
+                    name
+                );
             }
         }
     }
@@ -163,15 +184,15 @@ impl DbConn {
 
 #[derive(Clone)]
 pub struct ParticipantAutoCompleter {
-    pub aid : u32, 
-    pub db : DbConn,
-    pub ptype : ParticipantType
+    pub aid: u32,
+    pub db: DbConn,
+    pub ptype: ParticipantType,
 }
 
-// impl Autocomplete for ParticipantAutoCompleter { 
+// impl Autocomplete for ParticipantAutoCompleter {
 //     fn get_suggestions(&mut self, input: &str) -> Result<Vec<String>, CustomUserError> {
 //         let suggestions : Vec<String>;
-//         match self.ptype { 
+//         match self.ptype {
 //             ParticipantType::Payee => {
 //                 suggestions = self.db.get_participants(self.aid, ParticipantType::Payee)
 //                     .unwrap().into_iter()
@@ -199,7 +220,7 @@ pub struct ParticipantAutoCompleter {
 //             highlighted_suggestion: Option<String>,
 //         ) -> Result<autocompletion::Replacement, CustomUserError> {
 
-//         Ok ( match highlighted_suggestion { 
+//         Ok ( match highlighted_suggestion {
 //             Some(suggestion) => {
 //                 Replacement::Some(suggestion)
 //             }

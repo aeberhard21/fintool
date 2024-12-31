@@ -1,9 +1,5 @@
-use rusqlite::{Error, Result};
 use crate::database::DbConn;
-use crate::stocks::StockRange;
-use crate::tui::AccountOperations;
-use core::fmt;
-use std::slice::Iter;
+use rusqlite::{Error, Result};
 
 #[derive(Clone, Copy)]
 pub enum AccountType {
@@ -16,18 +12,11 @@ pub enum AccountType {
     Custom,
 }
 
-impl AccountType { 
-    pub fn iterator() -> Iter<'static, AccountType> { 
-        static ACCOUNT_TYPES: [AccountType; 2] = [AccountType::Bank, AccountType::Investment];
-        ACCOUNT_TYPES.iter()
-    }
-}
-
-pub enum AccountFilter { 
+pub enum AccountFilter {
     Stocks,
-    Bank, 
+    Bank,
     Ledger,
-    Budget
+    Budget,
 }
 
 impl From<u32> for AccountType {
@@ -54,7 +43,7 @@ impl From<String> for AccountType {
             "Retirement" => AccountType::Retirement,
             "Health" => AccountType::Health,
             "Custom" => AccountType::Custom,
-            _ => panic!("Invalid string type for AccountType!")
+            _ => panic!("Invalid string type for AccountType!"),
         }
     }
 }
@@ -70,16 +59,16 @@ pub struct AccountInfo {
 }
 
 #[derive(Clone)]
-pub struct AccountRecord { 
-    pub id : u32, 
-    pub info : AccountInfo,
+pub struct AccountRecord {
+    pub id: u32,
+    pub info: AccountInfo,
 }
 
-pub struct AccountTransaction { 
-    pub from_account: u32, 
-    pub to_account: u32, 
-    pub from_ledger : u32, 
-    pub to_ledger : u32
+pub struct AccountTransaction {
+    pub from_account: u32,
+    pub to_account: u32,
+    pub from_ledger: u32,
+    pub to_ledger: u32,
 }
 
 impl DbConn {
@@ -98,7 +87,6 @@ impl DbConn {
         let rs = self.conn.execute(sql, ());
         match rs {
             Ok(_) => {
-                println!("Created accounts table!")
             }
             Err(error) => {
                 panic!("Unable to create: {}", error)
@@ -107,7 +95,7 @@ impl DbConn {
         Ok(())
     }
 
-    pub fn create_account_transaction_table(&mut self) -> Result<()> { 
+    pub fn create_account_transaction_table(&mut self) -> Result<()> {
         let sql: &str = "CREATE TABLE IF NOT EXISTS account_transactions (
             id              INTEGER NOT NULL PRIMARY KEY,
             from_account_id INTEGER NOT NULL, 
@@ -123,7 +111,6 @@ impl DbConn {
         let rs = self.conn.execute(sql, ());
         match rs {
             Ok(_) => {
-                println!("Created account transactions table!")
             }
             Err(error) => {
                 panic!("Unable to create: {}", error)
@@ -135,7 +122,16 @@ impl DbConn {
 
     pub fn add_account(&mut self, uid: u32, info: &AccountInfo) -> Result<u32> {
         let aid = self.get_next_account_id().unwrap();
-        let p = rusqlite::params![aid, info.atype as usize, info.name, info.has_stocks, info.has_bank, info.has_ledger, info.has_budget, uid]; 
+        let p = rusqlite::params![
+            aid,
+            info.atype as usize,
+            info.name,
+            info.has_stocks,
+            info.has_bank,
+            info.has_ledger,
+            info.has_budget,
+            uid
+        ];
         let sql: &str = "SELECT * FROM accounts WHERE uid = (?1) and name = (?2)";
         let exists = self
             .conn
@@ -159,7 +155,13 @@ impl DbConn {
 
     pub fn add_account_transaction(&mut self, info: AccountTransaction) -> Result<u32> {
         let tid = self.get_next_transaction_id().unwrap();
-        let p = rusqlite::params![tid, info.from_account, info.to_account, info.from_ledger, info.to_ledger];
+        let p = rusqlite::params![
+            tid,
+            info.from_account,
+            info.to_account,
+            info.from_ledger,
+            info.to_ledger
+        ];
         let sql = "INSERT INTO account_transactions (id, from_account_id, to_account_id, from_ledger_id, to_ledger_id) VALUES (?1, ?2, ?3, ?4, ?5)";
         let rs = self.conn.execute(sql, p);
         match rs {
@@ -187,16 +189,17 @@ impl DbConn {
                 stmt = self.conn.prepare(sql)?;
                 let names: Vec<Result<AccountRecord, Error>> = stmt
                     .query_map(p, |row| {
-                        Ok(AccountRecord { 
+                        Ok(AccountRecord {
                             id: row.get(0)?,
-                            info :AccountInfo {
-                            atype: AccountType::from(row.get::<_, u32>(1)? as u32),
-                            name: row.get(2)?,
-                            has_stocks: row.get(3)?,
-                            has_bank: row.get(4)?,
-                            has_ledger: row.get(5)?,
-                            has_budget: row.get(6)?
-                    }})
+                            info: AccountInfo {
+                                atype: AccountType::from(row.get::<_, u32>(1)? as u32),
+                                name: row.get(2)?,
+                                has_stocks: row.get(3)?,
+                                has_bank: row.get(4)?,
+                                has_ledger: row.get(5)?,
+                                has_budget: row.get(6)?,
+                            },
+                        })
                     })
                     .unwrap()
                     .collect::<Vec<_>>();
@@ -244,7 +247,6 @@ impl DbConn {
         uid: u32,
         filter: AccountFilter,
     ) -> rusqlite::Result<Vec<String>, Error> {
-
         let mut sql: &str;
         match filter {
             AccountFilter::Bank => {
@@ -335,18 +337,19 @@ impl DbConn {
         match exists {
             true => {
                 stmt = self.conn.prepare(sql)?;
-                let acct: Result<AccountRecord, Error> = stmt
-                    .query_row(p, |row| {
-                        Ok(AccountRecord { 
-                            id : row.get(0)?,
-                            info :AccountInfo {
+                let acct: Result<AccountRecord, Error> = stmt.query_row(p, |row| {
+                    Ok(AccountRecord {
+                        id: row.get(0)?,
+                        info: AccountInfo {
                             atype: AccountType::from(row.get::<_, u32>(1)?),
                             name: row.get(2)?,
                             has_stocks: row.get(3)?,
                             has_bank: row.get(4)?,
                             has_ledger: row.get(5)?,
-                            has_budget: row.get(6)?
-            }})});
+                            has_budget: row.get(6)?,
+                        },
+                    })
+                });
                 return acct;
             }
             false => {

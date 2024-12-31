@@ -3,18 +3,10 @@ use rusqlite::functions::FunctionFlags;
 use rusqlite::Connection;
 use std::path::Path;
 use std::sync::Arc;
-use std::sync::Mutex;
 
-use crate::stocks::get_stock_at_close;
-// use crate::ledger;
-
-// pub mod db_accounts;
 pub mod db_banks;
 pub mod db_cd;
 pub mod db_hsa;
-// pub mod db_investments;
-// pub mod ledger;
-// pub mod db_people;
 pub mod budget;
 mod db_user;
 
@@ -33,7 +25,9 @@ impl DbConn {
         let mut conn;
         match rs {
             Ok(rs_conn) => {
-                conn = Self { conn: Arc::new(rs_conn) };
+                conn = Self {
+                    conn: Arc::new(rs_conn),
+                };
                 conn.initialize_database();
             }
             Err(error) => {
@@ -60,34 +54,43 @@ impl DbConn {
         Self::create_account_transaction_table(self);
         Self::set_schema_version(&self.conn, CURRENT_DATABASE_SCHEMA_VERSION);
 
-
         // register custom functions
-        let result = self.conn.create_scalar_function("get_stock_value", 1, FunctionFlags::SQLITE_INNOCUOUS, |ctx|  {
-            let ticker : String = ctx.get(0)?;
-            match crate::stocks::get_stock_at_close(ticker) {
-                Ok(price) => {
-                    Ok(price)
-                }
-                Err(e) => { 
-                    Err(rusqlite::Error::ToSqlConversionFailure(Box::new(e)))
-                }
-            }
-        }).unwrap();
+        let result = self
+            .conn
+            .create_scalar_function(
+                "get_stock_value",
+                1,
+                FunctionFlags::SQLITE_INNOCUOUS,
+                |ctx| {
+                    let ticker: String = ctx.get(0)?;
+                    match crate::stocks::get_stock_at_close(ticker) {
+                        Ok(price) => Ok(price),
+                        Err(e) => Err(rusqlite::Error::ToSqlConversionFailure(Box::new(e))),
+                    }
+                },
+            )
+            .unwrap();
 
-        let result = self.conn.create_scalar_function("get_stock_value_on_day", 2, FunctionFlags::SQLITE_DETERMINISTIC, |ctx| {
-            let ticker : String = ctx.get(0)?;
-            let date : String = ctx.get(1)?;
-            match crate::stocks::get_stock_quote(ticker, NaiveDate::parse_from_str(date.as_str(), "%Y-%m-%d").unwrap()) { 
-                Ok(value) => {
-                    Ok(value)
-                }
-                Err (e) => {
-                    Err(rusqlite::Error::ToSqlConversionFailure(Box::new(e)))
-                }
-            }
-        }).unwrap();
+        let result = self
+            .conn
+            .create_scalar_function(
+                "get_stock_value_on_day",
+                2,
+                FunctionFlags::SQLITE_DETERMINISTIC,
+                |ctx| {
+                    let ticker: String = ctx.get(0)?;
+                    let date: String = ctx.get(1)?;
+                    match crate::stocks::get_stock_quote(
+                        ticker,
+                        NaiveDate::parse_from_str(date.as_str(), "%Y-%m-%d").unwrap(),
+                    ) {
+                        Ok(value) => Ok(value),
+                        Err(e) => Err(rusqlite::Error::ToSqlConversionFailure(Box::new(e))),
+                    }
+                },
+            )
+            .unwrap();
 
-    
         Ok(())
     }
 
@@ -124,15 +127,13 @@ impl DbConn {
             let sql: &str =
                 "INSERT INTO info (uid, aid, spid, ssid, said, cid, pid, bid, lid, tid) VALUES ( ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)";
             match self.conn.execute(sql, (0, 0, 0, 0, 0, 0, 0, 0, 0, 0)) {
-                Ok(rows_inserted) => {
-                    println!("Initialized info table: {}!", rows_inserted);
+                Ok(_rows_inserted) => {
                 }
                 Err(error) => {
                     panic!("Unable to initialize info table: {}", error);
                 }
             }
         }
-        println!("Created info table!");
         Ok(())
     }
 
