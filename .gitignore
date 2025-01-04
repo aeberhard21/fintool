@@ -1,5 +1,5 @@
-/target
+**target
 /db
-Cargo.lock
+*/Cargo.lock
 .vscode/
 *.txt
