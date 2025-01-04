@@ -5,361 +5,363 @@ use serde_xml_rs::from_str;
 use chrono::{Date, DateTime, FixedOffset, NaiveDateTime};
 
 #[derive(Debug, Deserialize)]
-struct OFX { 
-    #[serde(rename = "BANKMSGSRV1")]
-    bank_sign_on_msg     : Option<BankMessage>,
+pub struct OFX { 
+    #[serde(rename = "BANKMSGSRSV1")]
+	pub bank_sign_on_msg     : Option<BankMessage>,
     #[serde(rename = "INVSTMTMSGSRSV1")]
-    investment_sign_on_msg : Option<InvestmentMessage>,
+	pub investment_sign_on_msg : Option<InvestmentMessage>,
     #[serde(rename = "SECLISTMSGSRSV1")]
-    security_list_sign_on_msg : Option<SecuritiesList>
+	pub security_list_sign_on_msg : Option<SecuritiesList>
 }
 
 #[derive(Debug, Deserialize)]
-struct BankMessage { 
+pub struct BankMessage { 
     #[serde(rename = "STMTTRNRS")]
-    statement_transaction_response : Vec<StatementTransactionResponse>
+	pub statement_transaction_response : Vec<StatementTransactionResponse>
 }
 
 #[derive(Debug, Deserialize)]
-struct StatementTransactionResponse { 
+pub struct StatementTransactionResponse { 
     #[serde(rename = "TRNUID")]
-    transaction_unique_id  : u32, 
+	pub transaction_unique_id  : u64, 
     #[serde(rename = "STATUS")]
-    status  : TransactionStatus,
+	pub status  : TransactionStatus,
     #[serde(rename = "STMTRS")]
-    statement_response  : StatementResponse
+	pub statement_response  : StatementResponse
 
 }
 
 #[derive(Debug, Deserialize)]
-struct TransactionStatus {
+pub struct TransactionStatus {
     #[serde(rename = "CODE")]
-    code        : u32, 
+	pub code        : u64, 
     #[serde(rename = "SEVERITY")]
-    severity    : String, 
+	pub severity    : String, 
 }
 
 #[derive(Debug, Deserialize)]
-struct StatementResponse { 
+pub struct StatementResponse { 
     #[serde(rename = "CURDEF")]
-    currency_enum   : String, 
+	pub currency_enum   : String, 
     #[serde(rename = "BANKACCTFROM")]
-    bank_acct_from  : BankAccountFrom,
+	pub bank_acct_from  : BankAccountFrom,
     #[serde(rename = "BANKACCTTO")]
-    bank_acct_to    : Option<BankAccountTo>,
+	pub bank_acct_to    : Option<BankAccountTo>,
     #[serde(rename = "BANKTRANLIST")]
-    bank_transaction_list    : BankTransactionList,
+	pub bank_transaction_list    : BankTransactionList,
     #[serde(rename = "LEDGERBAL")]
-    ledger_balance      : LedgerBalance,
+	pub ledger_balance      : LedgerBalance,
     #[serde(rename = "AVAILBAL")]
-    available_balance   : AvailableBalance,
+	pub available_balance   : AvailableBalance,
 }
 
 #[derive(Debug, Deserialize)]
-struct BankAccountFrom { 
+pub struct BankAccountFrom { 
     #[serde(rename = "BANKID")]
-    bank_id         : u32,
+	pub bank_id         : u64,
     #[serde(rename = "ACCTID")]
-    account_id      : u32,
+	pub account_id      : u64,
     #[serde(rename = "ACCTTYPE")]
-    account_type    : String
+	pub account_type    : String
 }
 
 #[derive(Debug, Deserialize)]
-struct BankAccountTo { 
+pub struct BankAccountTo { 
     #[serde(rename = "BANKID")]
-    bank_id         : u32,
+	pub bank_id         : u64,
     #[serde(rename = "ACCTID")]
-    account_id      : u32,
+	pub account_id      : u64,
     #[serde(rename = "ACCTTYPE")]
-    account_type    : String
+	pub account_type    : String
 }
 
 
 #[derive(Debug, Deserialize)]
-struct BankTransactionList { 
-    #[serde(rename = "DTSTART", deserialize_with  = "deserialize_datetime")]
-    date_start         : DateTime<FixedOffset>, 
-    #[serde(rename = "DTEND", deserialize_with  = "deserialize_datetime")]
-    date_end           : DateTime<FixedOffset>,
+pub struct BankTransactionList { 
+    #[serde(rename = "DTSTART")]
+	pub date_start         : String, 
+    #[serde(rename = "DTEND")]
+	pub date_end           : String,
     #[serde(rename = "STMTTRN")]
-    statement_transaction         : Vec<StatementTransaction>,
+	pub statement_transaction         : Vec<StatementTransaction>,
 }
 
 #[derive(Debug, Deserialize)]
-struct StatementTransaction { 
+pub struct StatementTransaction { 
     #[serde(rename = "TRNTYPE")]
-    transaction_type         : String, 
-    #[serde(rename = "DTPOSTED", deserialize_with  = "deserialize_datetime")]
-    date_posted        : DateTime<FixedOffset>, 
+	pub transaction_type         : String, 
+    #[serde(rename = "DTPOSTED")]
+	pub date_posted        : String, 
     #[serde(rename = "TRNAMT")]
-    transaction_amount          : f32, 
+	pub transaction_amount          : f32, 
     #[serde(rename = "FITID")]
-    financial_institution_transaction_id           : u64,
+	pub financial_institution_transaction_id           : String,
+    #[serde(rename = "CHECKNUM")]
+    pub check_number    : Option<u32>,
     #[serde(rename = "NAME")]
-    name            : String, 
+	pub name            : String, 
     #[serde(rename = "MEMO")]
-    memo            : String,
+	pub memo            : String,
 }
 
 #[derive(Debug, Deserialize)]
-struct LedgerBalance { 
+pub struct LedgerBalance { 
     #[serde(rename = "BALAMT")]
-    balance_amount          : f32,
-    #[serde(rename = "DTASOF", deserialize_with  = "deserialize_datetime")]
-    date_time_as_of          : DateTime<FixedOffset>,
+	pub balance_amount          : f32,
+    #[serde(rename = "DTASOF")]
+	pub date_time_as_of          : String,
 }
 
 #[derive(Debug, Deserialize)]
-struct AvailableBalance { 
+pub struct AvailableBalance { 
     #[serde(rename = "BALAMT")]
-    balance_amount          : f32,
-    #[serde(rename = "DTASOF", deserialize_with  = "deserialize_datetime")]
-    date_time_as_of          : DateTime<FixedOffset>
+	pub balance_amount          : f32,
+    #[serde(rename = "DTASOF")]
+	pub date_time_as_of          : String
 }
 
 #[derive(Debug, Deserialize)]
-struct InvestmentMessage { 
+pub struct InvestmentMessage { 
     #[serde(rename = "INVSTMTTRNRS")]
-    investment_statement_transaction_response    : Vec<InvestmentTransactionResponse>,
+	pub investment_statement_transaction_response    : Vec<InvestmentTransactionResponse>,
 }
 
 #[derive(Debug, Deserialize)]
-struct InvestmentTransactionResponse { 
+pub struct InvestmentTransactionResponse { 
     #[serde(rename = "TRNUID")]
-    transaction_unique_id          : u32, 
+	pub transaction_unique_id          : u64, 
     #[serde(rename = "STATUS")]
-    status          : TransactionStatus,
+	pub status          : TransactionStatus,
     #[serde(rename = "INVSTMTRS")]
-    investment_statement_response       : InvestmentStatementResponse,
+	pub investment_statement_response       : InvestmentStatementResponse,
 }
 
 #[derive(Debug, Deserialize)]
-struct InvestmentStatementResponse { 
-    #[serde(rename = "DTASOF", deserialize_with  = "deserialize_datetime")]
-    date_time_as_of          : DateTime<FixedOffset>, 
+pub struct InvestmentStatementResponse { 
+    #[serde(rename = "DTASOF")]
+	pub date_time_as_of          : String, 
     #[serde(rename = "CURDEF")]
-    currency          : String,
+	pub currency          : String,
     #[serde(rename = "INVACCTFROM")]
-    investment_account_from     : InvestmentAccountFrom,
+	pub investment_account_from     : InvestmentAccountFrom,
     #[serde(rename = "INVTRANLIST")]
-    investment_transaction_list     : Vec<InvestmentTransactionList>,
+	pub investment_transaction_list     : Vec<InvestmentTransactionList>,
     #[serde(rename = "INVPOSLIST")]
-    investment_position_list      : Vec<InvestmentPositionList>,
+	pub investment_position_list      : Vec<InvestmentPositionList>,
     #[serde(rename = "INVBAL")]
-    investment_balance          : InvestmentBalance,
+	pub investment_balance          : InvestmentBalance,
 }
 
 #[derive(Debug, Deserialize)]
-struct INVACCTFROM {
+pub struct InvestmentAccountFrom {
     #[serde(rename = "BROKERID")]
-    broker_id        : String, 
+	pub broker_id        : String, 
     #[serde(rename = "ACCTID")]
-    account_id          : u32, 
+	pub account_id          : u64, 
 }
 
 #[derive(Debug, Deserialize)]
-struct InvestmentTransactionList { 
-    #[serde(rename = "DTSTART", deserialize_with  = "deserialize_datetime")]
-    date_start         : DateTime<FixedOffset>, 
-    #[serde(rename = "DTEND", deserialize_with  = "deserialize_datetime")]
-    date_end           : DateTime<FixedOffset>, 
+pub struct InvestmentTransactionList { 
+    #[serde(rename = "DTSTART")]
+	pub date_start         : String, 
+    #[serde(rename = "DTEND")]
+	pub date_end           : String, 
     #[serde(rename = "INVBANKTRAN")]
-    investment_bank_transactions     : Vec<InvestmentBankTransaction>,
+	pub investment_bank_transactions     : Vec<InvestmentBankTransaction>,
     #[serde(rename = "BUYSTOCK")]
-    buy_stock       : Vec<BuyStock>,
+	pub buy_stock       : Vec<BuyStock>,
     #[serde(rename = "SELLSTOCK")]
-    sell_stock      : Vec<SellStock>,
+	pub sell_stock      : Vec<SellStock>,
     #[serde(rename = "INCOME")]
-    income          : Vec<Income>
+	pub income          : Vec<Income>
 }
 
 #[derive(Debug, Deserialize)]
-struct InvestmentBankTransaction { 
+pub struct InvestmentBankTransaction { 
     #[serde(rename = "STMTTRN")]
-    statement_transactions  : Vec<StatementTransaction>,
+	pub statement_transactions  : Vec<StatementTransaction>,
     #[serde(rename = "SUBACCTFUND")]
-    SUBACCTFUND     : String,
+	pub sub_account_found     : String,
 }
 
 #[derive(Debug, Deserialize)]
-struct BuyStock { 
+pub struct BuyStock { 
     #[serde(rename = "INVBUY")]
-    investment_buy  : InvestmentBuy,
+	pub investment_buy  : InvestmentBuy,
     #[serde(rename = "BUYTYPE")]
-    buy_type        : String,
+	pub buy_type        : String,
 }
 
 #[derive(Debug, Deserialize)]
-struct SellStock { 
+pub struct SellStock { 
     #[serde(rename = "INVSELL")]
-    investment_sell : InvestmentSell,
+	pub investment_sell : InvestmentSell,
     #[serde(rename = "SELLTYPE")]
-    sell_type       : String,
+	pub sell_type       : String,
 }
 
 #[derive(Debug, Deserialize)]
-struct InvestmentBuy {
+pub struct InvestmentBuy {
     #[serde(rename = "INVTRAN")]
-    investment_transaction         : InvestmentTransaction,
+	pub investment_transaction         : InvestmentTransaction,
     #[serde(rename = "SECID")]
-    security_identifer           : SecurityId,
+	pub security_identifer           : SecurityId,
     #[serde(rename = "UNITS")]
-    units           : f32,
+	pub units           : f32,
     #[serde(rename = "UNITPRICE")]
-    unit_price       : f32, 
+	pub unit_price       : f32, 
     #[serde(rename = "FEES")]
-    fees            : f32, 
+	pub fees            : f32, 
     #[serde(rename = "TOTAL")]
-    total           : f32,
+	pub total           : f32,
     #[serde(rename = "SUBACCTSEC")]
-    sub_account_security      : String, 
+	pub sub_account_security      : String, 
     #[serde(rename = "SUBACCTFUND")]
-    sub_account_fund     : String,
+	pub sub_account_fund     : String,
 }
 
 #[derive(Debug, Deserialize)] 
-struct InvestmentSell {
+pub struct InvestmentSell {
     #[serde(rename = "INVTRAN")]
-    investment_transaction         : InvestmentTransaction,
+	pub investment_transaction         : InvestmentTransaction,
     #[serde(rename = "SECID")]
-    security_identifer           : SecurityId,
+	pub security_identifer           : SecurityId,
     #[serde(rename = "UNITS")]
-    units           : f32,
+	pub units           : f32,
     #[serde(rename = "UNITPRICE")]
-    unit_price       : f32, 
+	pub unit_price       : f32, 
     #[serde(rename = "FEES")]
-    fees            : f32, 
+	pub fees            : f32, 
     #[serde(rename = "TOTAL")]
-    total           : f32,
+	pub total           : f32,
     #[serde(rename = "SUBACCTSEC")]
-    sub_account_security      : String, 
+	pub sub_account_security      : String, 
     #[serde(rename = "SUBACCTFUND")]
-    sub_account_fund     : String,
+	pub sub_account_fund     : String,
 }
 
 
 
 #[derive(Debug, Deserialize)]
-struct InvestmentTransaction { 
+pub struct InvestmentTransaction { 
     #[serde(rename = "FITID")]
-    financial_institution_transaction_id           : String, 
-    #[serde(rename = "DTTRADE", deserialize_with  = "deserialize_datetime")]
-    date_of_trade   : DateTime<FixedOffset>, 
+	pub financial_institution_transaction_id           : String, 
+    #[serde(rename = "DTTRADE")]
+	pub date_of_trade   : String, 
     #[serde(rename = "MEMO")]
-    memo            : String,
+	pub memo            : String,
 }
 
 #[derive(Debug, Deserialize)]
-struct SecurityId { 
+pub struct SecurityId { 
     #[serde(rename = "UNIQUEID")]
-    unique_id       : u32, 
+	pub unique_id       : u64, 
     #[serde(rename = "UNIQUEIDTYPE")]
-    unique_id_type  : String
+	pub unique_id_type  : String
 }
 
 #[derive(Debug, Deserialize)]
-struct Income { 
+pub struct Income { 
     #[serde(rename = "INVTRAN")]
-    investment_transaction         : InvestmentTransaction,
+	pub investment_transaction         : InvestmentTransaction,
     #[serde(rename = "SECID")]
-    security_identifer           : SecurityId,
+	pub security_identifer           : SecurityId,
     #[serde(rename = "INCOMETYPE")]
-    income_type      : String, 
+	pub income_type      : String, 
     #[serde(rename = "TOTAL")]
-    total           : f32, 
+	pub total           : f32, 
     #[serde(rename = "SUBACCTSEC")]
-    sub_account_security      : String, 
+	pub sub_account_security      : String, 
     #[serde(rename = "SUBACCTFUND")]
-    sub_account_fund     : String,
+	pub sub_account_fund     : String,
 }
 
 #[derive(Debug, Deserialize)]
-struct InvestmentPositionList {
+pub struct InvestmentPositionList {
     #[serde(rename = "POSSTOCK")]
-    stock_position        : StockPosition
+	pub stock_position        : StockPosition
 }
 
 #[derive(Debug, Deserialize)]
-struct StockPosition {
+pub struct StockPosition {
     #[serde(rename = "INVPOS")]
-    investment_position          : InvestmentPosition,
+	pub investment_position          : InvestmentPosition,
 }
 
 #[derive(Debug, Deserialize)]
-struct InvestmentPosition { 
+pub struct InvestmentPosition { 
     #[serde(rename = "SECID")]
-    security_identifer           : SecurityId,
+	pub security_identifer           : SecurityId,
     #[serde(rename = "HELDINACCT")]
-    held_in_account      : String, 
+	pub held_in_account      : String, 
     #[serde(rename = "POSTYPE")]
-    position_type         : String, 
+	pub position_type         : String, 
     #[serde(rename = "UNITS")]
-    units           : f32, 
+	pub units           : f32, 
     #[serde(rename = "UNITPRICE")]
-    unit_price       : f32,
+	pub unit_price       : f32,
     #[serde(rename = "MKTVAL")]
-    market_value          : f32,
-    #[serde(rename = "DTPRICEASOF", deserialize_with  = "deserialize_datetime")]
-    date_time_price_as_of     : DateTime<FixedOffset>, 
+	pub market_value          : f32,
+    #[serde(rename = "DTPRICEASOF")]
+	pub date_time_price_as_of     : String, 
 }
 
 #[derive(Debug, Deserialize)]
-struct InvestmentBalance { 
+pub struct InvestmentBalance { 
     #[serde(rename = "AVAILCASH")]
-    available_cash       : f32, 
+	pub available_cash       : f32, 
     #[serde(rename = "MARGINBALANCE")]
-    margin_balance   : f32, 
+	pub margin_balance   : f32, 
     #[serde(rename = "SHORTBALANCE")]
-    short_balance    : f32,
+	pub short_balance    : f32,
 }
 
 #[derive(Debug, Deserialize)]
-struct SecuritiesList { 
+pub struct SecuritiesList { 
     #[serde(rename = "STOCKINFO")]
-    stock_info   : Vec<StockInfo>,
+	pub stock_info   : Vec<StockInfo>,
     #[serde(rename = "MFINFO")]
-    mutual_fund_info      : Vec<MutualFundInfo>,
+	pub mutual_fund_info      : Vec<MutualFundInfo>,
     #[serde(rename = "OTHERINFO")]
-    other_info   : Vec<OtherInfo>
+	pub other_info   : Vec<OtherInfo>
 }
 
 #[derive(Debug, Deserialize)]
-struct StockInfo {
+pub struct StockInfo {
     #[serde(rename = "SECINFO")]
-    security_info     : SecurityInfo,
+	pub security_info     : SecurityInfo,
     #[serde(rename = "SECNAME")]
-    security_name     : String,
+	pub security_name     : String,
     #[serde(rename = "TICKER")]
-    ticker      : String,
+	pub ticker      : String,
 }
 
 #[derive(Debug, Deserialize)]
-struct SecurityInfo { 
+pub struct SecurityInfo { 
     #[serde(rename = "SECID")]
-    security_identifer       : SecurityId,
+	pub security_identifer       : SecurityId,
     #[serde(rename = "SECNAME")]
-    security_name     : String, 
+	pub security_name     : String, 
     #[serde(rename = "TICKER")]
-    ticker      : String
+	pub ticker      : String
 }
 
 #[derive(Debug, Deserialize)]
-struct MutualFundInfo { 
+pub struct MutualFundInfo { 
     #[serde(rename = "SECINFO")]
-    security_identifer     : SecurityInfo,
+	pub security_identifer     : SecurityInfo,
     #[serde(rename = "SECNAME")]
-    security_name     : String,
+	pub security_name     : String,
     #[serde(rename = "TICKER")]
-    ticker      : String,
+	pub ticker      : String,
 }
 
 #[derive(Debug, Deserialize)]
-struct OtherInfo { 
+pub struct OtherInfo { 
     #[serde(rename = "SECINFO")]
-    security_info     : SecurityInfo,
+	pub security_info     : SecurityInfo,
     #[serde(rename = "SECNAME")]
-    security_name     : String,
+	pub security_name     : String,
 }
 
 #[repr(u16)]
