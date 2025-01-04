@@ -12,20 +12,31 @@ use crate::types::transfer_types::TransferType;
 
 use super::base::AccountCreation;
 use super::base::AccountOperations;
-use super::base::variable_account::VariableAccount;
+use super::base::fixed_account::FixedAccount;
 
-pub struct InvestmentAccountManager {
-    uid: u32,
+pub struct BankAccount {
     id: u32,
     db: DbConn,
-    variable: VariableAccount,
+    fixed: FixedAccount,
 }
 
-impl AccountCreation for InvestmentAccountManager {
+impl BankAccount {
+    pub fn new(uid: u32, id: u32, db: &mut DbConn) -> Self {
+        let mut acct: BankAccount = Self {
+            id: id,
+            db: db.clone(),
+            fixed: FixedAccount::new(uid, id, db.clone()),
+        };
+        // acct.db.add_participant(id, ParticipantType::Payee, "Fixed".to_string());
+        acct
+    }
+}
+
+impl AccountCreation for BankAccount {
     fn create() -> AccountInfo {
         let mut name: String = String::new();
         loop {
-            name = Text::new("Enter investment account name:")
+            name = Text::new("Enter account name:")
                 .prompt()
                 .unwrap()
                 .to_string();
@@ -36,12 +47,12 @@ impl AccountCreation for InvestmentAccountManager {
             }
         }
         let mut has_bank = true;
-        let mut has_stocks = true;
+        let mut has_stocks = false;
         let mut has_ledger = false;
         let mut has_budget = false;
 
         let account: AccountInfo = AccountInfo {
-            atype: AccountType::Investment,
+            atype: AccountType::Bank,
             name: name,
             has_stocks: has_stocks,
             has_bank: has_bank,
@@ -53,74 +64,33 @@ impl AccountCreation for InvestmentAccountManager {
     }
 }
 
-impl InvestmentAccountManager {
-    pub fn new(uid: u32, id: u32, db: &mut DbConn) -> Self {
-        let mut acct = Self {
-            uid: uid,
-            id: id,
-            db: db.clone(),
-            variable: VariableAccount::new(uid, id, db),
-        };
-
-        // acct.db.add_participant(id, ParticipantType::Payee, "Fixed".to_string());
-        // acct.db.add_participant(id, ParticipantType::Payer, "Fixed".to_string());
-        // acct.db.add_category(id, "Bought".to_string());
-        // acct.db.add_category(id, "Cash Dividend".to_string());
-        // acct.db.add_category(id, "Interest".to_string());
-        // acct.db.add_category(id, "Dividend-Reinvest".to_string());
-        // acct.db.add_category(id, "Sold".to_string());
-        // acct.db.add_category(id, "Deposit".to_string());
-        // acct.db.add_category(id, "Withdrawal".to_string());
-
-        acct
-    }
-}
-
-impl AccountOperations for InvestmentAccountManager {
+impl AccountOperations for BankAccount {
     // fn create( account_id : u32, db : &mut DbConn ) {
-    //     let mut acct: InvestmentAccountManager = Self::new(account_id, db);
-    //     // record several payees and payer types for use
+    //     let mut acct = Self::new(account_id, db);
     //     db.add_participant(account_id, ParticipantType::Payee, "Fixed".to_string());
-    //     db.add_participant(account_id, ParticipantType::Payer, "Fixed".to_string());
-    //     db.add_category(account_id, "Bought".to_string());
-    //     db.add_category(account_id, "Cash Dividend".to_string());
-    //     db.add_category(account_id, "Interest".to_string());
-    //     db.add_category(account_id, "Dividend-Reinvest".to_string());
-    //     db.add_category(account_id, "Sold".to_string());
-    //     db.add_category(account_id, "Deposit".to_string());
-    //     db.add_category(account_id, "Withdrawal".to_string());
-
     //     acct.info();
     // }
 
     fn record(&mut self) {
-        const RECORD_OPTIONS: [&'static str; 4] = ["Deposit", "Withdrawal", "Purchase", "Sale"];
         loop {
             let action = Select::new(
                 "\nWhat transaction would you like to record?",
-                RECORD_OPTIONS.to_vec(),
+                vec!["Deposit", "Withdrawal"],
             )
             .prompt()
             .unwrap()
             .to_string();
             match action.as_str() {
                 "Deposit" => {
-                    self.variable.fixed.deposit();
+                    self.fixed.deposit();
                 }
                 "Withdrawal" => {
-                    self.variable.fixed.withdrawal();
-                }
-                "Purchase" => {
-                    self.variable.purchase_stock();
-                }
-                "Sale" => {
-                    self.variable.sell_stock();
+                    self.fixed.withdrawal();
                 }
                 _ => {
                     panic!("Unrecognized input!");
                 }
             }
-
             let record_again = Confirm::new("Would you like to record another transaction?")
                 .prompt()
                 .unwrap();
@@ -130,31 +100,35 @@ impl AccountOperations for InvestmentAccountManager {
         }
     }
 
+    fn import(&mut self) {}
+
     fn modify(&mut self) {}
 
     fn export(&mut self) {}
 
     fn report(&mut self) {
-        const REPORT_OPTIONS: [&'static str; 2] = ["Total Value", "Time-Weighted Rate of Return"];
-        let choice = Select::new("What would you like to report: ", REPORT_OPTIONS.to_vec())
-            .prompt()
-            .unwrap()
-            .to_string();
+        const REPORT_OPTIONS: [&'static str; 2] = ["Total Value", "Simple Growth Rate"];
+        let choice: String =
+            Select::new("What would you like to report: ", REPORT_OPTIONS.to_vec())
+                .prompt()
+                .unwrap()
+                .to_string();
         match choice.as_str() {
             "Total Value" => {
-                let value = self.variable.get_current_value();
+                let value = self.fixed.get_current_value();
                 println!("\tTotal Account Value: {}", value);
             }
-            "Time-Weighted Rate of Return" => {
+            "Simple Growth Rate" => {
                 let (period_start, period_end) = query_user_for_analysis_period();
-                let twr = self.variable.time_weighted_return(period_start, period_end);
-                println!("\tRate of return: {}%", twr);
+                let rate = self.fixed.simple_rate_of_return(period_start, period_end);
+                println!("\tRate of return: {}%", rate);
             }
             _ => {
                 panic!("Unrecognized input!");
             }
         }
     }
+
     fn link(&mut self, transacting_account: u32, entry: LedgerRecord) -> Option<u32> {
         let mut my_entry = entry.clone();
         let mut from_account;

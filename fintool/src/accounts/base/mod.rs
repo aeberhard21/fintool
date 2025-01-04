@@ -11,6 +11,7 @@ pub trait AccountCreation {
 
 pub trait AccountOperations {
     // fn create( account_id : u32, db : &mut DbConn );
+    fn import(&mut self);
     fn record(&mut self);
     fn modify(&mut self);
     fn export(&mut self);
