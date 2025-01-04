@@ -9,6 +9,7 @@ mod database;
 mod stocks;
 mod tui;
 mod types;
+mod ofx;
 
 fn main() {
     let db_dir: String = String::from("./db");

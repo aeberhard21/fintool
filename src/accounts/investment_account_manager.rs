@@ -14,6 +14,8 @@ use super::base::AccountCreation;
 use super::base::AccountOperations;
 use super::base::variable_account::VariableAccount;
 
+use crate::ofx::defs;
+
 pub struct InvestmentAccountManager {
     uid: u32,
     id: u32,
