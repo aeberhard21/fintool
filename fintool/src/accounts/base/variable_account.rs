@@ -73,7 +73,7 @@ impl VariableAccount {
         purchase = LedgerInfo {
             date: date.clone(),
             amount: shares * costbasis,
-            transfer_type: TransferType::WidthdrawalToInternalAccount,
+            transfer_type: TransferType::WithdrawalToInternalAccount,
             participant: pid,
             category_id: cid,
             description: format!(
@@ -287,9 +287,9 @@ impl VariableAccount {
                 // all cash stays within account so cash flow is 0
                 TransferType::DepositFromInternalAccount => 0.0,
                 // withdrawing from account to cash flow is negative
-                TransferType::WidthdrawalToExternalAccount => -txn.amount,
+                TransferType::WithdrawalToExternalAccount => -txn.amount,
                 // all cash stays within account so cash flow is 0
-                TransferType::WidthdrawalToInternalAccount => 0.0,
+                TransferType::WithdrawalToInternalAccount => 0.0,
             };
 
             if iter.peek().is_none() {
@@ -353,7 +353,7 @@ impl VariableAccount {
     //         //  - will not consider initial value (fixed_vi = 0.0) of, movements into our out of fixed account because we are only looking at one ticker
 
     //         // filter transactions that move money into and out of account
-    //         fixed_transactions.retain(|transaction| transaction.transfer_type != TransferType::WidthdrawalToExternalAccount);
+    //         fixed_transactions.retain(|transaction| transaction.transfer_type != TransferType::WithdrawalToExternalAccount);
     //         fixed_transactions.retain(|transaction| transaction.transfer_type != TransferType::DepositFromExternalAccount);
     //         // filter transactions not including the selected ticker
     //         fixed_transactions.retain(|transaction| transaction.participant == ticker.clone().expect("Ticker not provided!"));
@@ -429,11 +429,11 @@ impl VariableAccount {
     //             // adding cash to account
     //             if txn.transfer_type == TransferType::DepositFromExternalAccount { txn.amount } else
     //             // removing cash from account
-    //             if txn.transfer_type == TransferType::WidthdrawalToExternalAccount  { -txn.amount }  else
+    //             if txn.transfer_type == TransferType::WithdrawalToExternalAccount  { -txn.amount }  else
     //             // stock sale (for single stock analysis)
     //             if single_ticker && txn.transfer_type == TransferType::DepositFromInternalAccount { -txn.amount } else
     //             // stock purchase (for single stock analysis)
-    //             if single_ticker && txn.transfer_type == TransferType::WidthdrawalToInternalAccount { txn.amount } else
+    //             if single_ticker && txn.transfer_type == TransferType::WithdrawalToInternalAccount { txn.amount } else
     //             // otherwise, do not consider
     //             { 0.0 } ;
 

@@ -136,11 +136,11 @@ impl AccountOperations for BankAccount {
 
         match my_entry.info.transfer_type {
             TransferType::DepositFromExternalAccount => {
-                my_entry.info.transfer_type = TransferType::WidthdrawalToExternalAccount;
+                my_entry.info.transfer_type = TransferType::WithdrawalToExternalAccount;
                 from_account = self.id;
                 to_account = transacting_account;
             }
-            TransferType::WidthdrawalToExternalAccount => {
+            TransferType::WithdrawalToExternalAccount => {
                 my_entry.info.transfer_type = TransferType::DepositFromExternalAccount;
                 from_account = transacting_account;
                 to_account = self.id;

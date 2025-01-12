@@ -205,14 +205,14 @@ impl Autocomplete for ParticipantAutoCompleter {
             ParticipantType::Payee => {
                 let x: Vec<String> = self
                     .db
-                    .get_participants(self.aid, TransferType::WidthdrawalToExternalAccount)
+                    .get_participants(self.aid, TransferType::WithdrawalToExternalAccount)
                     .unwrap()
                     .into_iter()
                     .filter(|name| name.starts_with(input))
                     .collect();
                 let y: Vec<String> = self
                     .db
-                    .get_participants(self.aid, TransferType::WidthdrawalToInternalAccount)
+                    .get_participants(self.aid, TransferType::WithdrawalToInternalAccount)
                     .unwrap()
                     .into_iter()
                     .filter(|name| name.starts_with(input))
@@ -239,14 +239,14 @@ impl Autocomplete for ParticipantAutoCompleter {
             ParticipantType::Both => {
                 let w: Vec<String> = self
                     .db
-                    .get_participants(self.aid, TransferType::WidthdrawalToExternalAccount)
+                    .get_participants(self.aid, TransferType::WithdrawalToExternalAccount)
                     .unwrap()
                     .into_iter()
                     .filter(|name| name.starts_with(input))
                     .collect();
                 let x: Vec<String> = self
                     .db
-                    .get_participants(self.aid, TransferType::WidthdrawalToInternalAccount)
+                    .get_participants(self.aid, TransferType::WithdrawalToInternalAccount)
                     .unwrap()
                     .into_iter()
                     .filter(|name| name.starts_with(input))
@@ -316,14 +316,14 @@ impl Autocomplete for ParticipantAutoCompleter {
 //     let mut participant;
 
 //     if action.is_none() {
-//         let deposit_options: Vec<&str> = vec!["Widthdrawal", "Deposit"];
-//         deposit_type = Select::new("Widthdrawal or deposit:", deposit_options)
+//         let deposit_options: Vec<&str> = vec!["Withdrawal", "Deposit"];
+//         deposit_type = Select::new("Withdrawal or deposit:", deposit_options)
 //             .prompt()
 //             .unwrap()
 //             .to_string();
 
-//         if deposit_type == "Widthdrawal" {
-//             transfer_type = TransferType::WidthdrawalToExternalAccount;
+//         if deposit_type == "Withdrawal" {
+//             transfer_type = TransferType::WithdrawalToExternalAccount;
 //         } else {
 //             transfer_type = TransferType::DepositFromExternalAccount;
 //         }
@@ -333,7 +333,7 @@ impl Autocomplete for ParticipantAutoCompleter {
 
 //     // the match is equivalent to a switch statement
 //     match transfer_type {
-//         TransferType::WidthdrawalToExternalAccount => {
+//         TransferType::WithdrawalToExternalAccount => {
 //             let mut participants = _db.get_participants(_aid, ParticipantType::participant).unwrap();
 //             if participants.len() > 0 {
 //                 participants.push("None".to_string());
@@ -377,7 +377,7 @@ impl Autocomplete for ParticipantAutoCompleter {
 //                 pid = _db.add_person(_aid, ParticipantType::Payer, participant).unwrap();
 //             }
 //         }
-//         TransferType::WidthdrawalToInternalAccount => {
+//         TransferType::WithdrawalToInternalAccount => {
 //             let mut participants = _db.get_participants(_aid, ParticipantType::participant).unwrap();
 //             if participants.len() > 0 {
 //                 participants.push("None".to_string());
@@ -399,7 +399,7 @@ impl Autocomplete for ParticipantAutoCompleter {
 //                 pid = _db.add_person(_aid, ParticipantType::participant, participant).unwrap();
 //             }
 //         }
-//         TransferType::WidthdrawalToInternalAccount => {
+//         TransferType::WithdrawalToInternalAccount => {
 //             let mut participants = _db.get_participants(_aid, ParticipantType::participant).unwrap();
 //             if participants.len() > 0 {
 //                 participants.push("None".to_string());

@@ -1,4 +1,14 @@
-#[derive(PartialEq, Clone)]
+#[derive(Clone, Debug)]
+pub struct LedgerEntry {
+    pub date: String,
+    pub amount: f32,
+    pub transfer_type: TransferType,
+    pub participant: String,
+    pub category_id: String,
+    pub description: String,
+}
+
+#[derive(PartialEq, Clone, Debug)]
 pub enum TransferType {
     WithdrawalToExternalAccount,
     DepositFromExternalAccount,

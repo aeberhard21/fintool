@@ -68,7 +68,7 @@ impl FixedAccount {
         let withdrawal = LedgerInfo {
             date: date_input,
             amount: amount_input,
-            transfer_type: TransferType::WidthdrawalToExternalAccount,
+            transfer_type: TransferType::WithdrawalToExternalAccount,
             participant: pid,
             category_id: cid,
             description: description_input,

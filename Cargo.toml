@@ -1,0 +1,8 @@
+[workspace]
+members = [
+    "shared_lib", 
+    "fintool", 
+    "./utils/vfcu2fin"
+]
+
+workspace.resolver = "2"
