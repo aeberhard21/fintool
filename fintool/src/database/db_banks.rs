@@ -17,8 +17,7 @@ impl DbConn {
             )";
         let rs = self.conn.execute(sql, ());
         match rs {
-            Ok(_) => {
-            }
+            Ok(_) => {}
             Err(error) => {
                 panic!("Unable to create banks table: {}", error);
             }

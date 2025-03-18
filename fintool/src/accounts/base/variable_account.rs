@@ -1,12 +1,12 @@
 use chrono::{Days, NaiveDate};
 use inquire::*;
 
+use crate::database::DbConn;
 use crate::stocks;
 use crate::types::investments::{StockInfo, StockRecord};
 use crate::types::ledger::LedgerInfo;
 use crate::types::participants::ParticipantType;
-use crate::types::transfer_types::TransferType;
-use crate::database::DbConn;
+use shared_lib::TransferType;
 
 use super::fixed_account::FixedAccount;
 
@@ -114,7 +114,7 @@ impl VariableAccount {
 
         // let owned_stocks: Vec<StockEntry> = self.db.get_stocks(self.id, ticker.clone()).unwrap();
 
-        let sale_date = DateSelect::new("Enter date of purchase").prompt().unwrap();
+        let sale_date = DateSelect::new("Enter date of purchase: ").prompt().unwrap();
 
         let sale_price: f32 = CustomType::<f32>::new("Enter sale price (per share): ")
             .with_placeholder("00000.00")
@@ -162,7 +162,11 @@ impl VariableAccount {
             ledger_id: ledger_id,
         };
 
-        let sale_id = self.db.sell_stock(self.id, sale_record).unwrap();
+        let sale_id = self.db.sell_stock(self.id, sale_record.clone()).unwrap();
+        let sale_info = StockRecord {
+            id: sale_id,
+            info: sale_record.clone(),
+        };
 
         let sell_method: String =
             Select::new("Select sale methodology:", vec!["LIFO", "FIFO", "Custom"])
@@ -170,18 +174,22 @@ impl VariableAccount {
                 .unwrap()
                 .to_string();
 
+        self.allocate_sold_stock(sale_info, sell_method);
+    }
+
+    fn allocate_sold_stock(&mut self, record: StockRecord, method: String) {
         let mut stocks: Vec<StockRecord> = Vec::new();
-        match sell_method.as_str() {
+        match method.as_str() {
             "LIFO" => {
                 stocks = self
                     .db
-                    .get_stock_history_ascending(self.id, ticker.clone())
+                    .get_stock_history_ascending(self.id, record.info.ticker)
                     .unwrap();
             }
             "FIFO" => {
                 stocks = self
                     .db
-                    .get_stock_history_descending(self.id, ticker.clone())
+                    .get_stock_history_descending(self.id, record.info.ticker)
                     .unwrap();
             }
             "Custom" => {
@@ -192,7 +200,7 @@ impl VariableAccount {
             }
         }
 
-        let mut num_shares_remaining_to_allocate = number_of_shares_sold;
+        let mut num_shares_remaining_to_allocate = record.info.shares;
         let mut num_shares_allocated: f32;
         for mut stock in stocks {
             let purchase_id = stock.id;
@@ -213,7 +221,7 @@ impl VariableAccount {
                 .update_stock_remaining(purchase_id.clone(), stock.info.remaining)
                 .unwrap();
             self.db
-                .add_stock_sale_allocation(purchase_id, sale_id, num_shares_allocated)
+                .add_stock_sale_allocation(purchase_id, record.id, num_shares_allocated)
                 .unwrap();
             num_shares_remaining_to_allocate -= num_shares_allocated;
 
@@ -223,6 +231,21 @@ impl VariableAccount {
                 break;
             }
         }
+    }
+
+    pub fn split_stock(&mut self) {
+        let tickers = self.db.get_stock_tickers(self.id).unwrap();
+        let ticker = Select::new(
+            "\nSelect which stock you would like to report a split of:",
+            tickers
+        ).prompt().unwrap().to_string();
+        let split : f32 = CustomType::<f32>::new("Enter split factor:")
+            .with_placeholder("2.0")
+            .with_error_message("Please type a valid amount!")
+            .prompt()
+            .unwrap();
+        let split_date = DateSelect::new("Enter date of split:").prompt().unwrap();
+        self.db.add_stock_split(self.id, split_date.to_string(), ticker, split).unwrap();
     }
 
     pub fn get_current_value(&mut self) -> f32 {

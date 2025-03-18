@@ -19,8 +19,7 @@ impl DbConn {
             FOREIGN     KEY (aid) REFERENCES accounts(id)
         )";
         match self.conn.execute(sql, ()) {
-            Ok(_) => {
-            }
+            Ok(_) => {}
             Err(error) => {
                 panic!("Unable to create table 'CDs' because {}", error);
             }

@@ -1,24 +1,60 @@
+use std::fs::File;
+use std::path::Path;
+
 use inquire::Confirm;
 use inquire::Select;
 use inquire::Text;
+use rustyline::completion::Candidate;
+use rustyline::completion::FilenameCompleter;
+use rustyline::highlight::Highlighter;
+use rustyline::highlight::MatchingBracketHighlighter;
+use rustyline::hint::HistoryHinter;
+use rustyline::validate::MatchingBracketValidator;
+use rustyline::Completer;
+use rustyline::CompletionType;
+use rustyline::Config;
+use rustyline::EditMode;
+use rustyline::Helper;
+use rustyline::Highlighter;
+use rustyline::Hinter;
+use rustyline::Validator;
+use shared_lib::LedgerEntry;
 
 use crate::database::DbConn;
 use crate::tui::query_user_for_analysis_period;
 use crate::types::accounts::AccountInfo;
 use crate::types::accounts::AccountTransaction;
 use crate::types::accounts::AccountType;
+use crate::types::investments::StockInfo;
+use crate::types::ledger::LedgerInfo;
 use crate::types::ledger::LedgerRecord;
-use crate::types::transfer_types::TransferType;
+use crate::types::participants::ParticipantType;
+use csv::ReaderBuilder;
+use rustyline::{Editor, Result};
+use shared_lib::TransferType;
 
+use super::base::variable_account::VariableAccount;
 use super::base::AccountCreation;
 use super::base::AccountOperations;
-use super::base::variable_account::VariableAccount;
 
 pub struct InvestmentAccountManager {
     uid: u32,
     id: u32,
     db: DbConn,
     variable: VariableAccount,
+}
+
+#[derive(Helper, Completer, Hinter, Highlighter, Validator)]
+struct FilePathHelper {
+    #[rustyline(Completer)]
+    completer: FilenameCompleter,
+    #[rustyline(Highlighter)]
+    highlighter: MatchingBracketHighlighter,
+    #[rustyline(Validator)]
+    validator: MatchingBracketValidator,
+    #[rustyline(Hinter)]
+    hinter: HistoryHinter,
+    colored_prompt: String,
 }
 
 impl AccountCreation for InvestmentAccountManager {
@@ -62,39 +98,13 @@ impl InvestmentAccountManager {
             variable: VariableAccount::new(uid, id, db),
         };
 
-        // acct.db.add_participant(id, ParticipantType::Payee, "Fixed".to_string());
-        // acct.db.add_participant(id, ParticipantType::Payer, "Fixed".to_string());
-        // acct.db.add_category(id, "Bought".to_string());
-        // acct.db.add_category(id, "Cash Dividend".to_string());
-        // acct.db.add_category(id, "Interest".to_string());
-        // acct.db.add_category(id, "Dividend-Reinvest".to_string());
-        // acct.db.add_category(id, "Sold".to_string());
-        // acct.db.add_category(id, "Deposit".to_string());
-        // acct.db.add_category(id, "Withdrawal".to_string());
-
         acct
     }
 }
 
 impl AccountOperations for InvestmentAccountManager {
-    // fn create( account_id : u32, db : &mut DbConn ) {
-    //     let mut acct: InvestmentAccountManager = Self::new(account_id, db);
-    //     // record several payees and payer types for use
-    //     db.add_participant(account_id, ParticipantType::Payee, "Fixed".to_string());
-    //     db.add_participant(account_id, ParticipantType::Payer, "Fixed".to_string());
-    //     db.add_category(account_id, "Bought".to_string());
-    //     db.add_category(account_id, "Cash Dividend".to_string());
-    //     db.add_category(account_id, "Interest".to_string());
-    //     db.add_category(account_id, "Dividend-Reinvest".to_string());
-    //     db.add_category(account_id, "Sold".to_string());
-    //     db.add_category(account_id, "Deposit".to_string());
-    //     db.add_category(account_id, "Withdrawal".to_string());
-
-    //     acct.info();
-    // }
-
     fn record(&mut self) {
-        const RECORD_OPTIONS: [&'static str; 4] = ["Deposit", "Withdrawal", "Purchase", "Sale"];
+        const RECORD_OPTIONS: [&'static str; 6] = ["Deposit", "Withdrawal", "Purchase", "Sale", "Stock Split", "None"];
         loop {
             let action = Select::new(
                 "\nWhat transaction would you like to record?",
@@ -116,6 +126,12 @@ impl AccountOperations for InvestmentAccountManager {
                 "Sale" => {
                     self.variable.sell_stock();
                 }
+                "Stock Split" => {
+                    self.variable.split_stock();
+                }
+                "None" => {
+                    return;
+                }
                 _ => {
                     panic!("Unrecognized input!");
                 }
@@ -130,7 +146,106 @@ impl AccountOperations for InvestmentAccountManager {
         }
     }
 
-    fn import(&mut self) {}
+    fn import(&mut self) {
+        let g = FilePathHelper {
+            completer: FilenameCompleter::new(),
+            highlighter: MatchingBracketHighlighter::new(),
+            hinter: HistoryHinter::new(),
+            validator: MatchingBracketValidator::new(),
+            colored_prompt: "".to_owned(),
+        };
+        let config = Config::builder()
+            .history_ignore_space(true)
+            .completion_type(CompletionType::List)
+            .edit_mode(EditMode::Vi)
+            .build();
+        let mut rl = Editor::with_config(config).unwrap();
+        rl.set_helper(Some(g));
+        let csv = rl.readline("Enter path to CSV file: ").unwrap();
+
+        let mut fp = Path::new("~");
+        println!("{}", Path::new(&csv).display());
+        match Path::new(&csv).try_exists() {
+            Ok(true) => {
+                fp = Path::new(&csv);
+            }
+            Ok(false) => {
+                println!("cannot be found!");
+            }
+            Err(e) => {
+                println!("error is: {}", e);
+            }
+        };
+
+        let mut rdr = ReaderBuilder::new()
+            .has_headers(false)
+            .from_path(fp)
+            .unwrap();
+
+        for result in rdr.deserialize::<LedgerEntry>() {
+            // println!("{}", result.unwrap().amount);
+            let entry = result.unwrap();
+
+            let ptype = if entry.transfer_type
+                == shared_lib::TransferType::WithdrawalToExternalAccount
+            {
+                ParticipantType::Payee
+            } else if entry.transfer_type == shared_lib::TransferType::WithdrawalToInternalAccount {
+                ParticipantType::Payee
+            } else if entry.transfer_type == shared_lib::TransferType::DepositFromExternalAccount {
+                ParticipantType::Payer
+            } else {
+                ParticipantType::Payer
+            };
+            let x: LedgerInfo = LedgerInfo {
+                date: entry.date,
+                amount: entry.amount,
+                transfer_type: entry.transfer_type as TransferType,
+                participant: self
+                    .db
+                    .check_and_add_participant(self.id, entry.participant, ptype),
+                category_id: self.db.check_and_add_category(self.id, entry.category),
+                description: entry.description,
+            };
+
+            let lid: u32 = self.db.add_ledger_entry(self.id, x).unwrap();
+
+            if entry.stock_info.is_some() {
+                let s: shared_lib::StockInfo = entry
+                    .stock_info
+                    .expect("Unable to obtain stock information!");
+                let my_s: crate::types::investments::StockInfo = StockInfo {
+                    ticker: s.ticker,
+                    shares: s.shares,
+                    costbasis: s.costbasis,
+                    date: s.date,
+                    remaining: s.remaining,
+                    ledger_id: lid,
+                };
+                if s.is_buy {
+                    if s.is_split {
+                        // get total shares for ticker and divide by split
+                        let stocks_owned =
+                            self.db.get_stocks(self.id, my_s.ticker.clone()).unwrap();
+                        let all_shares: f32 = stocks_owned.iter().map(|x| x.info.shares).sum();
+                        println!(
+                            "Shares owned: {}, new shares: {}",
+                            all_shares,
+                            my_s.shares.clone()
+                        );
+                        let split_factor = my_s.shares / all_shares;
+                        self.db
+                            .add_stock_split(self.id, my_s.date, my_s.ticker, split_factor)
+                            .unwrap();
+                    } else {
+                        self.db.add_stock(self.id, my_s).unwrap();
+                    }
+                } else {
+                    self.db.sell_stock(self.id, my_s).unwrap();
+                }
+            }
+        }
+    }
 
     fn modify(&mut self) {}
 
@@ -157,6 +272,7 @@ impl AccountOperations for InvestmentAccountManager {
             }
         }
     }
+    
     fn link(&mut self, transacting_account: u32, entry: LedgerRecord) -> Option<u32> {
         let mut my_entry = entry.clone();
         let mut from_account;

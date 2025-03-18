@@ -8,6 +8,7 @@ use std::time::{Duration, UNIX_EPOCH};
 use time::OffsetDateTime;
 use yahoo_finance_api::Quote;
 
+#[derive(Debug, Clone)]
 pub struct StockInfo {
     pub ticker: String,
     pub shares: f32,
@@ -37,8 +38,7 @@ impl DbConn {
             FOREIGN     KEY (lid) REFERENCES ledgers(id)
         )";
         match self.conn.execute(sql, ()) {
-            Ok(_) => {
-            }
+            Ok(_) => {}
             Err(error) => {
                 panic!(
                     "Unable to create table 'stock_purchases' because: {}",
@@ -62,8 +62,7 @@ impl DbConn {
             FOREIGN     KEY (lid) REFERENCES ledgers(id)
         )";
         match self.conn.execute(sql, ()) {
-            Ok(_) => {
-            }
+            Ok(_) => {}
             Err(error) => {
                 panic!("Unable to create table 'investment' because: {}", error);
             }
@@ -81,8 +80,28 @@ impl DbConn {
             FOREIGN KEY (sale_id) REFERENCES stock_sales(id)
         )";
         match self.conn.execute(sql, ()) {
-            Ok(_) => {
+            Ok(_) => {}
+            Err(error) => {
+                panic!(
+                    "Unable to create table 'stock_sale_allocation' because: {}",
+                    error
+                );
             }
+        }
+        Ok(())
+    }
+
+    pub fn create_stock_split_table(&mut self) -> Result<()> {
+        let sql: &str = "CREATE TABLE IF NOT EXISTS stock_splits (
+            id          INTEGER NOT NULL PRIMARY KEY,
+            ticker      STRING NOT NULL,
+            date        STRING NOT NULL, 
+            split       REAL NOT NULL,
+            aid         INTEGER NOT NULL,
+            FOREIGN KEY (aid) REFERENCES accounts(id)
+        )";
+        match self.conn.execute(sql, ()) {
+            Ok(_) => {}
             Err(error) => {
                 panic!(
                     "Unable to create table 'stock_sale_allocation' because: {}",
@@ -105,6 +124,7 @@ impl DbConn {
             aid,
             record.ledger_id
         );
+        println!("{}", record.date);
         let sql = "INSERT INTO stock_purchases (id, date, ticker, shares, costbasis, remaining, aid, lid) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)";
         match self.conn.execute(sql, p) {
             Ok(_) => Ok(id),
@@ -163,6 +183,31 @@ impl DbConn {
         }
     }
 
+    pub fn add_stock_split(
+        &mut self,
+        aid: u32,
+        date: String,
+        ticker: String,
+        split: f32,
+    ) -> Result<u32, rusqlite::Error> {
+        let split_id = self.get_next_stock_split_id().unwrap();
+        let p = rusqlite::params!(split_id, ticker, date, split, aid);
+        let sql =
+            "INSERT INTO stock_splits (id, ticker, date, split, aid ) VALUES (?1, ?2, ?3, ?4, ?5)";
+        let row = match self.conn.execute(sql, p) {
+            Ok(_) => split_id,
+            Err(error) => {
+                panic!("Unable to add allocation of stock sale {}", error)
+            }
+        };
+        let stock_records = self.get_stocks(aid, ticker).unwrap();
+        for stock in stock_records {
+            self.update_stock_remaining(stock.id, stock.info.shares * split).unwrap();
+            self.update_cost_basis(stock.id, stock.info.costbasis / split).unwrap();
+        }
+        Ok(row)
+    }
+
     pub fn drop_stock_by_id(&mut self, id: u32) {
         let p = rusqlite::params![id];
         let sql = "DELETE FROM stock_purchases WHERE id = (?1)";
@@ -178,6 +223,17 @@ impl DbConn {
     pub fn update_stock_remaining(&mut self, id: u32, updated_shares: f32) -> Result<u32> {
         let p = rusqlite::params![id, updated_shares];
         let sql = "UPDATE stock_purchases SET remaining = (?2) WHERE id = (?1)";
+        match self.conn.execute(sql, p) {
+            Ok(_) => Ok(id),
+            Err(error) => {
+                panic!("Unable to update shares: {}", error);
+            }
+        }
+    }
+
+    pub fn update_cost_basis(&mut self, id: u32, updated_costbasis : f32) -> Result<u32> {
+        let p = rusqlite::params![id, updated_costbasis];
+        let sql = "UPDATE costbasis SET costbasis = (?2) WHERE id = (?1)";
         match self.conn.execute(sql, p) {
             Ok(_) => Ok(id),
             Err(error) => {

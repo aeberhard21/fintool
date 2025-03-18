@@ -1,10 +1,10 @@
 use super::participants::ParticipantType;
-use super::transfer_types::TransferType;
 use crate::database::DbConn;
 use chrono::NaiveDate;
 use inquire::autocompletion::Replacement;
 use inquire::*;
 use rusqlite::Result;
+use shared_lib::TransferType;
 
 #[derive(Clone)]
 pub struct LedgerInfo {
@@ -41,8 +41,7 @@ impl DbConn {
 
         let rs = self.conn.execute(sql, ());
         match rs {
-            Ok(_) => {
-            }
+            Ok(_) => {}
             Err(error) => {
                 panic!("Unable to create: {}", error)
             }
@@ -73,10 +72,10 @@ impl DbConn {
         );
         match rs {
             Ok(_usize) => {
-                println!("Added statement");
+                // println!("Added statement");
             }
-            Err(Error) => {
-                println!("Unable to add ledger: {}", Error);
+            Err(error) => {
+                println!("Unable to add ledger: {}", error);
             }
         }
         Ok(id)

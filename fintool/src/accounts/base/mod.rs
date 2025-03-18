@@ -4,7 +4,6 @@ use crate::types::ledger::LedgerRecord;
 pub mod fixed_account;
 pub mod variable_account;
 
-
 pub trait AccountCreation {
     fn create() -> AccountInfo;
 }

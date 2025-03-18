@@ -4,9 +4,9 @@ use crate::types::accounts::AccountRecord;
 use crate::types::categories::CategoryAutoCompleter;
 use crate::types::ledger::{LedgerInfo, LedgerRecord, ParticipantAutoCompleter};
 use crate::types::participants::ParticipantType;
-use crate::types::transfer_types::TransferType;
 use chrono::{Datelike, NaiveDate};
 use inquire::*;
+use shared_lib::TransferType;
 use std::collections::HashMap;
 
 use super::AccountOperations;

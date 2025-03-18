@@ -5,13 +5,13 @@ use chrono::Months;
 use std::collections::HashMap;
 use std::vec;
 
-use crate::accounts::base::AccountOperations;
-use crate::accounts::base::AccountCreation;
 use crate::accounts::bank_account::BankAccount;
+use crate::accounts::base::AccountCreation;
+use crate::accounts::base::AccountOperations;
 use crate::accounts::investment_account_manager::InvestmentAccountManager;
-use crate::types::accounts::*;
 use crate::database::DbConn;
 use crate::tui::tui_user::*;
+use crate::types::accounts::*;
 use chrono::NaiveDate;
 use inquire::*;
 
@@ -67,7 +67,7 @@ fn access_account(uid: u32, db: &mut DbConn) {
     let mut acct: Box<dyn AccountOperations>;
     let mut choice;
     let mut new_account;
-    const ACCT_ACTIONS: [&'static str; 3] = ["Record", "Report", "None"];
+    const ACCT_ACTIONS: [&'static str; 4] = ["Record", "Import", "Report", "None"];
 
     let mut accounts_is_empty = accounts.is_empty();
 
@@ -86,7 +86,26 @@ fn access_account(uid: u32, db: &mut DbConn) {
                 (acct, new_account) = create_new_account(uid, db);
                 accounts.push(new_account);
                 accounts_is_empty = false;
-                acct.record();
+                // acct.record();
+                const ACCT_ACTIONS: [&'static str; 3] = ["Record", "Import", "None"];
+                let selected_menu_item = Select::new("Select action: ", ACCT_ACTIONS.to_vec())
+                    .prompt()
+                    .unwrap()
+                    .to_string();
+                match selected_menu_item.as_str() {
+                    "Record" => {
+                        acct.record();
+                    }
+                    "Import" => {
+                        acct.import();
+                    }
+                    "None" => { 
+                        continue;
+                    }
+                    _ => {
+                        panic!("Invalid menu option!");
+                    }
+                }
 
                 let more = Confirm::new("More actions?").prompt().unwrap();
                 if !more {
@@ -126,22 +145,31 @@ fn access_account(uid: u32, db: &mut DbConn) {
             }
         }
 
-        let selected_menu_item = Select::new("Select action: ", ACCT_ACTIONS.to_vec())
-            .prompt()
-            .unwrap()
-            .to_string();
-        match selected_menu_item.as_str() {
-            "Record" => {
-                acct.record();
+        loop {
+            let selected_menu_item = Select::new("Select action: ", ACCT_ACTIONS.to_vec())
+                .prompt()
+                .unwrap()
+                .to_string();
+            match selected_menu_item.as_str() {
+                "Record" => {
+                    acct.record();
+                }
+                "Import" => {
+                    acct.import();
+                }
+                "Report" => {
+                    acct.report();
+                }
+                "None" => {
+                    break;
+                }
+                _ => {
+                    panic!("Invalid menu option!");
+                }
             }
-            "Report" => {
-                acct.report();
-            }
-            "None" => {
-                continue;
-            }
-            _ => {
-                panic!("Invalid menu option!");
+            let more = Confirm::new("More actions?").prompt().unwrap();
+            if !more {
+                break;
             }
         }
     }
