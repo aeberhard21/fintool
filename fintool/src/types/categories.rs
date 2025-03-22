@@ -169,7 +169,7 @@ pub struct CategoryAutoCompleter {
 
 impl Autocomplete for CategoryAutoCompleter {
     fn get_suggestions(&mut self, input: &str) -> Result<Vec<String>, CustomUserError> {
-        let suggestions: Vec<String>;
+        let mut suggestions: Vec<String>;
         suggestions = self
             .db
             .get_categories(self.aid)
@@ -178,6 +178,7 @@ impl Autocomplete for CategoryAutoCompleter {
             .map(|category| category.category.name)
             .filter(|cname| cname.starts_with(input))
             .collect();
+        suggestions.dedup();
         Ok(suggestions)
     }
 

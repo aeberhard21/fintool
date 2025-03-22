@@ -190,107 +190,107 @@ impl DbConn {
     }
 }
 
-#[derive(Clone)]
-pub struct ParticipantAutoCompleter {
-    pub aid: u32,
-    pub db: DbConn,
-    pub ptype: ParticipantType,
-}
+// #[derive(Clone)]
+// pub struct ParticipantAutoCompleter {
+//     pub aid: u32,
+//     pub db: DbConn,
+//     pub ptype: ParticipantType,
+// }
 
-impl Autocomplete for ParticipantAutoCompleter {
-    fn get_suggestions(&mut self, input: &str) -> Result<Vec<String>, CustomUserError> {
-        let mut suggestions: Vec<String>;
-        match self.ptype {
-            ParticipantType::Payee => {
-                let x: Vec<String> = self
-                    .db
-                    .get_participants(self.aid, TransferType::WithdrawalToExternalAccount)
-                    .unwrap()
-                    .into_iter()
-                    .filter(|name| name.starts_with(input))
-                    .collect();
-                let y: Vec<String> = self
-                    .db
-                    .get_participants(self.aid, TransferType::WithdrawalToInternalAccount)
-                    .unwrap()
-                    .into_iter()
-                    .filter(|name| name.starts_with(input))
-                    .collect();
-                suggestions = [x, y].concat();
-            }
-            ParticipantType::Payer => {
-                let x: Vec<String> = self
-                    .db
-                    .get_participants(self.aid, TransferType::DepositFromExternalAccount)
-                    .unwrap()
-                    .into_iter()
-                    .filter(|name| name.starts_with(input))
-                    .collect();
-                let y: Vec<String> = self
-                    .db
-                    .get_participants(self.aid, TransferType::DepositFromExternalAccount)
-                    .unwrap()
-                    .into_iter()
-                    .filter(|name| name.starts_with(input))
-                    .collect();
-                suggestions = [x, y].concat();
-            }
-            ParticipantType::Both => {
-                let w: Vec<String> = self
-                    .db
-                    .get_participants(self.aid, TransferType::WithdrawalToExternalAccount)
-                    .unwrap()
-                    .into_iter()
-                    .filter(|name| name.starts_with(input))
-                    .collect();
-                let x: Vec<String> = self
-                    .db
-                    .get_participants(self.aid, TransferType::WithdrawalToInternalAccount)
-                    .unwrap()
-                    .into_iter()
-                    .filter(|name| name.starts_with(input))
-                    .collect();
-                let y: Vec<String> = self
-                    .db
-                    .get_participants(self.aid, TransferType::DepositFromExternalAccount)
-                    .unwrap()
-                    .into_iter()
-                    .filter(|name| name.starts_with(input))
-                    .collect();
-                let z: Vec<String> = self
-                    .db
-                    .get_participants(self.aid, TransferType::DepositFromExternalAccount)
-                    .unwrap()
-                    .into_iter()
-                    .filter(|name| name.starts_with(input))
-                    .collect();
-                suggestions = [[w, x].concat(), [y, z].concat()].concat();
-            }
-            _ => {
-                panic!("Unable to match ParticipantType in Autocomplete!");
-            }
-        }
-        Ok(suggestions)
-    }
+// impl Autocomplete for ParticipantAutoCompleter {
+//     fn get_suggestions(&mut self, input: &str) -> Result<Vec<String>, CustomUserError> {
+//         let mut suggestions: Vec<String>;
+//         match self.ptype {
+//             ParticipantType::Payee => {
+//                 let x: Vec<String> = self
+//                     .db
+//                     .get_participants(self.aid, TransferType::WithdrawalToExternalAccount)
+//                     .unwrap()
+//                     .into_iter()
+//                     .filter(|name| name.starts_with(input))
+//                     .collect();
+//                 let y: Vec<String> = self
+//                     .db
+//                     .get_participants(self.aid, TransferType::WithdrawalToInternalAccount)
+//                     .unwrap()
+//                     .into_iter()
+//                     .filter(|name| name.starts_with(input))
+//                     .collect();
+//                 suggestions = [x, y].concat();
+//             }
+//             ParticipantType::Payer => {
+//                 let x: Vec<String> = self
+//                     .db
+//                     .get_participants(self.aid, TransferType::DepositFromExternalAccount)
+//                     .unwrap()
+//                     .into_iter()
+//                     .filter(|name| name.starts_with(input))
+//                     .collect();
+//                 let y: Vec<String> = self
+//                     .db
+//                     .get_participants(self.aid, TransferType::DepositFromExternalAccount)
+//                     .unwrap()
+//                     .into_iter()
+//                     .filter(|name| name.starts_with(input))
+//                     .collect();
+//                 suggestions = [x, y].concat();
+//             }
+//             ParticipantType::Both => {
+//                 let w: Vec<String> = self
+//                     .db
+//                     .get_participants(self.aid, TransferType::WithdrawalToExternalAccount)
+//                     .unwrap()
+//                     .into_iter()
+//                     .filter(|name| name.starts_with(input))
+//                     .collect();
+//                 let x: Vec<String> = self
+//                     .db
+//                     .get_participants(self.aid, TransferType::WithdrawalToInternalAccount)
+//                     .unwrap()
+//                     .into_iter()
+//                     .filter(|name| name.starts_with(input))
+//                     .collect();
+//                 let y: Vec<String> = self
+//                     .db
+//                     .get_participants(self.aid, TransferType::DepositFromExternalAccount)
+//                     .unwrap()
+//                     .into_iter()
+//                     .filter(|name| name.starts_with(input))
+//                     .collect();
+//                 let z: Vec<String> = self
+//                     .db
+//                     .get_participants(self.aid, TransferType::DepositFromExternalAccount)
+//                     .unwrap()
+//                     .into_iter()
+//                     .filter(|name| name.starts_with(input))
+//                     .collect();
+//                 suggestions = [[w, x].concat(), [y, z].concat()].concat();
+//             }
+//             _ => {
+//                 panic!("Unable to match ParticipantType in Autocomplete!");
+//             }
+//         }
+//         Ok(suggestions)
+//     }
 
-    fn get_completion(
-        &mut self,
-        input: &str,
-        highlighted_suggestion: Option<String>,
-    ) -> Result<autocompletion::Replacement, CustomUserError> {
-        Ok(match highlighted_suggestion {
-            Some(suggestion) => Replacement::Some(suggestion),
-            None => {
-                let suggestions = self.get_suggestions(input).unwrap();
-                if suggestions.len() == 0 {
-                    autocompletion::Replacement::None
-                } else {
-                    Some(suggestions[0].clone())
-                }
-            }
-        })
-    }
-}
+//     fn get_completion(
+//         &mut self,
+//         input: &str,
+//         highlighted_suggestion: Option<String>,
+//     ) -> Result<autocompletion::Replacement, CustomUserError> {
+//         Ok(match highlighted_suggestion {
+//             Some(suggestion) => Replacement::Some(suggestion),
+//             None => {
+//                 let suggestions = self.get_suggestions(input).unwrap();
+//                 if suggestions.len() == 0 {
+//                     autocompletion::Replacement::None
+//                 } else {
+//                     Some(suggestions[0].clone())
+//                 }
+//             }
+//         })
+//     }
+// }
 
 // pub fn record_ledger_entry(_aid: u32, _db: &mut DbConn, action : Option<TransferType> ) -> LedgerInfo {
 //     // this function returns either "Ok" or "Err". "Ok" indicates that the type T in Result<T, E>
