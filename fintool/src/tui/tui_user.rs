@@ -2,7 +2,7 @@ use crate::database::DbConn;
 use inquire::*;
 
 pub fn create_user(_db: &mut DbConn) -> u32 {
-    let mut name: String = String::new();
+    let mut name: String;
     loop {
         name = Text::new("Enter user name:").prompt().unwrap();
         if name.len() == 0 {
@@ -19,7 +19,7 @@ pub fn create_user(_db: &mut DbConn) -> u32 {
 }
 
 pub fn create_admin(_db: &mut DbConn) -> u32 {
-    let mut name: String = String::new();
+    let mut name: String;
     loop {
         name = Text::new("Enter admin name:").prompt().unwrap();
         if name.len() == 0 {
@@ -28,7 +28,6 @@ pub fn create_admin(_db: &mut DbConn) -> u32 {
             break;
         }
     }
-    println!("Name is {}", name);
     _db.add_user(name, true).unwrap()
 }
 

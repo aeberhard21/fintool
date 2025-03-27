@@ -1,12 +1,12 @@
-use chrono::{Days, NaiveDate};
+use chrono::{Date, Days, NaiveDate};
 use inquire::*;
 
 use crate::database::DbConn;
 use crate::stocks;
-use crate::types::investments::{StockInfo, StockRecord};
-use crate::types::ledger::LedgerInfo;
+use crate::types::investments::{SaleAllocationInfo, SaleAllocationRecord, StockInfo, StockRecord};
+use crate::types::ledger::{LedgerInfo, LedgerRecord};
 use crate::types::participants::ParticipantType;
-use shared_lib::TransferType;
+use shared_lib::{LedgerEntry, TransferType};
 
 use super::fixed_account::FixedAccount;
 
@@ -45,7 +45,7 @@ impl VariableAccount {
         }
 
         let date_input: Result<NaiveDate, InquireError> =
-            DateSelect::new("Enter date of purchase").prompt();
+            DateSelect::new("Enter date of purchase:").prompt();
 
         let shares: f32 = CustomType::<f32>::new("Enter number of shares purchased: ")
             .with_placeholder("0.00")
@@ -77,7 +77,7 @@ impl VariableAccount {
             participant: pid,
             category_id: cid,
             description: format!(
-                "Purchase {} shares of {} at ${} on {}",
+                "[Internal] Purchase {} shares of {} at ${} on {}",
                 shares,
                 ticker,
                 costbasis,
@@ -114,7 +114,7 @@ impl VariableAccount {
 
         // let owned_stocks: Vec<StockEntry> = self.db.get_stocks(self.id, ticker.clone()).unwrap();
 
-        let sale_date = DateSelect::new("Enter date of purchase: ").prompt().unwrap();
+        let sale_date = DateSelect::new("Enter date of sale: ").prompt().unwrap();
 
         let sale_price: f32 = CustomType::<f32>::new("Enter sale price (per share): ")
             .with_placeholder("00000.00")
@@ -123,7 +123,7 @@ impl VariableAccount {
             .prompt()
             .unwrap();
 
-        let mut number_of_shares_sold: f32 = CustomType::<f32>::new("Enter quantity sold: ")
+        let number_of_shares_sold: f32 = CustomType::<f32>::new("Enter quantity sold: ")
             .with_placeholder("00000.00")
             .with_default(00000.00)
             .with_error_message("Please type a valid amount!")
@@ -133,8 +133,7 @@ impl VariableAccount {
         let value_received = number_of_shares_sold * sale_price;
         let stock_cid = self
             .db
-            .get_category_id(self.id, "Sold".to_string())
-            .unwrap();
+            .check_and_add_category(self.id, "Sold".to_string());
 
         let sale = LedgerInfo {
             date: sale_date.to_string(),
@@ -168,8 +167,9 @@ impl VariableAccount {
             info: sale_record.clone(),
         };
 
+        const SALE_METHOD_OPTIONS: [&'static str; 2] = ["LIFO", "FIFO"];
         let sell_method: String =
-            Select::new("Select sale methodology:", vec!["LIFO", "FIFO", "Custom"])
+            Select::new("Select sale methodology:", SALE_METHOD_OPTIONS.to_vec())
                 .prompt()
                 .unwrap()
                 .to_string();
@@ -177,8 +177,232 @@ impl VariableAccount {
         self.allocate_sold_stock(sale_info, sell_method);
     }
 
+    pub fn modify(&mut self, record: LedgerRecord) -> LedgerRecord {
+        let updated_record;
+
+        // does this correlate with purchase or sale of stocks
+        let was_stock_purchase = self
+            .db
+            .check_and_get_stock_purchase_record_matching_from_ledger_id(record.id)
+            .unwrap();
+        let was_stock_sale = self
+            .db
+            .check_and_get_stock_sale_record_matching_from_ledger_id(record.id)
+            .unwrap();
+
+        let original_record;
+        let original_txn;
+
+        // if not just update in place
+        if was_stock_purchase.is_none() && was_stock_sale.is_none() {
+            updated_record = self.fixed.modify(record);
+            return updated_record;
+        }
+        if was_stock_purchase.is_some() {
+            original_record = was_stock_purchase.unwrap();
+            original_txn = "purchase";
+        } else {
+            original_record = was_stock_sale.unwrap();
+            original_txn = "sale";
+        }
+
+        const OPTIONS: [&'static str; 4] = ["Purchase", "Sale", "Stock Split", "None"];
+        let purchase_or_sale = Select::new("Purchase, Sale, or Stock Split:", OPTIONS.to_vec())
+            .with_starting_filter_input(original_txn)
+            .prompt()
+            .unwrap();
+
+        let mut tickers = self.db.get_stock_tickers(self.id).unwrap();
+
+        let ticker_msg = format!(
+            "Select which stock would like to record the {} of:",
+            purchase_or_sale
+        );
+        let updated_ticker = Select::new(ticker_msg.as_str(), tickers)
+            .with_starting_filter_input(&original_record.info.ticker)
+            .prompt()
+            .unwrap();
+
+        let stock_valid = stocks::get_stock_at_close(updated_ticker.clone());
+        match stock_valid {
+            Ok(price) => {}
+            Err(error) => {
+                panic!(
+                    "Fetch failed for ticker '{}': {}!",
+                    updated_ticker.clone(),
+                    error
+                );
+            }
+        }
+
+        let date_msg = format!("Enter date of {}", purchase_or_sale);
+        let updated_date = DateSelect::new(date_msg.as_str())
+            .with_default(
+                NaiveDate::parse_from_str(original_record.info.date.as_str(), "%Y-%m-%d").unwrap(),
+            )
+            .prompt()
+            .unwrap();
+
+        let price_msg = format!("Enter {} price (per share):", purchase_or_sale);
+        let updated_price: f32 = CustomType::<f32>::new(price_msg.as_str())
+            .with_default(original_record.info.costbasis)
+            .with_error_message("Please type a valid amount!")
+            .prompt()
+            .unwrap();
+
+        let shares_msg = format!("Enter shares transacted in {}:", purchase_or_sale);
+        let updated_shares: f32 = CustomType::<f32>::new(shares_msg.as_str())
+            .with_default(original_record.info.shares)
+            .with_error_message("Please type a valid amount!")
+            .prompt()
+            .unwrap();
+
+        let (updated_ptype, updated_category, updated_ttype) = match purchase_or_sale {
+            "Purchase" => (
+                ParticipantType::Payee,
+                "Bought",
+                TransferType::WithdrawalToInternalAccount,
+            ),
+            "Sale" => (
+                ParticipantType::Payer,
+                "Sold",
+                TransferType::DepositFromInternalAccount,
+            ),
+            _ => {
+                panic!("Not implemented!")
+            }
+        };
+
+        let updated_pid =
+            self.db
+                .check_and_add_participant(self.id, updated_ticker.clone(), updated_ptype);
+        let updated_cid = self
+            .db
+            .check_and_add_category(self.id, updated_category.to_string());
+
+        let updated_amount = updated_shares * updated_price;
+        let updated_description = if original_txn == "Purchase" {
+            format!(
+                "[Internal] Purchase {} shares of {} at ${} on {}",
+                updated_shares,
+                updated_ticker,
+                updated_price,
+                updated_date.to_string()
+            )
+        } else {
+            format!(
+                "[Internal] Sold {} shares of {} at ${} on {}.",
+                updated_shares,
+                updated_ticker,
+                updated_price,
+                updated_date.to_string()
+            )
+        };
+
+        updated_record = LedgerRecord {
+            id: original_record.info.ledger_id,
+            info: LedgerInfo {
+                date: updated_date.to_string(),
+                amount: updated_amount,
+                transfer_type: updated_ttype,
+                participant: updated_pid,
+                category_id: updated_cid,
+                description: updated_description,
+            },
+        };
+
+        let updated_stock_info = StockInfo {
+            date: updated_date.to_string(),
+            ticker: updated_ticker,
+            shares: updated_shares,
+            costbasis: updated_price,
+            remaining: updated_shares,
+            ledger_id: original_record.info.ledger_id,
+        };
+        let updated_stock_record;
+        let stock_id;
+
+        if "Purchase" == purchase_or_sale.to_string() {
+            // Check if previously entered as a sale and now needs to
+            // be a purchase.
+            if "sale" == original_txn.to_string() {
+                let sale_id_or_none = self
+                    .db
+                    .remove_stock_sale(original_record.info.ledger_id)
+                    .unwrap();
+                if sale_id_or_none.is_none() {
+                    println!("Sale could not be found associated with the modified ledger item!");
+                    return updated_record;
+                }
+
+                // Once done, remove stock allocation for this ledger id
+                let sale_id = sale_id_or_none.unwrap();
+                self.deallocate_sold_stock(sale_id);
+
+                stock_id = self.db.add_stock(self.id, updated_stock_info).unwrap();
+            } else {
+                let stock_id_or_none = self
+                    .db
+                    .update_stock_purchase(updated_stock_info.clone())
+                    .unwrap();
+                if stock_id_or_none.is_none() {
+                    println!("Purchase could not be associated with the modified ledger item!");
+                    return updated_record;
+                }
+                stock_id = stock_id_or_none.unwrap();
+            }
+        } else {
+            const SALE_METHOD_OPTIONS: [&'static str; 2] = ["LIFO", "FIFO"];
+            let sell_method: String =
+                Select::new("Select sale methodology:", SALE_METHOD_OPTIONS.to_vec())
+                    .prompt()
+                    .unwrap()
+                    .to_string();
+
+            // Check if previously entered as purchase and now needs to
+            // a sale.
+            if "purchase" == original_txn.to_string() {
+                let _purchase_id = self
+                    .db
+                    .remove_stock_purchase(original_record.info.ledger_id)
+                    .unwrap();
+                let stock_id = self
+                    .db
+                    .sell_stock(self.id, updated_stock_info.clone())
+                    .unwrap();
+                updated_stock_record = StockRecord {
+                    id: stock_id,
+                    info: updated_stock_info,
+                };
+                self.allocate_sold_stock(updated_stock_record, sell_method);
+            } else {
+                let sale_id_or_none = self
+                    .db
+                    .update_stock_sale(updated_stock_info.clone())
+                    .unwrap();
+                if sale_id_or_none.is_none() {
+                    println!("Sale could not be associated with the modified ledger item!");
+                    return updated_record;
+                }
+                stock_id = sale_id_or_none.unwrap();
+                updated_stock_record = StockRecord {
+                    id: stock_id,
+                    info: updated_stock_info,
+                };
+                // TODO: deallocate sold stock, remove entries
+                self.deallocate_sold_stock(stock_id);
+            
+                // reallocate
+                self.allocate_sold_stock(updated_stock_record, sell_method);
+            }
+        }
+
+        let _updated_id = self.db.update_ledger_item(updated_record.clone()).unwrap();
+        return updated_record;
+    }
+
     fn allocate_sold_stock(&mut self, record: StockRecord, method: String) {
-        let mut stocks: Vec<StockRecord> = Vec::new();
+        let stocks: Vec<StockRecord>;
         match method.as_str() {
             "LIFO" => {
                 stocks = self
@@ -191,9 +415,6 @@ impl VariableAccount {
                     .db
                     .get_stock_history_descending(self.id, record.info.ticker)
                     .unwrap();
-            }
-            "Custom" => {
-                panic!("Not implemented!");
             }
             _ => {
                 panic!("Unrecognized input!");
@@ -233,19 +454,37 @@ impl VariableAccount {
         }
     }
 
+    fn deallocate_sold_stock(&mut self, sale_id: u32) {
+        let stock_allocation_records = self
+            .db
+            .get_stock_sale_allocation_for_sale_id(sale_id)
+            .unwrap();
+        for record in stock_allocation_records {
+            // add shares back to ledger
+           let _ = self.db
+                .add_to_stock_remaining(record.info.purchase_id, record.info.quantity).unwrap();
+            self.db.remove_stock_sale_allocation(record.id);
+        }
+    }
+
     pub fn split_stock(&mut self) {
         let tickers = self.db.get_stock_tickers(self.id).unwrap();
         let ticker = Select::new(
             "\nSelect which stock you would like to report a split of:",
-            tickers
-        ).prompt().unwrap().to_string();
-        let split : f32 = CustomType::<f32>::new("Enter split factor:")
+            tickers,
+        )
+        .prompt()
+        .unwrap()
+        .to_string();
+        let split: f32 = CustomType::<f32>::new("Enter split factor:")
             .with_placeholder("2.0")
             .with_error_message("Please type a valid amount!")
             .prompt()
             .unwrap();
         let split_date = DateSelect::new("Enter date of split:").prompt().unwrap();
-        self.db.add_stock_split(self.id, split_date.to_string(), ticker, split).unwrap();
+        self.db
+            .add_stock_split(self.id, split_date.to_string(), ticker, split)
+            .unwrap();
     }
 
     pub fn get_current_value(&mut self) -> f32 {
@@ -255,7 +494,6 @@ impl VariableAccount {
     }
 
     pub fn time_weighted_return(&mut self, period_start: NaiveDate, period_end: NaiveDate) -> f32 {
-        let rate: f32 = 0.0;
         let mut cf: f32 = 0.0;
         let mut hps: Vec<f32> = Vec::new();
         let mut hp: f32;
@@ -281,8 +519,7 @@ impl VariableAccount {
             .get_portfolio_value_before_date(self.id, period_start)
             .unwrap();
         let mut vi = fixed_value + variable_value;
-        let mut vf: f32 = 0.0;
-        println!("Initial: {}", vi);
+        let mut vf: f32;
 
         let final_fixed_value = self
             .db
@@ -293,7 +530,6 @@ impl VariableAccount {
             .get_portfolio_value_before_date(self.id, period_end)
             .unwrap();
         let final_vf = final_fixed_value + final_portfolio_value;
-        println!("Final: {}", final_vf);
 
         if iter.peek().is_none() {
             // no transactions during analyzed period, so
@@ -353,135 +589,4 @@ impl VariableAccount {
         let twr = hps.iter().fold(1.0 + hp1, |acc, hp| acc * (1.0 + hp)) - 1.0;
         return twr * 100.0;
     }
-
-    // pub fn time_weighted_return(&mut self, period_start : NaiveDate, period_end : NaiveDate, ticker : Option<String>) -> f32 {
-    //     let mut rate : f32 = 0.0;
-    //     let mut owned_shares : HashMap<String, f32> = HashMap::new();
-    //     let mut stock_values : HashMap<String, HashMap<String, Quote>> = HashMap::new();
-    //     let mut share_txns   : HashMap<String, Vec<StockInfo>> = HashMap::new();
-    //     let mut vi: f32 = 0.0;
-    //     let mut single_ticker : bool = false;
-    //     let mut tickers = Vec::new();
-    //     // get fixed account trsanctions within the time period
-    //     let mut fixed_transactions = self.db.get_ledger_entries_within_timestamps(self.id, period_start, period_end).unwrap();
-
-    //     let mut fixed_vi = 0.0;
-    //     if ticker.is_none() {
-    //         // determining time-weighted rate of return for the entire account
-    //         tickers = self.db.get_stock_tickers(self.id).unwrap();
-    //         // get initial value of fixed account
-    //         fixed_vi = self.db.get_cumulative_total_of_ledger_before_date(self.id, period_start).unwrap();
-    //     } else {
-    //         // determining time-weighted rate of return for the one stock
-    //         //  - will not consider initial value (fixed_vi = 0.0) of, movements into our out of fixed account because we are only looking at one ticker
-
-    //         // filter transactions that move money into and out of account
-    //         fixed_transactions.retain(|transaction| transaction.transfer_type != TransferType::WithdrawalToExternalAccount);
-    //         fixed_transactions.retain(|transaction| transaction.transfer_type != TransferType::DepositFromExternalAccount);
-    //         // filter transactions not including the selected ticker
-    //         fixed_transactions.retain(|transaction| transaction.participant == ticker.clone().expect("Ticker not provided!"));
-
-    //         tickers.push(ticker.clone().expect("Ticker not provided!"));
-    //         single_ticker = true;
-    //     }
-
-    //     vi = fixed_vi;
-
-    //     // get history for all stocks within the account
-    //     for ticker in tickers.clone() {
-    //         let (transactions, initial) =
-    //             self.db.get_stock_history(self.id, ticker.clone(), period_start, period_end).unwrap();
-
-    //         // get stock history starting a week before requested date so that we can find last open date if necessary
-    //         let quotes = crate::stocks::get_stock_history(ticker.clone(), period_start.checked_sub_days(Days::new(7)).unwrap(), period_end).unwrap();
-
-    //         // create a map of quotes to dates for quick lookup
-    //         let mut quote_lookup : HashMap<String, Quote> = HashMap::new();
-    //         for quote in quotes {
-    //             let date_and_time = OffsetDateTime::from(UNIX_EPOCH + Duration::from_secs(quote.timestamp));
-    //             let date = date_and_time.date();
-    //             quote_lookup.insert( date.to_string(), quote.clone());
-    //         }
-
-    //         owned_shares.insert(ticker.clone(), initial.shares.clone());
-    //         stock_values.insert(ticker.clone(), quote_lookup.clone());
-    //         share_txns.insert(ticker.clone(), transactions);
-
-    //         // ------------
-    //         // sum up vi_s
-    //         // ------------
-    //         // check to see if the analyzed start date
-    //         // occurred when the stock market was open.
-    //         // choose the closing value of the stocks
-    //         let mut first_open_stock_market_date = period_start
-    //             .checked_sub_days(Days::new(1))
-    //             .unwrap()
-    //             .to_string();
-    //         loop {
-    //             // does quote exist for that date?
-    //             if quote_lookup.get(&first_open_stock_market_date.clone()).is_none() {
-    //                 first_open_stock_market_date =
-    //                     NaiveDate::parse_from_str(
-    //                         &first_open_stock_market_date.as_str(),
-    //                         "%Y-%m-%d")
-    //                         .unwrap()
-    //                         .checked_sub_days(Days::new(1))
-    //                         .expect("Invalid date range!")
-    //                         .to_string();
-    //                 continue;
-    //             }
-
-    //             // add initial value of owned stock
-    //             vi += quote_lookup.get(&first_open_stock_market_date.clone()).expect("Stock market date not found!")
-    //                 .clone().open as f32 * initial.shares;
-    //             break;
-    //         }
-    //     }
-
-    //     let mut sub_period_return: Vec<f32> = Vec::new();
-    //     let mut cash_flow : f32 = 0.0;
-
-    //     // if fixed_transactions.is_empty() {
-    //     //     cash_flow = 0.0;
-    //     //     let quotes =
-
-    //     // }
-    //     for txn in fixed_transactions {
-    //         let date = txn.date;
-    //         let cash_flow =
-    //             // adding cash to account
-    //             if txn.transfer_type == TransferType::DepositFromExternalAccount { txn.amount } else
-    //             // removing cash from account
-    //             if txn.transfer_type == TransferType::WithdrawalToExternalAccount  { -txn.amount }  else
-    //             // stock sale (for single stock analysis)
-    //             if single_ticker && txn.transfer_type == TransferType::DepositFromInternalAccount { -txn.amount } else
-    //             // stock purchase (for single stock analysis)
-    //             if single_ticker && txn.transfer_type == TransferType::WithdrawalToInternalAccount { txn.amount } else
-    //             // otherwise, do not consider
-    //             { 0.0 } ;
-
-    //         // update shares of stock
-    //         let re = Regex::new("([0-9.]+) shares").unwrap();
-    //         let captures = re.captures(&txn.description).unwrap();
-    //         let updated_shares = captures[1].to_string().parse().unwrap() as f32;
-
-    //         owned_shares.entry(txn.participant).and_modify(|shares|
-    //                 { *shares += updated_shares });
-
-    //         for ticker in tickers {
-    //             // determine account wealth on date of transaction
-    //             let stock_quote =
-    //                 stock_values.get(&ticker).expect(format!("Unable to find quote history for {}", ticker.clone()).as_str());
-
-    //         //     if let Some(quote) = stock_quote.get(&date.clone()) {
-    //         //         // check to ensure that transaction occured when the market was open
-    //         //         // otherwise, we will just consider in the next period
-    //         //         ve += quote.close *
-    //         //     }
-    //         //     let quote = .expect(format!("Unable to find quote for {} and date {}"))
-
-    //         // }
-    //     }
-    //     return rate;
-    // }
 }

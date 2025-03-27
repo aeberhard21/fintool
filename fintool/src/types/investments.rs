@@ -8,6 +8,8 @@ use std::time::{Duration, UNIX_EPOCH};
 use time::OffsetDateTime;
 use yahoo_finance_api::Quote;
 
+use super::ledger::LedgerRecord;
+
 #[derive(Debug, Clone)]
 pub struct StockInfo {
     pub ticker: String,
@@ -21,6 +23,17 @@ pub struct StockInfo {
 pub struct StockRecord {
     pub id: u32,
     pub info: StockInfo,
+}
+
+pub struct SaleAllocationInfo {
+    pub purchase_id: u32,
+    pub sale_id: u32,
+    pub quantity: f32,
+}
+
+pub struct SaleAllocationRecord {
+    pub id: u32,
+    pub info: SaleAllocationInfo,
 }
 
 impl DbConn {
@@ -139,6 +152,68 @@ impl DbConn {
         }
     }
 
+    pub fn check_and_get_stock_purchase_record_matching_from_ledger_id(
+        &mut self,
+        id: u32,
+    ) -> rusqlite::Result<Option<StockRecord>, rusqlite::Error> {
+        let p = rusqlite::params![id];
+        let sql = "SELECT * FROM stock_purchases WHERE lid = (?1)";
+        let mut stmt = self.conn.prepare(sql)?;
+        let exists = stmt.exists(p)?;
+        match exists {
+            true => {
+                stmt = self.conn.prepare(sql)?;
+
+                let record = stmt.query_row(p, |row| {
+                    Ok(StockRecord {
+                        id: row.get(0)?,
+                        info: StockInfo {
+                            date: row.get(1)?,
+                            ticker: row.get(2)?,
+                            shares: row.get(3)?,
+                            costbasis: row.get(4)?,
+                            remaining: row.get(5)?,
+                            ledger_id: row.get(7)?,
+                        },
+                    })
+                });
+                Ok(Some(record.unwrap()))
+            }
+            false => Ok(None),
+        }
+    }
+
+    pub fn check_and_get_stock_sale_record_matching_from_ledger_id(
+        &mut self,
+        id: u32,
+    ) -> rusqlite::Result<Option<StockRecord>, rusqlite::Error> {
+        let p = rusqlite::params![id];
+        let sql = "SELECT * FROM stock_sales WHERE lid = (?1)";
+        let mut stmt = self.conn.prepare(sql)?;
+        let exists = stmt.exists(p)?;
+        match exists {
+            true => {
+                stmt = self.conn.prepare(sql)?;
+
+                let record = stmt.query_row(p, |row| {
+                    Ok(StockRecord {
+                        id: row.get(0)?,
+                        info: StockInfo {
+                            date: row.get(1)?,
+                            ticker: row.get(2)?,
+                            shares: row.get(3)?,
+                            costbasis: row.get(4)?,
+                            remaining: 0.0,
+                            ledger_id: row.get(6)?,
+                        },
+                    })
+                });
+                Ok(Some(record.unwrap()))
+            }
+            false => Ok(None),
+        }
+    }
+
     pub fn sell_stock(&mut self, aid: u32, sale_record: StockInfo) -> Result<u32> {
         let id = self.get_next_stock_sale_id().unwrap();
         let p = rusqlite::params!(
@@ -152,7 +227,6 @@ impl DbConn {
         );
         let sql = "INSERT INTO stock_sales (id, date, ticker, shares, price, aid, lid) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)";
 
-        let mut stmt = self.conn.prepare(sql).unwrap();
         match self.conn.execute(sql, p) {
             Ok(_) => Ok(id),
             Err(error) => {
@@ -202,8 +276,10 @@ impl DbConn {
         };
         let stock_records = self.get_stocks(aid, ticker).unwrap();
         for stock in stock_records {
-            self.update_stock_remaining(stock.id, stock.info.shares * split).unwrap();
-            self.update_cost_basis(stock.id, stock.info.costbasis / split).unwrap();
+            self.update_stock_remaining(stock.id, stock.info.shares * split)
+                .unwrap();
+            self.update_cost_basis(stock.id, stock.info.costbasis / split)
+                .unwrap();
         }
         Ok(row)
     }
@@ -214,10 +290,142 @@ impl DbConn {
         let mut stmt = self.conn.prepare(sql).unwrap();
         let exists = stmt.exists(p).unwrap();
         if exists {
-            stmt.execute(p);
+            stmt.execute(p).unwrap();
         } else {
             panic!("Stock id {} does not exist!", id);
         }
+    }
+
+    pub fn remove_stock_sale(&mut self, ledger_id: u32) -> Result<Option<u32>, rusqlite::Error> {
+        let p = rusqlite::params![ledger_id];
+        let id_sql = "SELECT id FROM stock_sales WHERE ledger_id = (?1)";
+        let mut stmt = self.conn.prepare(id_sql).unwrap();
+        let exists = stmt.exists(p).unwrap();
+        let id: u32;
+        match exists {
+            true => {
+                stmt = self.conn.prepare(id_sql)?;
+                id = stmt.query_row(p, |row| row.get(0))?;
+            }
+            false => {
+                return Ok(None);
+            }
+        }
+        let rm_sql = "DELETE FROM stock_purchases WHERE ledger_id = (?1)";
+        stmt = self.conn.prepare(rm_sql).unwrap();
+        stmt.execute(p)?;
+        return Ok(Some(id));
+    }
+
+    pub fn remove_stock_purchase(
+        &mut self,
+        ledger_id: u32,
+    ) -> Result<Option<u32>, rusqlite::Error> {
+        let p = rusqlite::params![ledger_id];
+        let id_sql = "SELECT id FROM stock_purchases WHERE ledger_id = (?1)";
+        let mut stmt = self.conn.prepare(id_sql).unwrap();
+        let exists = stmt.exists(p).unwrap();
+        let id: u32;
+        match exists {
+            true => {
+                stmt = self.conn.prepare(id_sql)?;
+                id = stmt.query_row(p, |row| row.get(0))?;
+            }
+            false => {
+                return Ok(None);
+            }
+        }
+        let rm_sql = "DELETE FROM stock_purchases WHERE ledger_id = (?1)";
+        stmt = self.conn.prepare(rm_sql).unwrap();
+        stmt.execute(p)?;
+        return Ok(Some(id));
+    }
+
+    pub fn remove_stock_sale_allocation(
+        &mut self,
+        id: u32,
+    ) -> Result<Option<u32>, rusqlite::Error> {
+        let p = rusqlite::params![id];
+        let id_sql = "SELECT id FROM stock_sale_allocation WHERE id = (?1)";
+        let mut stmt = self.conn.prepare(id_sql).unwrap();
+        let exists = stmt.exists(p).unwrap();
+        let id: u32;
+        match exists {
+            true => {
+                stmt = self.conn.prepare(id_sql)?;
+                id = stmt.query_row(p, |row| row.get(0))?;
+            }
+            false => {
+                return Ok(None);
+            }
+        }
+        let rm_sql = "DELETE FROM stock_sale_allocation WHERE id = (?1)";
+        stmt = self.conn.prepare(rm_sql).unwrap();
+        stmt.execute(p)?;
+        return Ok(Some(id));
+    }
+
+    pub fn update_stock_purchase(
+        &mut self,
+        updated_info: StockInfo,
+    ) -> Result<Option<u32>, rusqlite::Error> {
+        let p = rusqlite::params![updated_info.ledger_id];
+        let id_sql = "SELECT id FROM stock_purchases WHERE lid = (?1)";
+        let mut stmt = self.conn.prepare(id_sql).unwrap();
+        let exists = stmt.exists(p).unwrap();
+        let id: u32;
+        match exists {
+            true => {
+                stmt = self.conn.prepare(id_sql)?;
+                id = stmt.query_row(p, |row| row.get(0))?;
+            }
+            false => {
+                return Ok(None);
+            }
+        }
+        let p = rusqlite::params![
+            updated_info.ledger_id,
+            updated_info.date,
+            updated_info.ticker,
+            updated_info.shares,
+            updated_info.costbasis,
+            updated_info.remaining
+        ];
+        let update_sql = "UPDATE stock_purchases SET date = (?2), ticker = (?3), shares = (?4), costbasis = (?5), remaining = (?6) WHERE lid = (?1)";
+        stmt = self.conn.prepare(update_sql)?;
+        stmt.execute(p)?;
+        return Ok(Some(id));
+    }
+
+    pub fn update_stock_sale(
+        &mut self,
+        updated_info: StockInfo,
+    ) -> Result<Option<u32>, rusqlite::Error> {
+        let p = rusqlite::params![updated_info.ledger_id];
+        let id_sql = "SELECT id FROM stock_sales WHERE lid = (?1)";
+        let mut stmt = self.conn.prepare(id_sql).unwrap();
+        let exists = stmt.exists(p).unwrap();
+        let id: u32;
+        match exists {
+            true => {
+                stmt = self.conn.prepare(id_sql)?;
+                id = stmt.query_row(p, |row| row.get(0))?;
+            }
+            false => {
+                return Ok(None);
+            }
+        }
+        let p = rusqlite::params![
+            updated_info.ledger_id,
+            updated_info.date,
+            updated_info.ticker,
+            updated_info.shares,
+            updated_info.costbasis,
+        ];
+        let update_sql = "UPDATE stock_sales SET date = (?2), ticker = (?3), shares = (?4), price = (?5) WHERE lid = (?1)";
+        stmt = self.conn.prepare(update_sql)?;
+        stmt.execute(p)?;
+        return Ok(Some(id));
     }
 
     pub fn update_stock_remaining(&mut self, id: u32, updated_shares: f32) -> Result<u32> {
@@ -231,7 +439,18 @@ impl DbConn {
         }
     }
 
-    pub fn update_cost_basis(&mut self, id: u32, updated_costbasis : f32) -> Result<u32> {
+    pub fn add_to_stock_remaining(&mut self, id: u32, shares_to_add: f32) -> Result<u32> {
+        let p = rusqlite::params![id, shares_to_add];
+        let sql = "UPDATE stock_purchases SET remaining = remaining + (?2) WHERE id = (?1)";
+        match self.conn.execute(sql, p) {
+            Ok(_) => Ok(id),
+            Err(error) => {
+                panic!("Unable to update shares: {}", error);
+            }
+        }
+    }
+
+    pub fn update_cost_basis(&mut self, id: u32, updated_costbasis: f32) -> Result<u32> {
         let p = rusqlite::params![id, updated_costbasis];
         let sql = "UPDATE costbasis SET costbasis = (?2) WHERE id = (?1)";
         match self.conn.execute(sql, p) {
@@ -262,6 +481,45 @@ impl DbConn {
             }
             false => {
                 panic!("A list of stocks do not exist for account: {}", aid);
+            }
+        }
+    }
+
+    pub fn get_stock_sale_allocation_for_sale_id(
+        &mut self,
+        sale_id: u32,
+    ) -> Result<Vec<SaleAllocationRecord>, rusqlite::Error> {
+        let p = rusqlite::params![sale_id];
+        let sql = "SELECT * FROM stock_sale_allocation WHERE sale_id = (?1)";
+        let mut stmt = self.conn.prepare(sql)?;
+        let exists = stmt.exists(p)?;
+        let mut records: Vec<SaleAllocationRecord> = Vec::new();
+        match exists {
+            true => {
+                stmt = self.conn.prepare(sql)?;
+                let wrapped_records: Vec<Result<SaleAllocationRecord, Error>> = stmt
+                    .query_map(p, |row| {
+                        Ok(SaleAllocationRecord {
+                            id: row.get(0)?,
+                            info: SaleAllocationInfo {
+                                purchase_id: row.get(1)?,
+                                sale_id: row.get(2)?,
+                                quantity: row.get(3)?,
+                            },
+                        })
+                    })
+                    .unwrap()
+                    .collect::<Vec<_>>();
+                for wrapped_record in wrapped_records {
+                    records.push(wrapped_record.unwrap());
+                }
+                Ok(records)
+            }
+            false => {
+                panic!(
+                    "An allocation of stock sales does not exist for: {}",
+                    sale_id
+                );
             }
         }
     }
@@ -361,7 +619,7 @@ impl DbConn {
             }
         }
 
-        let mut final_stocks = VecDeque::from(stocks);
+        let final_stocks = VecDeque::from(stocks);
 
         let sql: &str = "SELECT * FROM stock_purchases WHERE aid = (?1) and ticker LIKE (?2) and date < (?3) ORDER BY date ASC";
         let p = rusqlite::params![aid, ticker, start.to_string()];
@@ -511,7 +769,7 @@ impl DbConn {
     }
 
     pub fn get_stock_current_value(&mut self, aid: u32) -> rusqlite::Result<f32, rusqlite::Error> {
-        let mut sum: f32 = 0.0;
+        let sum: f32;
         let p = rusqlite::params![aid];
         let sql = "
             SELECT SUM(get_stock_value(ticker) * remaining) as total_value

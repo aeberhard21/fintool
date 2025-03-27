@@ -71,6 +71,11 @@ pub struct AccountTransaction {
     pub to_ledger: u32,
 }
 
+pub struct AccountTransactionRecord {
+    pub id: u32,
+    pub info: AccountTransaction,
+}
+
 impl DbConn {
     pub fn create_accounts_table(&mut self) -> Result<()> {
         let sql: &str = "CREATE TABLE IF NOT EXISTS accounts (
@@ -101,8 +106,8 @@ impl DbConn {
             from_ledger_id  INTEGER NOT NULL, 
             to_account_id   INTEGER NOT NULL,
             to_ledger_id    INTEGER NOT NULL, 
-            FOREIGN KEY (from_account_id) REFERENCES ledgers(id),
-            FOREIGN KEY (to_account_id) REFERENCES ledgers(id)
+            FOREIGN KEY (from_account_id) REFERENCES accounts(id),
+            FOREIGN KEY (to_account_id) REFERENCES accounts(id),
             FOREIGN KEY (from_ledger_id) REFERENCES ledgers(id),
             FOREIGN KEY (to_ledger_id) REFERENCES ledgers(id)
         )";
@@ -171,6 +176,51 @@ impl DbConn {
                 );
             }
         }
+    }
+
+    pub fn check_and_get_account_transaction_record_matching_from_ledger_id(
+        &mut self,
+        id: u32,
+    ) -> rusqlite::Result<Option<AccountTransactionRecord>, rusqlite::Error> {
+        let p = rusqlite::params![id];
+        let sql = "SELECT * FROM account_transactions WHERE from_ledger_id = (?1)";
+        let mut stmt = self.conn.prepare(sql)?;
+        let exists = stmt.exists(p)?;
+        match exists {
+            true => {
+                stmt = self.conn.prepare(sql)?;
+
+                let record = stmt.query_row(p, |row| {
+                    Ok(AccountTransactionRecord {
+                        id: row.get(0)?,
+                        info: AccountTransaction {
+                            from_account: row.get(1)?,
+                            to_account: row.get(2)?,
+                            from_ledger: row.get(3)?,
+                            to_ledger: row.get(4)?,
+                        },
+                    })
+                });
+                Ok(Some(record.unwrap()))
+            }
+            false => Ok(None),
+        }
+    }
+
+    pub fn remove_account_transaction(
+        &mut self,
+        id: u32,
+    ) -> rusqlite::Result<u32, rusqlite::Error> {
+        let p = rusqlite::params![id];
+        let sql = "DELETE FROM account_transactions WHERE id = ?1 VALUES (?1)";
+        let rs = self.conn.execute(sql, p);
+        match rs {
+            Ok(_usize) => {}
+            Err(error) => {
+                println!("Unable to remove account transaction: {}", error);
+            }
+        }
+        Ok(id)
     }
 
     pub fn get_user_account_info(

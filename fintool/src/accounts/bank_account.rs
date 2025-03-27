@@ -1,10 +1,10 @@
-use std::path::Path;
+use chrono::Date;
+use chrono::NaiveDate;
+use csv::ReaderBuilder;
 use inquire::Confirm;
 use inquire::Select;
 use inquire::Text;
-use rustyline::completion::Candidate;
 use rustyline::completion::FilenameCompleter;
-use rustyline::highlight::Highlighter;
 use rustyline::highlight::MatchingBracketHighlighter;
 use rustyline::hint::HistoryHinter;
 use rustyline::validate::MatchingBracketValidator;
@@ -12,13 +12,15 @@ use rustyline::Completer;
 use rustyline::CompletionType;
 use rustyline::Config;
 use rustyline::EditMode;
+use rustyline::Editor;
 use rustyline::Helper;
 use rustyline::Highlighter;
 use rustyline::Hinter;
 use rustyline::Validator;
-use csv::ReaderBuilder;
-use rustyline::{Editor, Result};
 use shared_lib::LedgerEntry;
+use std::collections::HashMap;
+use std::path::Path;
+use std::rc;
 
 use crate::database::DbConn;
 use crate::tui::query_user_for_analysis_period;
@@ -55,7 +57,7 @@ struct FilePathHelper {
 
 impl BankAccount {
     pub fn new(uid: u32, id: u32, db: &mut DbConn) -> Self {
-        let mut acct: BankAccount = Self {
+        let acct: BankAccount = Self {
             id: id,
             db: db.clone(),
             fixed: FixedAccount::new(uid, id, db.clone()),
@@ -79,10 +81,10 @@ impl AccountCreation for BankAccount {
                 break;
             }
         }
-        let mut has_bank = true;
-        let mut has_stocks = false;
-        let mut has_ledger = false;
-        let mut has_budget = false;
+        let has_bank = true;
+        let has_stocks = false;
+        let has_ledger = false;
+        let has_budget = false;
 
         let account: AccountInfo = AccountInfo {
             atype: AccountType::Bank,
@@ -98,12 +100,12 @@ impl AccountCreation for BankAccount {
 }
 
 impl AccountOperations for BankAccount {
-
     fn record(&mut self) {
+        const REPORT_OPTIONS: [&'static str; 3] = ["Deposit", "Withdrawal", "None"];
         loop {
             let action = Select::new(
                 "\nWhat transaction would you like to record?",
-                vec!["Deposit", "Withdrawal"],
+                REPORT_OPTIONS.to_vec(),
             )
             .prompt()
             .unwrap()
@@ -114,6 +116,9 @@ impl AccountOperations for BankAccount {
                 }
                 "Withdrawal" => {
                     self.fixed.withdrawal();
+                }
+                "None" => {
+                    return;
                 }
                 _ => {
                     panic!("Unrecognized input!");
@@ -164,26 +169,39 @@ impl AccountOperations for BankAccount {
             .from_path(fp)
             .unwrap();
 
-        for record in rdr.deserialize::<LedgerEntry>() { 
+        for record in rdr.deserialize::<LedgerEntry>() {
             let rcrd = record.unwrap();
-            let ptype = 
-                if rcrd.transfer_type == TransferType::WithdrawalToExternalAccount { ParticipantType::Payee } 
-                else if rcrd.transfer_type == TransferType::WithdrawalToInternalAccount { ParticipantType::Payee } 
-                else if rcrd.transfer_type == TransferType::DepositFromExternalAccount { ParticipantType::Payer } 
-                else { ParticipantType::Payer };
-            let entry : LedgerInfo = LedgerInfo { 
-                date : rcrd.date,
-                amount : rcrd.amount,
-                transfer_type : rcrd.transfer_type as TransferType,
-                participant : self.db.check_and_add_participant(self.id, rcrd.participant, ptype),
-                category_id : self.db.check_and_add_category(self.id, rcrd.category),
-                description : rcrd.description
+            let ptype = if rcrd.transfer_type == TransferType::WithdrawalToExternalAccount {
+                ParticipantType::Payee
+            } else if rcrd.transfer_type == TransferType::WithdrawalToInternalAccount {
+                ParticipantType::Payee
+            } else if rcrd.transfer_type == TransferType::DepositFromExternalAccount {
+                ParticipantType::Payer
+            } else {
+                ParticipantType::Payer
             };
-            let lid: u32 = self.db.add_ledger_entry(self.id, entry).unwrap();
+            let entry: LedgerInfo = LedgerInfo {
+                date: rcrd.date,
+                amount: rcrd.amount,
+                transfer_type: rcrd.transfer_type as TransferType,
+                participant: self
+                    .db
+                    .check_and_add_participant(self.id, rcrd.participant, ptype),
+                category_id: self.db.check_and_add_category(self.id, rcrd.category),
+                description: rcrd.description,
+            };
+            let _lid: u32 = self.db.add_ledger_entry(self.id, entry).unwrap();
         }
     }
 
-    fn modify(&mut self) {}
+    fn modify(&mut self) {
+        let record_or_none = self.fixed.select_ledger_entry();
+        if record_or_none.is_none() {
+            return;
+        }
+        let selected_record = record_or_none.unwrap();
+        self.fixed.modify(selected_record);
+    }
 
     fn export(&mut self) {}
 
@@ -212,8 +230,8 @@ impl AccountOperations for BankAccount {
 
     fn link(&mut self, transacting_account: u32, entry: LedgerRecord) -> Option<u32> {
         let mut my_entry = entry.clone();
-        let mut from_account;
-        let mut to_account;
+        let from_account;
+        let to_account;
 
         match my_entry.info.transfer_type {
             TransferType::DepositFromExternalAccount => {

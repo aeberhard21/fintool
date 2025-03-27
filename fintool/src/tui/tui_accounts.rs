@@ -17,9 +17,6 @@ pub fn select_account_by_type(_uid: u32, _db: &mut DbConn, atype: AccountType) -
         _ => panic!("Unrecognized account type!"),
     }
     let accounts: Vec<String> = _db.get_user_accounts_by_type(_uid, atype).unwrap();
-    for account in accounts.clone() {
-        println!("Here are the accounts {}", account);
-    }
     let account: String = Select::new(msg, accounts).prompt().unwrap().to_string();
     let aid = _db.get_account_id(_uid, account.clone()).unwrap();
     return (aid, account);

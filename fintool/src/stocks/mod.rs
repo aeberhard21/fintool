@@ -6,18 +6,6 @@ use yahoo_finance_api::{self as yahoo, Quote};
 
 use crate::types::investments::StockInfo;
 
-pub enum StockRange {
-    OneDay,
-    OneWeek,
-    OneMonth,
-    ThreeMonth,
-    SixMonth,
-    OneYear,
-    TwoYear,
-    FiveYear,
-    All,
-}
-
 // #[cfg(not(feature = "blocking"))]
 pub fn get_stock_at_close(ticker: String) -> Result<f64, YahooError> {
     let provider = YahooConnector::new().unwrap();
@@ -148,18 +136,3 @@ pub fn check_if_holiday(date: NaiveDate) -> bool {
 
     return holidays.contains(&date);
 }
-
-// pub async fn get_stock_at_date(provider: yahoo::YahooConnector, ticker: &str) -> f32 {
-//     let result = timeout(std::time::Duration::from_secs(5), provider.get_quote_history() ).await;
-//     match result {
-//         Ok(Ok(resp)) => {
-//             return resp.last_quote().unwrap().adjclose as f32;
-//         }
-//         Ok(Err(error)) => {
-//             panic!("Error fetching quote: {:?}", error);
-//         }
-//         Err(_) => {
-//             panic!("Timeout occurred!");
-//         }
-//     }
-//}

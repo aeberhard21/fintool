@@ -25,7 +25,7 @@ pub fn menu(_db: &mut DbConn) {
     // set current user first!
     uid = tui_set_user(_db);
 
-    let mut menu_options: Vec<&str> = Vec::new();
+    let menu_options: Vec<&str>;
     if _db.is_admin(uid).unwrap() {
         menu_options = vec!["Create User", "Change User", "Access Account(s)", "Exit"];
     } else {
@@ -67,7 +67,7 @@ fn access_account(uid: u32, db: &mut DbConn) {
     let mut acct: Box<dyn AccountOperations>;
     let mut choice;
     let mut new_account;
-    const ACCT_ACTIONS: [&'static str; 4] = ["Record", "Import", "Report", "None"];
+    const ACCT_ACTIONS: [&'static str; 5] = ["Import", "Modify", "Record", "Report", "None"];
 
     let mut accounts_is_empty = accounts.is_empty();
 
@@ -99,7 +99,7 @@ fn access_account(uid: u32, db: &mut DbConn) {
                     "Import" => {
                         acct.import();
                     }
-                    "None" => { 
+                    "None" => {
                         continue;
                     }
                     _ => {
@@ -151,11 +151,14 @@ fn access_account(uid: u32, db: &mut DbConn) {
                 .unwrap()
                 .to_string();
             match selected_menu_item.as_str() {
-                "Record" => {
-                    acct.record();
-                }
                 "Import" => {
                     acct.import();
+                }
+                "Modify" => {
+                    acct.modify();
+                }
+                "Record" => {
+                    acct.record();
                 }
                 "Report" => {
                     acct.report();
@@ -182,10 +185,7 @@ pub fn decode_and_create_account_type(
 ) -> Box<dyn AccountOperations> {
     match account.info.atype {
         AccountType::Bank => Box::new(BankAccount::new(uid, account.id, db)),
-        AccountType::Investment => {
-            println!("Here");
-            Box::new(InvestmentAccountManager::new(uid, account.id, db))
-        }
+        AccountType::Investment => Box::new(InvestmentAccountManager::new(uid, account.id, db)),
         _ => {
             panic!("Invalid account type!");
         }
@@ -205,9 +205,6 @@ pub fn query_user_for_analysis_period() -> (NaiveDate, NaiveDate) {
     .unwrap()
     .to_string();
 
-    // let period_end = Utc::now().naive_local().and_local_timezone(FixedOffset::west_opt(5  * 3600).unwrap())
-    // println!("Today's date: {}", period_end);
-    // let mut period_start = period_end;
     let mut period_end = Local::now().date_naive();
     let mut period_start = period_end;
 
@@ -268,9 +265,9 @@ pub fn create_new_account(
     .prompt()
     .unwrap()
     .to_string();
-    let mut id;
-    let mut new_account;
-    let mut acct: Box<dyn AccountOperations>;
+    let id;
+    let new_account;
+    let acct: Box<dyn AccountOperations>;
     match selected_account_type.as_str() {
         "Bank Account" => {
             new_account = BankAccount::create();

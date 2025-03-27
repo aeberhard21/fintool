@@ -3,11 +3,12 @@ use crate::tui::{create_new_account, decode_and_create_account_type};
 use crate::types::accounts::AccountRecord;
 use crate::types::categories::CategoryAutoCompleter;
 use crate::types::ledger::{LedgerInfo, LedgerRecord};
-use crate::types::participants::{ParticipantType, ParticipantAutoCompleter};
+use crate::types::participants::{ParticipantAutoCompleter, ParticipantType};
 use chrono::{Datelike, NaiveDate};
 use inquire::*;
-use shared_lib::TransferType;
+use shared_lib::{LedgerEntry, TransferType};
 use std::collections::HashMap;
+use std::hash::Hash;
 
 use super::AccountOperations;
 
@@ -173,37 +174,223 @@ impl FixedAccount {
             description: description_input,
         };
 
-        let link = Confirm::new("Link transaction to another account?")
-            .prompt()
-            .unwrap();
         let id = self.db.add_ledger_entry(self.id, deposit.clone()).unwrap();
         let entry = LedgerRecord {
             id: id,
             info: deposit,
         };
 
+        let link = Confirm::new("Link transaction to another account?")
+            .prompt()
+            .unwrap();
+
         if link {
-            let accounts = self.db.get_user_account_info(self.uid).unwrap();
-            let mut account_map: HashMap<String, AccountRecord> = HashMap::new();
-            let mut account_names: Vec<String> = Vec::new();
-            for account in accounts.iter() {
-                account_names.push(account.info.name.clone());
-                account_map.insert(account.info.name.clone(), account.clone());
-            }
-
-            // add none clause
-            account_names.push("None".to_string());
-            let selected_account = Select::new("Select account:", account_names)
-                .prompt()
-                .unwrap()
-                .to_string();
-            let acctx = account_map
-                .get(&selected_account)
-                .expect("Account not found!");
-            let mut acct = decode_and_create_account_type(self.uid, &mut self.db, acctx);
-
-            acct.link(self.id, entry);
+            self.link_transaction(entry);
         }
+    }
+
+    pub fn modify(&mut self, selected_record: LedgerRecord) -> LedgerRecord {
+        let updated_date: String = DateSelect::new("Enter date")
+            .with_starting_date(
+                NaiveDate::parse_from_str(selected_record.info.date.as_str(), "%Y-%m-%d").unwrap(),
+            )
+            .prompt()
+            .unwrap()
+            .to_string();
+
+        let updated_amount: f32 = CustomType::<f32>::new("Enter deposit amount")
+            .with_placeholder(selected_record.info.amount.to_string().as_str())
+            .with_default(00000.00)
+            .with_error_message("Please type a valid amount!")
+            .prompt()
+            .unwrap();
+
+        const TRANSFER_OPTIONS: [&'static str; 4] = [
+            "Deposit from External Account",
+            "Deposit from Internal Account",
+            "Withdrawal to External Account",
+            "Withdrawal to Internal Account",
+        ];
+
+        let starting_transfer_filter = match selected_record.info.transfer_type {
+            TransferType::DepositFromExternalAccount => TRANSFER_OPTIONS[0],
+            TransferType::DepositFromInternalAccount => TRANSFER_OPTIONS[1],
+            TransferType::WithdrawalToExternalAccount => TRANSFER_OPTIONS[2],
+            TransferType::WithdrawalToInternalAccount => TRANSFER_OPTIONS[3],
+        };
+
+        let updated_action = Select::new(
+            "Enter the action of the transfer",
+            TRANSFER_OPTIONS.to_vec(),
+        )
+        .with_starting_filter_input(starting_transfer_filter)
+        .prompt()
+        .unwrap();
+
+        let (update_transfer_type, ptype) = match updated_action {
+            "Deposit from External Account" => (
+                TransferType::DepositFromExternalAccount,
+                ParticipantType::Payer,
+            ),
+            "Deposit from Internal Account" => (
+                TransferType::DepositFromInternalAccount,
+                ParticipantType::Payer,
+            ),
+            "Withdrawal to External Account" => (
+                TransferType::WithdrawalToExternalAccount,
+                ParticipantType::Payee,
+            ),
+            "Withdrawal to Internal Account" => (
+                TransferType::WithdrawalToInternalAccount,
+                ParticipantType::Payee,
+            ),
+            _ => {
+                panic!("Unrecognized pattern!")
+            }
+        };
+
+        let updated_payee = Text::new("Enter payee:")
+            .with_default(
+                self.db
+                    .get_participant(self.id, selected_record.info.participant)
+                    .unwrap()
+                    .as_str(),
+            )
+            .with_autocomplete(ParticipantAutoCompleter {
+                aid: self.id,
+                db: self.db.clone(),
+                ptype: ptype.clone(),
+            })
+            .prompt()
+            .unwrap();
+
+        let updated_pid = self
+            .db
+            .check_and_add_participant(self.id, updated_payee, ptype);
+
+        let updated_category = Text::new("Enter category:")
+            .with_default(
+                self.db
+                    .get_category_name(self.id, selected_record.info.category_id)
+                    .unwrap()
+                    .as_str(),
+            )
+            .with_autocomplete(CategoryAutoCompleter {
+                aid: self.id,
+                db: self.db.clone(),
+            })
+            .prompt()
+            .unwrap();
+
+        let updated_cid = self.db.check_and_add_category(self.id, updated_category);
+
+        let updated_description = Text::new("Enter description:")
+            .with_default(&selected_record.info.description)
+            .prompt()
+            .unwrap();
+
+        let updated_entry = LedgerRecord {
+            id: selected_record.id,
+            info: LedgerInfo {
+                date: updated_date,
+                amount: updated_amount,
+                transfer_type: update_transfer_type,
+                participant: updated_pid,
+                category_id: updated_cid,
+                description: updated_description,
+            },
+        };
+
+        self.db.update_ledger_item(updated_entry.clone()).unwrap();
+
+        // check if link was made
+        let link_if_exists = self
+            .db
+            .check_and_get_account_transaction_record_matching_from_ledger_id(selected_record.id)
+            .unwrap();
+        if link_if_exists.is_some() {
+            let record = link_if_exists.unwrap();
+            self.db.remove_account_transaction(record.id).unwrap();
+            self.db.remove_ledger_item(record.info.to_ledger).unwrap();
+
+            let link = Confirm::new("Link transaction to another account?")
+                .prompt()
+                .unwrap();
+
+            if link {
+                self.link_transaction(updated_entry.clone());
+            }
+        }
+        return updated_entry;
+    }
+
+    // returns uid of selected ledger entry
+    pub fn select_ledger_entry(&mut self) -> Option<LedgerRecord> {
+        let records = self.db.get_ledger(self.id).unwrap();
+        let mut entries: HashMap<String, u32> = HashMap::new();
+        let mut strings: Vec<String> = Vec::new();
+        let mut mapped_records: HashMap<u32, LedgerInfo> = HashMap::new();
+        for rcrd in records {
+            let v: String = format!(
+                "{} | {} | {} | {} | ",
+                rcrd.info.date,
+                self.db
+                    .get_category_name(self.id, rcrd.info.category_id)
+                    .unwrap(),
+                self.db
+                    .get_participant(self.id, rcrd.info.participant)
+                    .unwrap(),
+                rcrd.info.amount
+            );
+            strings.push(v.clone());
+            entries.insert(v.clone(), rcrd.id);
+            mapped_records.insert(rcrd.id, rcrd.info);
+        }
+        strings.push("None".to_string());
+        let errant_record: String = Select::new("What item would you like to modify: ", strings)
+            .prompt()
+            .unwrap()
+            .to_string();
+
+        if errant_record == "None".to_string() {
+            return None;
+        }
+
+        let id = *entries
+            .get(&errant_record)
+            .expect("Unable to find matching ID!");
+
+        let selected_record = LedgerRecord {
+            id: id.clone(),
+            info: mapped_records
+                .get(&id)
+                .expect("Record not found!")
+                .to_owned(),
+        };
+        Some(selected_record)
+    }
+
+    pub fn link_transaction(&mut self, entry: LedgerRecord) {
+        let accounts = self.db.get_user_account_info(self.uid).unwrap();
+        let mut account_map: HashMap<String, AccountRecord> = HashMap::new();
+        let mut account_names: Vec<String> = Vec::new();
+        for account in accounts.iter() {
+            account_names.push(account.info.name.clone());
+            account_map.insert(account.info.name.clone(), account.clone());
+        }
+
+        // add none clause
+        account_names.push("None".to_string());
+        let selected_account = Select::new("Select account:", account_names)
+            .prompt()
+            .unwrap()
+            .to_string();
+        let acctx = account_map
+            .get(&selected_account)
+            .expect("Account not found!");
+        let mut acct = decode_and_create_account_type(self.uid, &mut self.db, acctx);
+
+        acct.link(self.id, entry);
     }
 
     pub fn get_current_value(&mut self) -> f32 {

@@ -1,12 +1,9 @@
-use std::fs::File;
 use std::path::Path;
 
 use inquire::Confirm;
 use inquire::Select;
 use inquire::Text;
-use rustyline::completion::Candidate;
 use rustyline::completion::FilenameCompleter;
-use rustyline::highlight::Highlighter;
 use rustyline::highlight::MatchingBracketHighlighter;
 use rustyline::hint::HistoryHinter;
 use rustyline::validate::MatchingBracketValidator;
@@ -30,7 +27,7 @@ use crate::types::ledger::LedgerInfo;
 use crate::types::ledger::LedgerRecord;
 use crate::types::participants::ParticipantType;
 use csv::ReaderBuilder;
-use rustyline::{Editor, Result};
+use rustyline::Editor;
 use shared_lib::TransferType;
 
 use super::base::variable_account::VariableAccount;
@@ -71,10 +68,10 @@ impl AccountCreation for InvestmentAccountManager {
                 break;
             }
         }
-        let mut has_bank = true;
-        let mut has_stocks = true;
-        let mut has_ledger = false;
-        let mut has_budget = false;
+        let has_bank = true;
+        let has_stocks = true;
+        let has_ledger = false;
+        let has_budget = false;
 
         let account: AccountInfo = AccountInfo {
             atype: AccountType::Investment,
@@ -91,7 +88,7 @@ impl AccountCreation for InvestmentAccountManager {
 
 impl InvestmentAccountManager {
     pub fn new(uid: u32, id: u32, db: &mut DbConn) -> Self {
-        let mut acct = Self {
+        let acct = Self {
             uid: uid,
             id: id,
             db: db.clone(),
@@ -104,7 +101,14 @@ impl InvestmentAccountManager {
 
 impl AccountOperations for InvestmentAccountManager {
     fn record(&mut self) {
-        const RECORD_OPTIONS: [&'static str; 6] = ["Deposit", "Withdrawal", "Purchase", "Sale", "Stock Split", "None"];
+        const RECORD_OPTIONS: [&'static str; 6] = [
+            "Deposit",
+            "Withdrawal",
+            "Purchase",
+            "Sale",
+            "Stock Split",
+            "None",
+        ];
         loop {
             let action = Select::new(
                 "\nWhat transaction would you like to record?",
@@ -247,12 +251,20 @@ impl AccountOperations for InvestmentAccountManager {
         }
     }
 
-    fn modify(&mut self) {}
+    fn modify(&mut self) {
+        let record_or_none = self.variable.fixed.select_ledger_entry();
+        if record_or_none.is_none() {
+            return;
+        }
+        let selected_record = record_or_none.unwrap();
+        self.variable.modify(selected_record);
+    }
 
     fn export(&mut self) {}
 
     fn report(&mut self) {
-        const REPORT_OPTIONS: [&'static str; 2] = ["Total Value", "Time-Weighted Rate of Return"];
+        const REPORT_OPTIONS: [&'static str; 3] =
+            ["Total Value", "Time-Weighted Rate of Return", "None"];
         let choice = Select::new("What would you like to report: ", REPORT_OPTIONS.to_vec())
             .prompt()
             .unwrap()
@@ -261,22 +273,36 @@ impl AccountOperations for InvestmentAccountManager {
             "Total Value" => {
                 let value = self.variable.get_current_value();
                 println!("\tTotal Account Value: {}", value);
+                println!(
+                    "\t\tFixed Account Value: {}",
+                    self.variable.fixed.get_current_value()
+                );
+                println!(
+                    "\t\tVariable Account Value: {}",
+                    self.variable
+                        .db
+                        .get_stock_current_value(self.variable.id)
+                        .unwrap()
+                );
             }
             "Time-Weighted Rate of Return" => {
                 let (period_start, period_end) = query_user_for_analysis_period();
                 let twr = self.variable.time_weighted_return(period_start, period_end);
                 println!("\tRate of return: {}%", twr);
             }
+            "None" => {
+                return;
+            }
             _ => {
                 panic!("Unrecognized input!");
             }
         }
     }
-    
+
     fn link(&mut self, transacting_account: u32, entry: LedgerRecord) -> Option<u32> {
         let mut my_entry = entry.clone();
-        let mut from_account;
-        let mut to_account;
+        let from_account;
+        let to_account;
 
         match my_entry.info.transfer_type {
             TransferType::DepositFromExternalAccount => {

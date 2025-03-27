@@ -323,9 +323,4 @@ impl DbConn {
             }
         }
     }
-
-    // pub fn close(&mut self) {
-    //     self.conn.
-    //     self.conn.close().unwrap();
-    // }
 }

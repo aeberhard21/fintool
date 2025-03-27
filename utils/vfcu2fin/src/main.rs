@@ -68,7 +68,6 @@ fn main() {
         }
 
         let mut amt = 0.0;
-        let mut ttype: TransferType;
         let mut debit_not_credit: bool = false;
         if txn.debit.is_some() {
             amt = txn.debit.unwrap();
@@ -87,18 +86,28 @@ fn main() {
                 "Transfer" => {
                     let re = Regex::new(r"(to|from)\s([A-Za-z0-9\s]+)").unwrap();
                     let x = re.captures(txn.description.as_str());
+
+                    if debit_not_credit {
+                        ttype = TransferType::WithdrawalToExternalAccount;
+                        cat = "Withdrawal".to_string();
+                    } else {
+                        ttype = TransferType::DepositFromExternalAccount;
+                        cat = "Deposit".to_string();
+                    }
+
                     if x.is_some() {
                         let x = x.unwrap();
-                        if x.get(1).unwrap().as_str() == "to" {
-                            ttype = TransferType::WithdrawalToExternalAccount;
-                            cat = "Withdrawal".to_string();
-                        } else if x.get(1).unwrap().as_str() == "from" {
-                            ttype = TransferType::DepositFromExternalAccount;
-                            cat = "Deposit".to_string();
-                        } else {
-                            eprintln!("Unrecognized transfer type: {}", x.get(1).unwrap().as_str());
-                            std::process::exit(1);
-                        }
+                        //     if x.get(1).unwrap().as_str() == "to" {
+                        //         ttype = TransferType::WithdrawalToExternalAccount;
+                        //         cat = "Withdrawal".to_string();
+                        //     } else if x.get(1).unwrap().as_str() == "from" {
+                        //         ttype = TransferType::DepositFromExternalAccount;
+                        //         cat = "Deposit".to_string();
+                        //     } else {
+                        //         eprintln!("Unrecognized transfer type: {}", x.get(1).unwrap().as_str());
+                        //         std::process::exit(1);
+                        //     }
+
                         peer = x.get(2).unwrap().as_str().to_string();
                     } else {
                         peer = "Misc".to_string();
@@ -141,7 +150,11 @@ fn main() {
                     peer = "Check".to_string();
                 }
                 "Food &amp; Dining" => {
-                    ttype = TransferType::WithdrawalToExternalAccount;
+                    if debit_not_credit {
+                        ttype = TransferType::WithdrawalToExternalAccount;
+                    } else {
+                        ttype = TransferType::DepositFromExternalAccount;
+                    }
                     peer = txn.description.clone();
                     cat = "Food and Dining".to_string();
                 }
@@ -156,22 +169,34 @@ fn main() {
                     cat = txn.classification.unwrap();
                 }
                 "Financial" => {
-                    ttype = TransferType::WithdrawalToExternalAccount;
+                    if debit_not_credit {
+                        ttype = TransferType::WithdrawalToExternalAccount;
+                    } else {
+                        ttype = TransferType::DepositFromExternalAccount;
+                    }
                     peer = txn.description.clone();
                     cat = "Financial".to_string();
                 }
                 "Mortgage &amp; Rent" => {
-                    ttype = TransferType::WithdrawalToExternalAccount;
+                    if debit_not_credit {
+                        ttype = TransferType::WithdrawalToExternalAccount;
+                    } else {
+                        ttype = TransferType::DepositFromExternalAccount;
+                    }
                     peer = txn.description.clone();
                     cat = "Mortgage & Rent".to_string();
                 }
                 "Travel" => {
-                    ttype = TransferType::WithdrawalToExternalAccount;
+                    if debit_not_credit {
+                        ttype = TransferType::WithdrawalToExternalAccount;
+                    } else {
+                        ttype = TransferType::DepositFromExternalAccount;
+                    }
                     peer = txn.description.clone();
                     cat = txn.classification.unwrap();
                 }
                 "Federal Tax" => {
-                    if !debit_not_credit {
+                    if debit_not_credit {
                         ttype = TransferType::WithdrawalToExternalAccount;
                     } else {
                         ttype = TransferType::DepositFromExternalAccount;
@@ -180,7 +205,7 @@ fn main() {
                     cat = txn.classification.unwrap();
                 }
                 "State Tax" => {
-                    if !debit_not_credit {
+                    if debit_not_credit {
                         ttype = TransferType::WithdrawalToExternalAccount;
                     } else {
                         ttype = TransferType::DepositFromExternalAccount;
@@ -189,7 +214,7 @@ fn main() {
                     cat = txn.classification.unwrap();
                 }
                 "Television" => {
-                    if !debit_not_credit {
+                    if debit_not_credit {
                         ttype = TransferType::WithdrawalToExternalAccount;
                     } else {
                         ttype = TransferType::DepositFromExternalAccount;
@@ -216,16 +241,17 @@ fn main() {
                     ttype = TransferType::DepositFromExternalAccount;
                 }
                 peer = "Misc".to_string();
+                cat = "Misc".to_string();
             }
             if x.get(1).unwrap().as_str() == "Withdrawal" {
                 ttype = TransferType::WithdrawalToExternalAccount;
                 peer = "Misc".to_string();
+                cat = "Misc".to_string();
             }
             if x.get(1).unwrap().as_str() == "Check" {
                 ttype = TransferType::WithdrawalToExternalAccount;
                 cat = "Check".to_string();
             }
-            cat = "Misc".to_string();
         }
 
         let posted_date = NaiveDate::parse_from_str(&txn.posted_date, "%m/%d/%Y").unwrap();
@@ -244,7 +270,6 @@ fn main() {
             stock_info: None,
         };
 
-        // println!("Transaction:\n\t{:?}", ledger_entry);
         println!(
             "{},{:.2},{},{},{},{},,",
             ledger_entry.date,

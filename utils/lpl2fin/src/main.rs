@@ -69,10 +69,10 @@ fn main() {
     }
 
     for txn in transactions {
-        let mut ttype: TransferType = TransferType::DepositFromExternalAccount;
-        let cat = txn.activity.clone();
-        let mut peer = String::new();
-        let mut description = String::new();
+        let ttype: TransferType;
+        let cat: String = txn.activity.clone();
+        let peer: String;
+        let description: String;
         let mut stock_txn: StockInfo = StockInfo {
             ticker: String::new(),
             shares: 0.0,

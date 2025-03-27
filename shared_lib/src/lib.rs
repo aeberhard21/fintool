@@ -51,8 +51,6 @@ pub fn deserialize_transfer_type<'de, D>(deserializer: D) -> Result<TransferType
 where
     D: Deserializer<'de>,
 {
-    type Value = TransferType;
-
     struct TransferTypeVisitor;
 
     impl<'de> Visitor<'de> for TransferTypeVisitor {

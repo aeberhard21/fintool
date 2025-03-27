@@ -38,9 +38,5 @@ fn main() {
     }
 
     println!("Welcome to FinTool!");
-    let next_id: u32 = 0;
-    {
-        tui::menu(&mut _db);
-    }
-    // _db.close();
+    tui::menu(&mut _db);
 }

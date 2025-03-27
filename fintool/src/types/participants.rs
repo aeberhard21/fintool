@@ -1,6 +1,6 @@
-use inquire::{Autocomplete, CustomUserError};
 use inquire::autocompletion;
 use inquire::autocompletion::Replacement;
+use inquire::{Autocomplete, CustomUserError};
 use rusqlite::Result;
 use shared_lib::TransferType;
 
@@ -50,9 +50,7 @@ impl DbConn {
                 aid         INTEGER NOT NULL,
                 type        INTEGER NOT NULL, 
                 name        TEXT NOT NULL,
-                uid         INTEGER,
                 FOREIGN KEY(aid) REFERENCES accounts(id)
-                FOREIGN KEY(uid) REFERENCES users(id)
             )";
 
         self.conn
@@ -145,6 +143,36 @@ impl DbConn {
                     "SQLITE error {} while executing searching for person {}.",
                     e.to_string(),
                     name
+                );
+            }
+        }
+    }
+
+    pub fn get_participant(&mut self, aid: u32, pid: u32) -> Option<String> {
+        let sql = "SELECT name FROM people WHERE aid = (?1) and id = (?2)";
+        let p = rusqlite::params![aid, pid];
+        let conn = self.conn.clone();
+        let prepared_stmt = conn.prepare(sql);
+        match prepared_stmt {
+            Ok(mut stmt) => {
+                if let Ok(entry_found) = stmt.exists(p) {
+                    if entry_found {
+                        let name: String = stmt
+                            .query_row(p, |row: &rusqlite::Row<'_>| row.get::<_, String>(0))
+                            .unwrap();
+                        return Some(name);
+                    } else {
+                        return None;
+                    }
+                } else {
+                    panic!("Unable to determine if exists!");
+                }
+            }
+            Err(e) => {
+                panic!(
+                    "SQLITE error {} while executing searching for person {}.",
+                    e.to_string(),
+                    pid
                 );
             }
         }
