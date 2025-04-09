@@ -36,6 +36,17 @@ pub struct SaleAllocationRecord {
     pub info: SaleAllocationInfo,
 }
 
+pub struct StockSplitInfo {
+    pub ticker : String, 
+    pub date : String, 
+    pub split : f32
+}
+
+pub struct StockSplitRecord {
+    pub id: u32,
+    pub info: StockSplitInfo,
+}
+
 impl DbConn {
     pub fn create_investment_purchase_table(&mut self) -> Result<()> {
         let sql: &str = "CREATE TABLE IF NOT EXISTS stock_purchases (
@@ -111,7 +122,9 @@ impl DbConn {
             date        STRING NOT NULL, 
             split       REAL NOT NULL,
             aid         INTEGER NOT NULL,
+            lid         INTEGER NOT NULL,
             FOREIGN KEY (aid) REFERENCES accounts(id)
+            FOREIGN KEY (lid) REFERENCES ledgers(id)
         )";
         match self.conn.execute(sql, ()) {
             Ok(_) => {}
@@ -137,7 +150,6 @@ impl DbConn {
             aid,
             record.ledger_id
         );
-        println!("{}", record.date);
         let sql = "INSERT INTO stock_purchases (id, date, ticker, shares, costbasis, remaining, aid, lid) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)";
         match self.conn.execute(sql, p) {
             Ok(_) => Ok(id),
@@ -188,7 +200,7 @@ impl DbConn {
         id: u32,
     ) -> rusqlite::Result<Option<StockRecord>, rusqlite::Error> {
         let p = rusqlite::params![id];
-        let sql = "SELECT * FROM stock_sales WHERE lid = (?1)";
+        let sql = "SELECT * FROM stock_splits WHERE lid = (?1)";
         let mut stmt = self.conn.prepare(sql)?;
         let exists = stmt.exists(p)?;
         match exists {
@@ -213,6 +225,35 @@ impl DbConn {
             false => Ok(None),
         }
     }
+
+    pub fn check_and_get_stock_split_record_matching_from_ledger_id(
+        &mut self,
+        id: u32,
+    ) -> rusqlite::Result<Option<StockSplitRecord>, rusqlite::Error> {
+        let p = rusqlite::params![id];
+        let sql = "SELECT * FROM stock_sales WHERE lid = (?1)";
+        let mut stmt = self.conn.prepare(sql)?;
+        let exists = stmt.exists(p)?;
+        match exists {
+            true => {
+                stmt = self.conn.prepare(sql)?;
+
+                let record = stmt.query_row(p, |row| {
+                    Ok(StockSplitRecord {
+                        id: row.get(0)?,
+                        info: StockSplitInfo {
+                            ticker: row.get(1)?,
+                            date: row.get(2)?,
+                            split : row.get(3)?,
+                        },
+                    })
+                });
+                Ok(Some(record.unwrap()))
+            }
+            false => Ok(None),
+        }
+    }
+
 
     pub fn sell_stock(&mut self, aid: u32, sale_record: StockInfo) -> Result<u32> {
         let id = self.get_next_stock_sale_id().unwrap();
@@ -263,11 +304,12 @@ impl DbConn {
         date: String,
         ticker: String,
         split: f32,
+        lid:  u32, 
     ) -> Result<u32, rusqlite::Error> {
         let split_id = self.get_next_stock_split_id().unwrap();
-        let p = rusqlite::params!(split_id, ticker, date, split, aid);
+        let p = rusqlite::params!(split_id, ticker, date, split, aid, lid);
         let sql =
-            "INSERT INTO stock_splits (id, ticker, date, split, aid ) VALUES (?1, ?2, ?3, ?4, ?5)";
+            "INSERT INTO stock_splits (id, ticker, date, split, aid, lid ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)";
         let row = match self.conn.execute(sql, p) {
             Ok(_) => split_id,
             Err(error) => {
@@ -276,7 +318,7 @@ impl DbConn {
         };
         let stock_records = self.get_stocks(aid, ticker).unwrap();
         for stock in stock_records {
-            self.update_stock_remaining(stock.id, stock.info.shares * split)
+            self.update_stock_remaining(stock.id, stock.info.remaining * split)
                 .unwrap();
             self.update_cost_basis(stock.id, stock.info.costbasis / split)
                 .unwrap();
@@ -452,7 +494,7 @@ impl DbConn {
 
     pub fn update_cost_basis(&mut self, id: u32, updated_costbasis: f32) -> Result<u32> {
         let p = rusqlite::params![id, updated_costbasis];
-        let sql = "UPDATE costbasis SET costbasis = (?2) WHERE id = (?1)";
+        let sql = "UPDATE stock_purchases SET costbasis = (?2) WHERE id = (?1)";
         match self.conn.execute(sql, p) {
             Ok(_) => Ok(id),
             Err(error) => {

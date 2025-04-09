@@ -189,6 +189,7 @@ impl AccountOperations for BankAccount {
                     .check_and_add_participant(self.id, rcrd.participant, ptype),
                 category_id: self.db.check_and_add_category(self.id, rcrd.category),
                 description: rcrd.description,
+                ancillary_f32data : 0.0
             };
             let _lid: u32 = self.db.add_ledger_entry(self.id, entry).unwrap();
         }

@@ -73,6 +73,7 @@ fn main() {
         let cat: String = txn.activity.clone();
         let peer: String;
         let description: String;
+        let mut ancillary_data : f32 = 0.0; 
         let mut stock_txn: StockInfo = StockInfo {
             ticker: String::new(),
             shares: 0.0,
@@ -199,9 +200,10 @@ fn main() {
                 description = txn.description;
             }
             "stock dividend/split" => {
-                ttype = TransferType::DepositFromInternalAccount;
+                ttype = TransferType::ZeroSumChange;
                 peer = txn.symbol.clone();
                 description = txn.description.clone();
+                ancillary_data = quantity;
 
                 stock_txn = StockInfo {
                     ticker: txn.symbol.as_str().to_string(),
@@ -249,6 +251,7 @@ fn main() {
                 participant: peer,
                 category: cat,
                 description: format!("\"{}\"", description),
+                ancillary_f32 : ancillary_data,
                 stock_info: Some(stock_txn),
             };
 
@@ -281,6 +284,7 @@ fn main() {
                 participant: peer,
                 category: cat,
                 description: format!("\"{}\"", description),
+                ancillary_f32 : ancillary_data,
                 stock_info: None,
             };
 

@@ -14,6 +14,7 @@ pub struct LedgerInfo {
     pub participant: u32,
     pub category_id: u32,
     pub description: String,
+    pub ancillary_f32data : f32
 }
 
 #[derive(Clone)]
@@ -33,6 +34,7 @@ impl DbConn {
                 pid         INTEGER NOT NULL, 
                 cid         INTEGER NOT NULL,
                 desc        TEXT,
+                ancillary_f32 REAL NOT NULL, 
                 aid         INTEGER NOT NULL,
                 FOREIGN KEY(aid) REFERENCES accounts(id)
                 FOREIGN KEY(cid) REFERENCES categories(id)
@@ -56,7 +58,7 @@ impl DbConn {
     ) -> rusqlite::Result<u32, rusqlite::Error> {
         let sql: &str;
         let id = self.get_next_ledger_id().unwrap();
-        sql = "INSERT INTO ledgers ( id, date, amount, transfer_type, pid, cid, desc, aid) VALUES ( ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)";
+        sql = "INSERT INTO ledgers ( id, date, amount, transfer_type, pid, cid, desc, ancillary_f32, aid) VALUES ( ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)";
         let rs = self.conn.execute(
             sql,
             (
@@ -67,6 +69,7 @@ impl DbConn {
                 entry.participant,
                 entry.category_id,
                 entry.description,
+                entry.ancillary_f32data,
                 aid,
             ),
         );
@@ -92,9 +95,10 @@ impl DbConn {
             update.info.transfer_type as u32,
             update.info.participant,
             update.info.category_id,
-            update.info.description
+            update.info.description,
+            update.info.ancillary_f32data
         ];
-        let sql = "UPDATE ledgers SET date = ?2, amount = ?3, transfer_type = ?4, pid = ?5, cid = ?6, desc = ?7 WHERE id = ?1";
+        let sql = "UPDATE ledgers SET date = ?2, amount = ?3, transfer_type = ?4, pid = ?5, cid = ?6, desc = ?7, ancillary_f32 = ?8 WHERE id = ?1";
         let rs = self.conn.execute(sql, p);
         match rs {
             Ok(_usize) => {}
@@ -137,6 +141,7 @@ impl DbConn {
                                 participant: row.get(4)?,
                                 category_id: row.get(5)?,
                                 description: row.get(6)?,
+                                ancillary_f32data : row.get(7)?,
                             },
                         })
                     })
@@ -177,6 +182,7 @@ impl DbConn {
                             participant: row.get(4)?,
                             category_id: row.get(5)?,
                             description: row.get(6)?,
+                            ancillary_f32data : row.get(7)?
                         })
                     })
                     .unwrap()

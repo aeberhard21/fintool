@@ -3,7 +3,7 @@ use inquire::*;
 
 use crate::database::DbConn;
 use crate::stocks;
-use crate::types::investments::{SaleAllocationInfo, SaleAllocationRecord, StockInfo, StockRecord};
+use crate::types::investments::{SaleAllocationInfo, SaleAllocationRecord, StockInfo, StockRecord, StockSplitInfo, StockSplitRecord};
 use crate::types::ledger::{LedgerInfo, LedgerRecord};
 use crate::types::participants::ParticipantType;
 use shared_lib::{LedgerEntry, TransferType};
@@ -35,7 +35,8 @@ impl VariableAccount {
         ticker = Text::new("Enter stock ticker: ")
             .prompt()
             .unwrap()
-            .to_string();
+            .to_string()
+            .to_ascii_uppercase();
         let rs = stocks::get_stock_at_close(ticker.clone());
         match rs {
             Ok(price) => {}
@@ -83,6 +84,7 @@ impl VariableAccount {
                 costbasis,
                 date.clone()
             ),
+            ancillary_f32data : 0.0
         };
 
         let ledger_id = self.db.add_ledger_entry(self.id, purchase).unwrap();
@@ -107,7 +109,8 @@ impl VariableAccount {
         )
         .prompt()
         .unwrap()
-        .to_string();
+        .to_string()
+        .to_ascii_uppercase();
         let pid =
             self.db
                 .check_and_add_participant(self.id, ticker.clone(), ParticipantType::Payer);
@@ -148,6 +151,7 @@ impl VariableAccount {
                 sale_price,
                 sale_date.to_string()
             ),
+            ancillary_f32data : 0.0
         };
 
         let ledger_id = self.db.add_ledger_entry(self.id, sale).unwrap();
@@ -189,6 +193,10 @@ impl VariableAccount {
             .db
             .check_and_get_stock_sale_record_matching_from_ledger_id(record.id)
             .unwrap();
+        let was_stock_split = self
+            .db
+            .check_and_get_stock_split_record_matching_from_ledger_id(record.id)
+            .unwrap();
 
         let original_record;
         let original_txn;
@@ -201,9 +209,55 @@ impl VariableAccount {
         if was_stock_purchase.is_some() {
             original_record = was_stock_purchase.unwrap();
             original_txn = "purchase";
-        } else {
+        } else if was_stock_sale.is_some() {
             original_record = was_stock_sale.unwrap();
             original_txn = "sale";
+        } else { 
+            // was stock split, modify accordingly
+            let stock_split_record = was_stock_split.unwrap();
+            let mut tickers = self.db.get_stock_tickers(self.id).unwrap();
+            let ticker_msg = "What stock would you like to record the split of:";
+            let updated_ticker = Select::new(ticker_msg, tickers)
+            .with_starting_filter_input(&stock_split_record.info.ticker)
+            .prompt()
+            .unwrap()
+            .to_ascii_uppercase();
+
+            let updated_date = DateSelect::new("Enter date of split:")
+            .with_default( NaiveDate::parse_from_str(stock_split_record.info.date.as_str(), "%Y-%m-%d").unwrap(),)
+            .prompt()
+            .unwrap();
+
+            let updated_split : f32 = CustomType::<f32>::new("Enter split factor:")
+            .with_default(stock_split_record.info.split)
+            .with_error_message("Please type a valid amount!")
+            .prompt()
+            .unwrap();
+
+            let pid = self.db.check_and_add_participant(self.id, updated_ticker.clone(), ParticipantType::Both);
+            let cid = self.db.check_and_add_category(self.id, "stock dividend/split".to_string());
+
+            // TODO : deallocate original stock in here
+
+            let updated_info = LedgerInfo { 
+                date : updated_date.to_string(), 
+                amount : 0.0, 
+                transfer_type : TransferType::ZeroSumChange, 
+                participant : pid, 
+                category_id : cid, 
+                description : format!("[Internal]: Split of {} by factor of {} on {}.", updated_ticker.clone(), updated_split.clone(), updated_date),
+                ancillary_f32data : self.db.get_stocks(self.id, updated_ticker.clone()).unwrap().iter().map(|rcrd| rcrd.info.remaining).sum::<f32>() * updated_split
+            };
+
+            let updated_record = LedgerRecord { 
+                id : record.id,
+                info : updated_info
+            };
+
+            let lid = self.db.update_ledger_item(updated_record.clone()).unwrap();
+
+            return updated_record;
+
         }
 
         const OPTIONS: [&'static str; 4] = ["Purchase", "Sale", "Stock Split", "None"];
@@ -221,7 +275,8 @@ impl VariableAccount {
         let updated_ticker = Select::new(ticker_msg.as_str(), tickers)
             .with_starting_filter_input(&original_record.info.ticker)
             .prompt()
-            .unwrap();
+            .unwrap()
+            .to_ascii_uppercase();
 
         let stock_valid = stocks::get_stock_at_close(updated_ticker.clone());
         match stock_valid {
@@ -308,6 +363,7 @@ impl VariableAccount {
                 participant: updated_pid,
                 category_id: updated_cid,
                 description: updated_description,
+                ancillary_f32data : 0.0
             },
         };
 
@@ -467,6 +523,15 @@ impl VariableAccount {
         }
     }
 
+    // fn undo_stock_split(&mut self, record : StockSplitRecord ) { 
+    //     let ticker = record.info.ticker;
+    //     let date = record.info.date;
+    //     let x : Vec<StockRecord> = self.db.get_stock_history_ascending(self.id, ticker).unwrap()
+    //         .iter()
+    //         .filter(|&x| 
+    //         {NaiveDate::parse_from_str(x.info.date.as_str(), "%Y-%m-%d").unwrap() < NaiveDate::parse_from_str(date.as_str(), "%Y-%m-%d").unwrap()}).collect();
+    // }
+
     pub fn split_stock(&mut self) {
         let tickers = self.db.get_stock_tickers(self.id).unwrap();
         let ticker = Select::new(
@@ -482,8 +547,24 @@ impl VariableAccount {
             .prompt()
             .unwrap();
         let split_date = DateSelect::new("Enter date of split:").prompt().unwrap();
+
+        let pid = self.db.check_and_add_participant(self.id, ticker.clone(), ParticipantType::Both);
+        let cid = self.db.check_and_add_category(self.id, "stock dividend/split".to_string());
+
+        let ledger_entry = LedgerInfo { 
+            date : split_date.to_string(), 
+            amount : 0.0, 
+            transfer_type : TransferType::ZeroSumChange, 
+            participant : pid, 
+            category_id : cid, 
+            description : format!("[Internal]: Split of {} by factor of {} on {}.", ticker.clone(), split.clone(), split_date),
+            ancillary_f32data : self.db.get_stocks(self.id, ticker.clone()).unwrap().iter().map(|rcrd| rcrd.info.remaining).sum::<f32>() * split
+        };
+
+        let id = self.db.add_ledger_entry(self.id, ledger_entry).unwrap();
+
         self.db
-            .add_stock_split(self.id, split_date.to_string(), ticker, split)
+            .add_stock_split(self.id, split_date.to_string(), ticker, split, id)
             .unwrap();
     }
 
@@ -549,6 +630,8 @@ impl VariableAccount {
                 TransferType::WithdrawalToExternalAccount => -txn.amount,
                 // all cash stays within account so cash flow is 0
                 TransferType::WithdrawalToInternalAccount => 0.0,
+                // Cash flow is zero on zero-sum change
+                TransferType::ZeroSumChange => 0.0
             };
 
             if iter.peek().is_none() {

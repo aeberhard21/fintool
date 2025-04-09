@@ -210,6 +210,7 @@ impl AccountOperations for InvestmentAccountManager {
                     .check_and_add_participant(self.id, entry.participant, ptype),
                 category_id: self.db.check_and_add_category(self.id, entry.category),
                 description: entry.description,
+                ancillary_f32data : entry.ancillary_f32
             };
 
             let lid: u32 = self.db.add_ledger_entry(self.id, x).unwrap();
@@ -232,14 +233,9 @@ impl AccountOperations for InvestmentAccountManager {
                         let stocks_owned =
                             self.db.get_stocks(self.id, my_s.ticker.clone()).unwrap();
                         let all_shares: f32 = stocks_owned.iter().map(|x| x.info.shares).sum();
-                        println!(
-                            "Shares owned: {}, new shares: {}",
-                            all_shares,
-                            my_s.shares.clone()
-                        );
                         let split_factor = my_s.shares / all_shares;
                         self.db
-                            .add_stock_split(self.id, my_s.date, my_s.ticker, split_factor)
+                            .add_stock_split(self.id, my_s.date, my_s.ticker, split_factor, lid)
                             .unwrap();
                     } else {
                         self.db.add_stock(self.id, my_s).unwrap();

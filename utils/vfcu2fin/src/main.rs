@@ -267,6 +267,7 @@ fn main() {
             participant: peer,
             category: cat,
             description: format!("\"{}\"", txn.description),
+            ancillary_f32 : 0.0,
             stock_info: None,
         };
 

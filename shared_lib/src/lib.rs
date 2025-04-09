@@ -13,6 +13,7 @@ pub struct LedgerEntry {
     pub participant: String,
     pub category: String,
     pub description: String,
+    pub ancillary_f32 : f32,
     pub stock_info: Option<StockInfo>,
 }
 
@@ -33,6 +34,7 @@ pub enum TransferType {
     DepositFromExternalAccount,
     WithdrawalToInternalAccount,
     DepositFromInternalAccount,
+    ZeroSumChange
 }
 
 impl From<u32> for TransferType {

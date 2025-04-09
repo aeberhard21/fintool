@@ -73,6 +73,7 @@ impl FixedAccount {
             participant: pid,
             category_id: cid,
             description: description_input,
+            ancillary_f32data : 0.0
         };
 
         let link = Confirm::new("Link transaction to another account?")
@@ -172,6 +173,7 @@ impl FixedAccount {
             participant: pid,
             category_id: cid,
             description: description_input,
+            ancillary_f32data : 0.0
         };
 
         let id = self.db.add_ledger_entry(self.id, deposit.clone()).unwrap();
@@ -217,6 +219,7 @@ impl FixedAccount {
             TransferType::DepositFromInternalAccount => TRANSFER_OPTIONS[1],
             TransferType::WithdrawalToExternalAccount => TRANSFER_OPTIONS[2],
             TransferType::WithdrawalToInternalAccount => TRANSFER_OPTIONS[3],
+            TransferType::ZeroSumChange => TRANSFER_OPTIONS[1]
         };
 
         let updated_action = Select::new(
@@ -298,6 +301,7 @@ impl FixedAccount {
                 participant: updated_pid,
                 category_id: updated_cid,
                 description: updated_description,
+                ancillary_f32data : 0.0
             },
         };
 
