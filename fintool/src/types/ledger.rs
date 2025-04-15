@@ -111,7 +111,7 @@ impl DbConn {
 
     pub fn remove_ledger_item(&mut self, id: u32) -> rusqlite::Result<u32, rusqlite::Error> {
         let p = rusqlite::params![id];
-        let sql = "DELETE FROM ledgers WHERE id = ?1 VALUES (?1)";
+        let sql = "DELETE FROM ledgers WHERE id = ?1";
         let rs = self.conn.execute(sql, p);
         match rs {
             Ok(_usize) => {}
@@ -124,7 +124,7 @@ impl DbConn {
 
     pub fn get_ledger(&mut self, aid: u32) -> rusqlite::Result<Vec<LedgerRecord>, rusqlite::Error> {
         let p = rusqlite::params![aid];
-        let sql = "SELECT * FROM ledgers WHERE aid = (?1) order by date DESC";
+        let sql = "SELECT id, date, amount, transfer_type, pid, cid, desc, ancillary_f32 FROM ledgers WHERE aid = (?1) order by date DESC";
         let mut stmt = self.conn.prepare(sql)?;
         let exists = stmt.exists(p)?;
         let mut entries: Vec<LedgerRecord> = Vec::new();

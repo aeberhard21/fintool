@@ -75,10 +75,8 @@ fn main() {
         let description: String;
         let mut ancillary_data : f32 = 0.0; 
         let mut stock_txn: StockInfo = StockInfo {
-            ticker: String::new(),
             shares: 0.0,
             costbasis: 0.0,
-            date: String::new(),
             remaining: 0.0,
             is_buy: false,
             is_split: false,
@@ -153,15 +151,8 @@ fn main() {
                 description = txn.description.clone();
 
                 stock_txn = StockInfo {
-                    ticker: txn.symbol.clone(),
                     shares: quantity,
                     costbasis: price,
-                    date: format!(
-                        "{}-{}-{}",
-                        posted_date.year(),
-                        posted_date.month0() + 1,
-                        posted_date.day0() + 1
-                    ),
                     remaining: quantity,
                     is_buy: true,
                     is_split: false,
@@ -174,15 +165,8 @@ fn main() {
                 description = txn.description.clone();
 
                 stock_txn = StockInfo {
-                    ticker: txn.symbol.clone(),
                     shares: quantity,
                     costbasis: price,
-                    date: format!(
-                        "{}-{}-{}",
-                        posted_date.year(),
-                        posted_date.month0() + 1,
-                        posted_date.day0() + 1
-                    ),
                     remaining: quantity,
                     is_buy: false,
                     is_split: false,
@@ -206,15 +190,8 @@ fn main() {
                 ancillary_data = quantity;
 
                 stock_txn = StockInfo {
-                    ticker: txn.symbol.as_str().to_string(),
                     shares: quantity,
                     costbasis: price,
-                    date: format!(
-                        "{}-{}-{}",
-                        posted_date.year(),
-                        posted_date.month0() + 1,
-                        posted_date.day0() + 1
-                    ),
                     remaining: quantity,
                     is_buy: true,
                     is_split: true,
@@ -256,17 +233,15 @@ fn main() {
             };
 
             println!(
-                "{},{},{},{},{},{},{},{},{},{},{},{},{}",
+                "{},{},{},{},{},{},{},{},{},{},{}",
                 ledger_entry.date,
                 ledger_entry.amount,
                 ledger_entry.transfer_type as u32,
                 ledger_entry.participant,
                 ledger_entry.category,
                 ledger_entry.description,
-                ledger_entry.stock_info.clone().unwrap().ticker,
                 ledger_entry.stock_info.clone().unwrap().shares,
                 ledger_entry.stock_info.clone().unwrap().costbasis,
-                ledger_entry.stock_info.clone().unwrap().date,
                 ledger_entry.stock_info.clone().unwrap().remaining,
                 ledger_entry.stock_info.clone().unwrap().is_buy,
                 ledger_entry.stock_info.clone().unwrap().is_split

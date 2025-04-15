@@ -53,6 +53,7 @@ impl DbConn {
         Self::create_budget_table(self);
         Self::create_account_transaction_table(self);
         Self::create_stock_split_table(self);
+        Self::create_stock_split_allocation_table(self);
         Self::set_schema_version(&self.conn, CURRENT_DATABASE_SCHEMA_VERSION);
 
         // register custom functions
@@ -119,7 +120,8 @@ impl DbConn {
             bid     INTEGER NOT NULL, 
             lid     INTEGER NOT NULL, 
             tid     INTEGER NOT NULL,
-            splid   INTEGER NOT NULL
+            splid   INTEGER NOT NULL,
+            stock_split_allocation_id INTEGER NOT NULL
         )";
         self.conn.execute(sql, ())?;
         let sql = "SELECT uid FROM info";
@@ -127,8 +129,8 @@ impl DbConn {
         let exists = stmt.exists(())?;
         if !exists {
             let sql: &str =
-                "INSERT INTO info (uid, aid, spid, ssid, said, cid, pid, bid, lid, tid, splid) VALUES ( ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)";
-            match self.conn.execute(sql, (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)) {
+                "INSERT INTO info (uid, aid, spid, ssid, said, cid, pid, bid, lid, tid, splid, stock_split_allocation_id) VALUES ( ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)";
+            match self.conn.execute(sql, (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)) {
                 Ok(_rows_inserted) => {}
                 Err(error) => {
                     panic!("Unable to initialize info table: {}", error);
@@ -315,6 +317,24 @@ impl DbConn {
             true => {
                 let id = stmt.query_row((), |row| row.get::<_, u32>(0))?;
                 let sql = "UPDATE info SET splid = splid + 1";
+                self.conn.execute(sql, ())?;
+                Ok(id)
+            }
+            false => {
+                panic!("The next stock split ID within table 'info' does not exist.");
+            }
+        }
+    }
+
+
+    pub fn get_next_stock_split_allocation_id(&mut self) -> rusqlite::Result<u32> {
+        let sql = "SELECT stock_split_allocation_id FROM info";
+        let mut stmt = self.conn.prepare(sql)?;
+        let exists = stmt.exists(())?;
+        match exists {
+            true => {
+                let id = stmt.query_row((), |row| row.get::<_, u32>(0))?;
+                let sql = "UPDATE info SET stock_split_allocation_id = stock_split_allocation_id + 1";
                 self.conn.execute(sql, ())?;
                 Ok(id)
             }

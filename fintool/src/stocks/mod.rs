@@ -42,14 +42,6 @@ pub fn get_stock_history(
     return rs.quotes();
 }
 
-pub fn return_stock_values(stocks: Vec<StockInfo>) -> f64 {
-    let mut value: f64 = 0.0;
-    for s in stocks {
-        value += get_stock_at_close(s.ticker).unwrap() * s.shares as f64;
-    }
-    return value;
-}
-
 pub fn get_stock_quote(ticker: String, date: NaiveDate) -> Result<f64, YahooError> {
     // to get stock quote, we need a start and end date. The "start" date will be
     // the returned quoted by the call to the function.

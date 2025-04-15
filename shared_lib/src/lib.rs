@@ -19,10 +19,8 @@ pub struct LedgerEntry {
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct StockInfo {
-    pub ticker: String,
     pub shares: f32,
     pub costbasis: f32,
-    pub date: String,
     pub remaining: f32,
     pub is_buy: bool,
     pub is_split: bool,
@@ -44,6 +42,7 @@ impl From<u32> for TransferType {
             1 => TransferType::DepositFromExternalAccount,
             2 => TransferType::WithdrawalToInternalAccount,
             3 => TransferType::DepositFromInternalAccount,
+            4 => TransferType::ZeroSumChange,
             _ => panic!("Invalid numeric value for TransferType!"),
         }
     }

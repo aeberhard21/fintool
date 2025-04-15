@@ -1,9 +1,13 @@
+use core::alloc;
+use std::io::Read;
+use std::sync::Arc;
+
 use chrono::{Date, Days, NaiveDate};
 use inquire::*;
 
 use crate::database::DbConn;
 use crate::stocks;
-use crate::types::investments::{SaleAllocationInfo, SaleAllocationRecord, StockInfo, StockRecord, StockSplitInfo, StockSplitRecord};
+use crate::types::investments::{SaleAllocationInfo, SaleAllocationRecord, StockInfo, StockRecord, StockSplitAllocationInfo, StockSplitInfo, StockSplitRecord};
 use crate::types::ledger::{LedgerInfo, LedgerRecord};
 use crate::types::participants::ParticipantType;
 use shared_lib::{LedgerEntry, TransferType};
@@ -28,39 +32,85 @@ impl VariableAccount {
         acct
     }
 
-    pub fn purchase_stock(&mut self) {
+    pub fn purchase_stock(&mut self, initial_opt : Option<StockRecord>, overwrite_entry : bool) -> LedgerRecord {
         let purchase: LedgerInfo;
+        let defaults_to_use : bool;
+        let mut initial: StockRecord = StockRecord { id: 0, info: StockInfo { shares: 0.0, costbasis: 0.0, remaining: 0.0, ledger_id: 0 }, txn_opt: None };
 
-        let mut ticker: String = String::new();
-        ticker = Text::new("Enter stock ticker: ")
-            .prompt()
-            .unwrap()
-            .to_string()
-            .to_ascii_uppercase();
-        let rs = stocks::get_stock_at_close(ticker.clone());
-        match rs {
-            Ok(price) => {}
-            Err(error) => {
-                panic!("Fetch failed for ticker '{}': {}!", ticker.clone(), error);
-            }
+        if initial_opt.is_some() { 
+            defaults_to_use = true;
+            initial = initial_opt.unwrap();
+        } else { 
+            defaults_to_use = false;
         }
 
-        let date_input: Result<NaiveDate, InquireError> =
-            DateSelect::new("Enter date of purchase:").prompt();
+        let ticker_msg = "Enter stock ticker:";
+        let ticker = if defaults_to_use { 
+            let pid = initial.clone().txn_opt.expect("Ledger information not populated!").participant;
+            let initial_ticker = self.db.get_participant(self.id, pid).unwrap();
+            Text::new(ticker_msg)
+                .with_default(initial_ticker.as_str())
+                .prompt()
+                .unwrap()
+                .to_string()
+                .to_ascii_uppercase()
+        } else { 
+            Text::new(ticker_msg)
+                .prompt()
+                .unwrap()
+                .to_string()
+                .to_ascii_uppercase()
+        };
 
-        let shares: f32 = CustomType::<f32>::new("Enter number of shares purchased: ")
+        let ticker_valid = self.confirm_valid_ticker(ticker.clone());
+        if ticker_valid == false { 
+            panic!("Invalid stock ticker entered!");
+        }
+
+        let date_msg =  "Enter date of purchase:";
+        let date_input= if defaults_to_use {
+            let initial_date = initial.clone().txn_opt.expect("Ledger information not populated!").date;
+            DateSelect::new(date_msg)
+                .with_default(NaiveDate::parse_from_str(&initial_date, "%Y-%m-%d").unwrap())
+                .prompt()
+                .unwrap().to_string()
+        } else { 
+            DateSelect::new(date_msg).prompt().unwrap().to_string()
+        };
+
+        let shares_msg = "Enter number of shares purchased:";
+        let shares: f32 = if defaults_to_use { 
+            CustomType::<f32>::new(shares_msg)
+                .with_placeholder("0.00")
+                .with_default(initial.info.shares)
+                .with_error_message("Please enter a valid amount!")
+                .prompt()
+                .unwrap()
+        } else {
+            CustomType::<f32>::new(shares_msg)
+                .with_placeholder("0.00")
+                .with_default(0.00)
+                .with_error_message("Please enter a valid amount!")
+                .prompt()
+                .unwrap()
+        };
+
+        let costbasis_msg = "Enter cost basis of shares purchased:";
+        let costbasis: f32 = if defaults_to_use { 
+            CustomType::<f32>::new(costbasis_msg)
+            .with_placeholder("0.00")
+            .with_default(initial.info.costbasis)
+            .with_error_message("Please enter a valid amount!")
+            .prompt()
+            .unwrap()
+        } else {
+            CustomType::<f32>::new(costbasis_msg)
             .with_placeholder("0.00")
             .with_default(0.00)
             .with_error_message("Please enter a valid amount!")
             .prompt()
-            .unwrap();
-
-        let costbasis: f32 = CustomType::<f32>::new("Enter cost basis of shares purchased: ")
-            .with_placeholder("0.00")
-            .with_default(0.00)
-            .with_error_message("Please enter a valid amount!")
-            .prompt()
-            .unwrap();
+            .unwrap()
+        };
 
         let pid =
             self.db
@@ -69,10 +119,8 @@ impl VariableAccount {
             .db
             .check_and_add_category(self.id, "Bought".to_string());
 
-        let date = date_input.unwrap().to_string();
-
         purchase = LedgerInfo {
-            date: date.clone(),
+            date: date_input.clone(),
             amount: shares * costbasis,
             transfer_type: TransferType::WithdrawalToInternalAccount,
             participant: pid,
@@ -82,56 +130,111 @@ impl VariableAccount {
                 shares,
                 ticker,
                 costbasis,
-                date.clone()
+                date_input.clone()
             ),
             ancillary_f32data : 0.0
         };
 
-        let ledger_id = self.db.add_ledger_entry(self.id, purchase).unwrap();
+        let ledger_id = if defaults_to_use && overwrite_entry { 
+            self.db.update_ledger_item(LedgerRecord { id: initial.info.ledger_id , info: purchase.clone() }).unwrap()
+        } else { 
+            self.db.add_ledger_entry(self.id, purchase.clone()).unwrap()
+        };
 
         let stock_record = StockInfo {
-            date: date.clone(),
-            ticker: ticker.clone(),
             shares: shares,
             costbasis: costbasis,
             remaining: shares,
             ledger_id: ledger_id,
         };
 
-        self.db.add_stock(self.id, stock_record).unwrap();
+        self.db.add_stock_purchase(self.id, stock_record).unwrap();
+
+        return LedgerRecord { id:  ledger_id, info: purchase.clone() };
     }
 
-    pub fn sell_stock(&mut self) {
+    pub fn sell_stock(&mut self, initial_opt : Option<StockRecord>, overwrite_entry : bool) -> LedgerRecord {
+
+        let defaults_to_use : bool;
+        let mut initial: StockRecord = StockRecord { id: 0, info: StockInfo { shares: 0.0, costbasis: 0.0, remaining: 0.0, ledger_id: 0 }, txn_opt: None };
+
+        if initial_opt.is_some() { 
+            defaults_to_use = true;
+            initial = initial_opt.unwrap();
+        } else { 
+            defaults_to_use = false;
+        }
+
+        let ticker : String;
+        let ticker_msg = "Select which stock you would like to record a sale of:";
         let tickers = self.db.get_stock_tickers(self.id).unwrap();
-        let ticker = Select::new(
-            "\nSelect which stock you would like to record a sale of:",
-            tickers,
-        )
-        .prompt()
-        .unwrap()
-        .to_string()
-        .to_ascii_uppercase();
+        ticker = if defaults_to_use {  
+            let pid = initial.clone().txn_opt.expect("Ledger information not populated!").participant;
+            let initial_ticker = self.db.get_participant(self.id, pid).unwrap();
+            Select::new(ticker_msg, tickers)
+                .with_starting_filter_input(initial_ticker.as_str())
+                .prompt()
+                .unwrap()
+                .to_string()
+                .to_ascii_uppercase()
+        } else { 
+            Select::new(ticker_msg,tickers)
+                .prompt()
+                .unwrap()
+                .to_string()
+                .to_ascii_uppercase()
+        };
+
         let pid =
             self.db
                 .check_and_add_participant(self.id, ticker.clone(), ParticipantType::Payer);
 
-        // let owned_stocks: Vec<StockEntry> = self.db.get_stocks(self.id, ticker.clone()).unwrap();
+        let date_msg = "Enter date of sale:";
+        let sale_date = if defaults_to_use { 
+            let initial_date = initial.clone().txn_opt.expect("Ledger information not populated!").date;
+            DateSelect::new(date_msg)
+                .with_default(NaiveDate::parse_from_str(&initial_date, "%Y-%m-%d").unwrap())
+                .prompt()
+                .unwrap()
+        } else { 
+            DateSelect::new(date_msg)
+                .prompt()
+                .unwrap()
+        };
 
-        let sale_date = DateSelect::new("Enter date of sale: ").prompt().unwrap();
-
-        let sale_price: f32 = CustomType::<f32>::new("Enter sale price (per share): ")
+        let price_msg = "Enter sale price (per share):";
+        let sale_price: f32 = if defaults_to_use { 
+            CustomType::<f32>::new(price_msg)
+            .with_placeholder("00000.00")
+            .with_default(initial.info.costbasis)
+            .with_error_message("Please type a valid amount!")
+            .prompt()
+            .unwrap()
+        } else { 
+            CustomType::<f32>::new(price_msg)
             .with_placeholder("00000.00")
             .with_default(00000.00)
             .with_error_message("Please type a valid amount!")
             .prompt()
-            .unwrap();
+            .unwrap()
+        };
 
-        let number_of_shares_sold: f32 = CustomType::<f32>::new("Enter quantity sold: ")
+        let shares_msg = "Enter quantity sold:";
+        let number_of_shares_sold: f32 = if defaults_to_use { 
+            CustomType::<f32>::new(shares_msg)
+            .with_placeholder("00000.00")
+            .with_default(initial.info.shares)
+            .with_error_message("Please type a valid amount!")
+            .prompt()
+            .unwrap()
+        } else { 
+            CustomType::<f32>::new(shares_msg)
             .with_placeholder("00000.00")
             .with_default(00000.00)
             .with_error_message("Please type a valid amount!")
             .prompt()
-            .unwrap();
+            .unwrap()
+        };
 
         let value_received = number_of_shares_sold * sale_price;
         let stock_cid = self
@@ -154,21 +257,25 @@ impl VariableAccount {
             ancillary_f32data : 0.0
         };
 
-        let ledger_id = self.db.add_ledger_entry(self.id, sale).unwrap();
+        let ledger_id: u32 = if defaults_to_use && overwrite_entry {
+            self.db.update_ledger_item(LedgerRecord{id : initial.info.ledger_id, info : sale.clone()}).unwrap()
+        } else { 
+            self.db.add_ledger_entry(self.id, sale.clone()).unwrap()
+        };
 
         let sale_record = StockInfo {
-            ticker: ticker.clone(),
             shares: number_of_shares_sold,
             costbasis: sale_price,
-            date: sale_date.to_string(),
             remaining: 0.0,
             ledger_id: ledger_id,
         };
 
-        let sale_id = self.db.sell_stock(self.id, sale_record.clone()).unwrap();
+        let sale_id = self.db.add_stock_sale(self.id, sale_record.clone()).unwrap();
+        
         let sale_info = StockRecord {
             id: sale_id,
             info: sale_record.clone(),
+            txn_opt: Some(sale.clone())
         };
 
         const SALE_METHOD_OPTIONS: [&'static str; 2] = ["LIFO", "FIFO"];
@@ -179,297 +286,191 @@ impl VariableAccount {
                 .to_string();
 
         self.allocate_sold_stock(sale_info, sell_method);
+
+        return LedgerRecord { id: ledger_id, info: sale.clone() }
     }
 
-    pub fn modify(&mut self, record: LedgerRecord) -> LedgerRecord {
-        let updated_record;
+    pub fn split_stock(&mut self, initial_opt : Option<StockSplitRecord>, overwrite_entry : bool) -> LedgerRecord {
 
-        // does this correlate with purchase or sale of stocks
-        let was_stock_purchase = self
-            .db
-            .check_and_get_stock_purchase_record_matching_from_ledger_id(record.id)
-            .unwrap();
-        let was_stock_sale = self
-            .db
-            .check_and_get_stock_sale_record_matching_from_ledger_id(record.id)
-            .unwrap();
-        let was_stock_split = self
-            .db
-            .check_and_get_stock_split_record_matching_from_ledger_id(record.id)
-            .unwrap();
+        let defaults_to_use : bool;
+        let mut initial: StockSplitRecord = StockSplitRecord { id: 0, info: StockSplitInfo { split: 0.0, ledger_id: 0 }, txn_opt: None };
 
-        let original_record;
-        let original_txn;
-
-        // if not just update in place
-        if was_stock_purchase.is_none() && was_stock_sale.is_none() {
-            updated_record = self.fixed.modify(record);
-            return updated_record;
-        }
-        if was_stock_purchase.is_some() {
-            original_record = was_stock_purchase.unwrap();
-            original_txn = "purchase";
-        } else if was_stock_sale.is_some() {
-            original_record = was_stock_sale.unwrap();
-            original_txn = "sale";
+        if initial_opt.is_some() { 
+            defaults_to_use = true;
+            initial = initial_opt.unwrap();
         } else { 
-            // was stock split, modify accordingly
-            let stock_split_record = was_stock_split.unwrap();
-            let mut tickers = self.db.get_stock_tickers(self.id).unwrap();
-            let ticker_msg = "What stock would you like to record the split of:";
-            let updated_ticker = Select::new(ticker_msg, tickers)
-            .with_starting_filter_input(&stock_split_record.info.ticker)
-            .prompt()
-            .unwrap()
-            .to_ascii_uppercase();
-
-            let updated_date = DateSelect::new("Enter date of split:")
-            .with_default( NaiveDate::parse_from_str(stock_split_record.info.date.as_str(), "%Y-%m-%d").unwrap(),)
-            .prompt()
-            .unwrap();
-
-            let updated_split : f32 = CustomType::<f32>::new("Enter split factor:")
-            .with_default(stock_split_record.info.split)
-            .with_error_message("Please type a valid amount!")
-            .prompt()
-            .unwrap();
-
-            let pid = self.db.check_and_add_participant(self.id, updated_ticker.clone(), ParticipantType::Both);
-            let cid = self.db.check_and_add_category(self.id, "stock dividend/split".to_string());
-
-            // TODO : deallocate original stock in here
-
-            let updated_info = LedgerInfo { 
-                date : updated_date.to_string(), 
-                amount : 0.0, 
-                transfer_type : TransferType::ZeroSumChange, 
-                participant : pid, 
-                category_id : cid, 
-                description : format!("[Internal]: Split of {} by factor of {} on {}.", updated_ticker.clone(), updated_split.clone(), updated_date),
-                ancillary_f32data : self.db.get_stocks(self.id, updated_ticker.clone()).unwrap().iter().map(|rcrd| rcrd.info.remaining).sum::<f32>() * updated_split
-            };
-
-            let updated_record = LedgerRecord { 
-                id : record.id,
-                info : updated_info
-            };
-
-            let lid = self.db.update_ledger_item(updated_record.clone()).unwrap();
-
-            return updated_record;
-
+            defaults_to_use = false;
         }
 
-        const OPTIONS: [&'static str; 4] = ["Purchase", "Sale", "Stock Split", "None"];
-        let purchase_or_sale = Select::new("Purchase, Sale, or Stock Split:", OPTIONS.to_vec())
-            .with_starting_filter_input(original_txn)
-            .prompt()
-            .unwrap();
-
-        let mut tickers = self.db.get_stock_tickers(self.id).unwrap();
-
-        let ticker_msg = format!(
-            "Select which stock would like to record the {} of:",
-            purchase_or_sale
-        );
-        let updated_ticker = Select::new(ticker_msg.as_str(), tickers)
-            .with_starting_filter_input(&original_record.info.ticker)
-            .prompt()
-            .unwrap()
-            .to_ascii_uppercase();
-
-        let stock_valid = stocks::get_stock_at_close(updated_ticker.clone());
-        match stock_valid {
-            Ok(price) => {}
-            Err(error) => {
-                panic!(
-                    "Fetch failed for ticker '{}': {}!",
-                    updated_ticker.clone(),
-                    error
-                );
-            }
-        }
-
-        let date_msg = format!("Enter date of {}", purchase_or_sale);
-        let updated_date = DateSelect::new(date_msg.as_str())
-            .with_default(
-                NaiveDate::parse_from_str(original_record.info.date.as_str(), "%Y-%m-%d").unwrap(),
-            )
-            .prompt()
-            .unwrap();
-
-        let price_msg = format!("Enter {} price (per share):", purchase_or_sale);
-        let updated_price: f32 = CustomType::<f32>::new(price_msg.as_str())
-            .with_default(original_record.info.costbasis)
-            .with_error_message("Please type a valid amount!")
-            .prompt()
-            .unwrap();
-
-        let shares_msg = format!("Enter shares transacted in {}:", purchase_or_sale);
-        let updated_shares: f32 = CustomType::<f32>::new(shares_msg.as_str())
-            .with_default(original_record.info.shares)
-            .with_error_message("Please type a valid amount!")
-            .prompt()
-            .unwrap();
-
-        let (updated_ptype, updated_category, updated_ttype) = match purchase_or_sale {
-            "Purchase" => (
-                ParticipantType::Payee,
-                "Bought",
-                TransferType::WithdrawalToInternalAccount,
-            ),
-            "Sale" => (
-                ParticipantType::Payer,
-                "Sold",
-                TransferType::DepositFromInternalAccount,
-            ),
-            _ => {
-                panic!("Not implemented!")
-            }
-        };
-
-        let updated_pid =
-            self.db
-                .check_and_add_participant(self.id, updated_ticker.clone(), updated_ptype);
-        let updated_cid = self
-            .db
-            .check_and_add_category(self.id, updated_category.to_string());
-
-        let updated_amount = updated_shares * updated_price;
-        let updated_description = if original_txn == "Purchase" {
-            format!(
-                "[Internal] Purchase {} shares of {} at ${} on {}",
-                updated_shares,
-                updated_ticker,
-                updated_price,
-                updated_date.to_string()
-            )
-        } else {
-            format!(
-                "[Internal] Sold {} shares of {} at ${} on {}.",
-                updated_shares,
-                updated_ticker,
-                updated_price,
-                updated_date.to_string()
-            )
-        };
-
-        updated_record = LedgerRecord {
-            id: original_record.info.ledger_id,
-            info: LedgerInfo {
-                date: updated_date.to_string(),
-                amount: updated_amount,
-                transfer_type: updated_ttype,
-                participant: updated_pid,
-                category_id: updated_cid,
-                description: updated_description,
-                ancillary_f32data : 0.0
-            },
-        };
-
-        let updated_stock_info = StockInfo {
-            date: updated_date.to_string(),
-            ticker: updated_ticker,
-            shares: updated_shares,
-            costbasis: updated_price,
-            remaining: updated_shares,
-            ledger_id: original_record.info.ledger_id,
-        };
-        let updated_stock_record;
-        let stock_id;
-
-        if "Purchase" == purchase_or_sale.to_string() {
-            // Check if previously entered as a sale and now needs to
-            // be a purchase.
-            if "sale" == original_txn.to_string() {
-                let sale_id_or_none = self
-                    .db
-                    .remove_stock_sale(original_record.info.ledger_id)
-                    .unwrap();
-                if sale_id_or_none.is_none() {
-                    println!("Sale could not be found associated with the modified ledger item!");
-                    return updated_record;
-                }
-
-                // Once done, remove stock allocation for this ledger id
-                let sale_id = sale_id_or_none.unwrap();
-                self.deallocate_sold_stock(sale_id);
-
-                stock_id = self.db.add_stock(self.id, updated_stock_info).unwrap();
-            } else {
-                let stock_id_or_none = self
-                    .db
-                    .update_stock_purchase(updated_stock_info.clone())
-                    .unwrap();
-                if stock_id_or_none.is_none() {
-                    println!("Purchase could not be associated with the modified ledger item!");
-                    return updated_record;
-                }
-                stock_id = stock_id_or_none.unwrap();
-            }
-        } else {
-            const SALE_METHOD_OPTIONS: [&'static str; 2] = ["LIFO", "FIFO"];
-            let sell_method: String =
-                Select::new("Select sale methodology:", SALE_METHOD_OPTIONS.to_vec())
+        let tickers = self.db.get_stock_tickers(self.id).unwrap();
+        let ticker_msg = "Select which stock you would like to report a split of:";
+        let ticker = if defaults_to_use {
+                let pid = initial.clone().txn_opt.expect("Ledger information not populated!").participant;
+                let initial_ticker: String = self.db.get_participant(self.id, pid).unwrap();
+                Select::new(ticker_msg,tickers)
+                    .with_starting_filter_input(&initial_ticker.as_str())
                     .prompt()
                     .unwrap()
-                    .to_string();
+                    .to_string()
+        } else { 
+            Select::new(ticker_msg,tickers)
+            .prompt()
+            .unwrap()
+            .to_string()
+        };
 
-            // Check if previously entered as purchase and now needs to
-            // a sale.
-            if "purchase" == original_txn.to_string() {
-                let _purchase_id = self
-                    .db
-                    .remove_stock_purchase(original_record.info.ledger_id)
-                    .unwrap();
-                let stock_id = self
-                    .db
-                    .sell_stock(self.id, updated_stock_info.clone())
-                    .unwrap();
-                updated_stock_record = StockRecord {
-                    id: stock_id,
-                    info: updated_stock_info,
-                };
-                self.allocate_sold_stock(updated_stock_record, sell_method);
-            } else {
-                let sale_id_or_none = self
-                    .db
-                    .update_stock_sale(updated_stock_info.clone())
-                    .unwrap();
-                if sale_id_or_none.is_none() {
-                    println!("Sale could not be associated with the modified ledger item!");
-                    return updated_record;
-                }
-                stock_id = sale_id_or_none.unwrap();
-                updated_stock_record = StockRecord {
-                    id: stock_id,
-                    info: updated_stock_info,
-                };
-                // TODO: deallocate sold stock, remove entries
-                self.deallocate_sold_stock(stock_id);
-            
-                // reallocate
-                self.allocate_sold_stock(updated_stock_record, sell_method);
-            }
+        let split_msg = "Enter split factor:";
+        let split: f32 = if defaults_to_use { 
+            CustomType::<f32>::new(split_msg)
+            .with_default(initial.info.split)
+            .with_error_message("Please type a valid amount!")
+            .prompt()
+            .unwrap()
+        } else { 
+            CustomType::<f32>::new(split_msg)
+            .with_placeholder("2.0")
+            .with_error_message("Please type a valid amount!")
+            .prompt()
+            .unwrap()
+        };
+
+        let date_msg = "Enter date of split:";
+        let split_date = if defaults_to_use {
+            let initial_date = initial.clone().txn_opt.expect("Ledger information not populated!").date;
+            DateSelect::new(date_msg)
+            .with_starting_date(NaiveDate::parse_from_str(initial_date.as_str(), "%Y-%m-%d").expect("Unable to convert date to NaiveDate"))
+            .prompt()
+            .unwrap()
+            .to_string()
+        } else {
+            DateSelect::new(date_msg).prompt().unwrap().to_string()
+        };
+
+        let pid = self.db.check_and_add_participant(self.id, ticker.clone(), ParticipantType::Both);
+        let cid = self.db.check_and_add_category(self.id, "stock dividend/split".to_string());
+
+        let ledger_entry = LedgerInfo { 
+            date : split_date.clone(), 
+            amount : 0.0, 
+            transfer_type : TransferType::ZeroSumChange, 
+            participant : pid, 
+            category_id : cid, 
+            description : format!("[Internal]: Split of {} by factor of {} on {}.", ticker.clone(), split.clone(), split_date),
+            ancillary_f32data : self.db.get_stocks(self.id, ticker.clone()).unwrap().iter().map(|rcrd| rcrd.info.remaining).sum::<f32>() * split
+        };
+
+        let lid = if defaults_to_use && overwrite_entry { 
+            self.db.update_ledger_item(LedgerRecord { id: initial.info.ledger_id, info: ledger_entry.clone() }).unwrap()
+        } else { 
+            self.db.add_ledger_entry(self.id, ledger_entry.clone()).unwrap()
+        };
+
+        let stock_split_id = self.db
+            .add_stock_split(self.id,  split.clone(), lid)
+            .unwrap();
+
+        let stock_split_record = StockSplitRecord { 
+            id : stock_split_id, 
+            info : StockSplitInfo { 
+                split : split.clone(),
+                ledger_id : lid.clone()
+            },
+            txn_opt : Some(ledger_entry.clone())
+        };
+
+        self.allocate_stock_split(stock_split_record);
+
+        return LedgerRecord{ id : lid, info : ledger_entry};
+    }
+
+    pub fn modify(&mut self, record : LedgerRecord) -> LedgerRecord {
+
+        println!("Record id: {}", record.clone().id);
+
+        let was_stock_purchase_opt = self.db.check_and_get_stock_purchase_record_matching_from_ledger_id(record.id).unwrap();
+        let was_stock_sale_opt = self.db.check_and_get_stock_sale_record_matching_from_ledger_id(record.id).unwrap();
+        let was_stock_split_opt = self.db.check_and_get_stock_split_record_matching_from_ledger_id(record.id).unwrap();
+
+        let mut is_stock_purchase: bool = false;
+        let mut is_stock_sale: bool = false;
+        let mut is_stock_split: bool = false;
+        let mut stock_record: StockRecord = StockRecord { id: 0, info: StockInfo { shares : 0.0, costbasis : 0.0, remaining : 0.0, ledger_id : 0 }, txn_opt: None };
+        let mut split_record: StockSplitRecord = StockSplitRecord { id : 0, info : StockSplitInfo { split: 0.0, ledger_id: 0 }, txn_opt : None };
+        if was_stock_purchase_opt.is_none() && was_stock_sale_opt.is_none() && was_stock_split_opt.is_none() { 
+            return self.fixed.modify(record);
+        } 
+        
+        if was_stock_purchase_opt.is_some() {
+            is_stock_purchase = true;
+            stock_record = was_stock_purchase_opt.unwrap();
+            stock_record.txn_opt = Some(record.info.clone());
+        } else if was_stock_sale_opt.is_some() {
+            is_stock_sale = true;
+            stock_record = was_stock_sale_opt.unwrap();
+            stock_record.txn_opt = Some(record.info.clone());
+        } else { 
+            is_stock_split = true;
+            split_record = was_stock_split_opt.unwrap();
+            split_record.txn_opt = Some(record.info.clone());
         }
 
-        let _updated_id = self.db.update_ledger_item(updated_record.clone()).unwrap();
-        return updated_record;
+        const OPTIONS: [&'static str; 2] = ["Update", "Remove"];
+        let modify_choice = Select::new("What would you like to do:", OPTIONS.to_vec()).prompt().unwrap();
+        match modify_choice { 
+            "Update" => {
+                if is_stock_purchase {
+                    self.db.remove_stock_purchase(stock_record.id).unwrap();
+                    return self.purchase_stock(Some(stock_record), true);
+                } else if is_stock_sale {
+                    self.deallocate_sold_stock(stock_record.id);
+                    self.db.remove_stock_sale(stock_record.info.ledger_id).unwrap();
+                    return self.sell_stock(Some(stock_record), true);
+                } else { 
+                    // split stock
+                    self.deallocate_stock_split(split_record.clone());
+                    return self.split_stock(Some(split_record.clone()), true);
+                }
+            }
+            "Remove" => {
+                if is_stock_purchase { 
+                    // TODO: check if part of any splits or sales before removing
+                    self.db.remove_stock_purchase(stock_record.info.ledger_id);
+                    self.db.remove_ledger_item(stock_record.info.ledger_id);
+                } else if is_stock_sale { 
+                    println!("{}", stock_record.clone().id);
+                    self.deallocate_sold_stock(stock_record.clone().id);
+                    self.db.remove_stock_sale(stock_record.info.ledger_id);
+                    self.db.remove_ledger_item(stock_record.info.ledger_id);
+                } else {
+                    self.deallocate_stock_split(split_record.clone());
+                    self.db.remove_stock_split(split_record.info.ledger_id);
+                    self.db.remove_ledger_item(split_record.info.ledger_id);
+                }
+                return record;
+            }
+            _ => { 
+                panic!("Input not recognized!");
+            }
+        }
+        
     }
 
     fn allocate_sold_stock(&mut self, record: StockRecord, method: String) {
         let stocks: Vec<StockRecord>;
+        let ticker = self.db.get_participant(self.id, record.txn_opt.expect("Transaction required but not found!").participant).unwrap();
         match method.as_str() {
             "LIFO" => {
                 stocks = self
                     .db
-                    .get_stock_history_ascending(self.id, record.info.ticker)
+                    .get_stock_history_ascending(self.id, ticker
+                    )
                     .unwrap();
             }
             "FIFO" => {
                 stocks = self
                     .db
-                    .get_stock_history_descending(self.id, record.info.ticker)
+                    .get_stock_history_descending(self.id, ticker
+                    )
                     .unwrap();
             }
             _ => {
@@ -521,51 +522,47 @@ impl VariableAccount {
                 .add_to_stock_remaining(record.info.purchase_id, record.info.quantity).unwrap();
             self.db.remove_stock_sale_allocation(record.id);
         }
+        // self.db.remove_stock_sale(sale_record.info.ledger_id);
     }
 
-    // fn undo_stock_split(&mut self, record : StockSplitRecord ) { 
-    //     let ticker = record.info.ticker;
-    //     let date = record.info.date;
-    //     let x : Vec<StockRecord> = self.db.get_stock_history_ascending(self.id, ticker).unwrap()
-    //         .iter()
-    //         .filter(|&x| 
-    //         {NaiveDate::parse_from_str(x.info.date.as_str(), "%Y-%m-%d").unwrap() < NaiveDate::parse_from_str(date.as_str(), "%Y-%m-%d").unwrap()}).collect();
-    // }
+    pub fn allocate_stock_split(&mut self, record : StockSplitRecord) { 
+        let ticker = self.db.get_participant(self.id, record.txn_opt.expect("Corresponding ledger transaction not provided!").participant).unwrap();
+        let stock_records = self.db.get_stocks(self.id, ticker).unwrap();
+        for stock in stock_records {
+            self.db.update_stock_remaining(stock.id, stock.info.remaining * record.info.split)
+                .unwrap();
+            self.db.update_cost_basis(stock.id, stock.info.costbasis / record.info.split)
+                .unwrap();
+            self.db.add_stock_split_allocation(StockSplitAllocationInfo { stock_split_id : record.id, stock_purchase_id : stock.id }).unwrap();
+        }
+    }
 
-    pub fn split_stock(&mut self) {
-        let tickers = self.db.get_stock_tickers(self.id).unwrap();
-        let ticker = Select::new(
-            "\nSelect which stock you would like to report a split of:",
-            tickers,
-        )
-        .prompt()
-        .unwrap()
-        .to_string();
-        let split: f32 = CustomType::<f32>::new("Enter split factor:")
-            .with_placeholder("2.0")
-            .with_error_message("Please type a valid amount!")
-            .prompt()
+    fn deallocate_stock_split(&mut self, record : StockSplitRecord ) { 
+        let stock_split_alloc_records = self
+            .db
+            .get_stock_split_allocation_for_stock_split_id(record.id)
             .unwrap();
-        let split_date = DateSelect::new("Enter date of split:").prompt().unwrap();
+        for alloc_record in stock_split_alloc_records {
+            // add shares back to ledger
+            let stock_purchase = self.db.check_and_get_stock_purchase_record_matching_from_purchase_id(alloc_record.info.stock_purchase_id).unwrap().expect("Stock record not returned");
+            let updated_shares = stock_purchase.info.shares / record.info.split;
+            let _ = self.db.update_stock_remaining(stock_purchase.id, updated_shares);
+            let updated_costbasis = stock_purchase.info.costbasis * record.info.split;
+            let _ = self.db.update_cost_basis(self.id, updated_costbasis);
+            self.db.remove_stock_split_allocation(alloc_record.id);
+        }
+        self.db.remove_stock_split(record.info.ledger_id);
+    }
 
-        let pid = self.db.check_and_add_participant(self.id, ticker.clone(), ParticipantType::Both);
-        let cid = self.db.check_and_add_category(self.id, "stock dividend/split".to_string());
+    pub fn confirm_valid_ticker(&mut self, ticker : String) -> bool { 
+        let rs = stocks::get_stock_at_close(ticker.clone());
+        match rs {
+            Ok(price) => {true}
+            Err(error) => {
+                panic!("Fetch failed for ticker '{}': {}!", ticker.clone(), error);
+            }
+        }
 
-        let ledger_entry = LedgerInfo { 
-            date : split_date.to_string(), 
-            amount : 0.0, 
-            transfer_type : TransferType::ZeroSumChange, 
-            participant : pid, 
-            category_id : cid, 
-            description : format!("[Internal]: Split of {} by factor of {} on {}.", ticker.clone(), split.clone(), split_date),
-            ancillary_f32data : self.db.get_stocks(self.id, ticker.clone()).unwrap().iter().map(|rcrd| rcrd.info.remaining).sum::<f32>() * split
-        };
-
-        let id = self.db.add_ledger_entry(self.id, ledger_entry).unwrap();
-
-        self.db
-            .add_stock_split(self.id, split_date.to_string(), ticker, split, id)
-            .unwrap();
     }
 
     pub fn get_current_value(&mut self) -> f32 {

@@ -23,6 +23,8 @@ use crate::types::accounts::AccountInfo;
 use crate::types::accounts::AccountTransaction;
 use crate::types::accounts::AccountType;
 use crate::types::investments::StockInfo;
+use crate::types::investments::StockSplitInfo;
+use crate::types::investments::StockSplitRecord;
 use crate::types::ledger::LedgerInfo;
 use crate::types::ledger::LedgerRecord;
 use crate::types::participants::ParticipantType;
@@ -125,13 +127,13 @@ impl AccountOperations for InvestmentAccountManager {
                     self.variable.fixed.withdrawal();
                 }
                 "Purchase" => {
-                    self.variable.purchase_stock();
+                    self.variable.purchase_stock(None, false);
                 }
                 "Sale" => {
-                    self.variable.sell_stock();
+                    self.variable.sell_stock(None,false);
                 }
                 "Stock Split" => {
-                    self.variable.split_stock();
+                    self.variable.split_stock(None, false);
                 }
                 "None" => {
                     return;
@@ -178,6 +180,7 @@ impl AccountOperations for InvestmentAccountManager {
             }
             Err(e) => {
                 println!("error is: {}", e);
+                // TODO: fill in this
             }
         };
 
@@ -201,48 +204,130 @@ impl AccountOperations for InvestmentAccountManager {
             } else {
                 ParticipantType::Payer
             };
-            let x: LedgerInfo = LedgerInfo {
-                date: entry.date,
-                amount: entry.amount,
-                transfer_type: entry.transfer_type as TransferType,
-                participant: self
-                    .db
-                    .check_and_add_participant(self.id, entry.participant, ptype),
-                category_id: self.db.check_and_add_category(self.id, entry.category),
-                description: entry.description,
-                ancillary_f32data : entry.ancillary_f32
-            };
 
-            let lid: u32 = self.db.add_ledger_entry(self.id, x).unwrap();
-
+            let lid : u32;
+            let txn : LedgerInfo;
             if entry.stock_info.is_some() {
-                let s: shared_lib::StockInfo = entry
-                    .stock_info
-                    .expect("Unable to obtain stock information!");
-                let my_s: crate::types::investments::StockInfo = StockInfo {
-                    ticker: s.ticker,
-                    shares: s.shares,
-                    costbasis: s.costbasis,
-                    date: s.date,
-                    remaining: s.remaining,
-                    ledger_id: lid,
-                };
+
+                let s: shared_lib::StockInfo = entry.stock_info.expect("Unable to obtain stock information!");
+
                 if s.is_buy {
                     if s.is_split {
+                        // if split, check that we own this symbol
+                        let symbols_owned = self.db.get_stock_tickers(self.id).unwrap();
+                        let symbol_found = symbols_owned.iter().any(|i| *i == entry.participant.clone());
+                        if !symbol_found {
+                            panic!("Attempting to register split of symbol not owned by account!");
+                        }
+
+                        txn = LedgerInfo {
+                            date: entry.date,
+                            amount: entry.amount,
+                            transfer_type: entry.transfer_type as TransferType,
+                            participant: self
+                                .db
+                                .check_and_add_participant(self.id, entry.participant.clone(), ptype),
+                            category_id: self.db.check_and_add_category(self.id, entry.category),
+                            description: entry.description,
+                            ancillary_f32data : entry.ancillary_f32
+                        };
+
+                        lid = self.db.add_ledger_entry(self.id, txn.clone()).unwrap();
+
                         // get total shares for ticker and divide by split
                         let stocks_owned =
-                            self.db.get_stocks(self.id, my_s.ticker.clone()).unwrap();
+                            self.db.get_stocks(self.id, entry.participant.clone()).unwrap();
                         let all_shares: f32 = stocks_owned.iter().map(|x| x.info.shares).sum();
-                        let split_factor = my_s.shares / all_shares;
-                        self.db
-                            .add_stock_split(self.id, my_s.date, my_s.ticker, split_factor, lid)
+                        let split_factor = s.shares / all_shares;
+                        let stock_split_id = self.db
+                            .add_stock_split(self.id, split_factor.clone(), lid)
                             .unwrap();
+
+                        let stock_split_record = StockSplitRecord { 
+                            id : stock_split_id, 
+                            info : StockSplitInfo { 
+                                split : split_factor,
+                                ledger_id : lid
+                            },
+                            txn_opt : Some(txn)
+                        };
+
+                        self.variable.allocate_stock_split(stock_split_record);
                     } else {
-                        self.db.add_stock(self.id, my_s).unwrap();
+                        // if buy, confirm it is a valid ticker
+                        let ticker_valid = self.variable.confirm_valid_ticker(entry.participant.clone());
+                        if ticker_valid == false { 
+                            panic!("Stock symbol invalid!");
+                        }
+
+                        txn = LedgerInfo {
+                            date: entry.date,
+                            amount: entry.amount,
+                            transfer_type: entry.transfer_type as TransferType,
+                            participant: self
+                                .db
+                                .check_and_add_participant(self.id, entry.participant.clone(), ptype),
+                            category_id: self.db.check_and_add_category(self.id, entry.category),
+                            description: entry.description,
+                            ancillary_f32data : entry.ancillary_f32
+                        };
+
+                        lid = self.db.add_ledger_entry(self.id, txn).unwrap();
+                        
+                        let my_s: crate::types::investments::StockInfo = StockInfo {
+                            shares: s.shares,
+                            costbasis: s.costbasis,
+                            remaining: s.remaining,
+                            ledger_id: lid,
+                        };
+
+                        self.db.add_stock_purchase(self.id, my_s).unwrap();
                     }
                 } else {
-                    self.db.sell_stock(self.id, my_s).unwrap();
+                    // if split, check that we own this symbol
+                    let symbols_owned = self.db.get_stock_tickers(self.id).unwrap();
+                    let symbol_found = symbols_owned.iter().any(|i| *i == entry.participant.clone());
+                    if !symbol_found {
+                        panic!("Attempting to register sale of symbol not owned by account!");
+                    }
+
+                    txn = LedgerInfo {
+                        date: entry.date,
+                        amount: entry.amount,
+                        transfer_type: entry.transfer_type as TransferType,
+                        participant: self
+                            .db
+                            .check_and_add_participant(self.id, entry.participant.clone(), ptype),
+                        category_id: self.db.check_and_add_category(self.id, entry.category),
+                        description: entry.description,
+                        ancillary_f32data : entry.ancillary_f32
+                    };
+
+                    lid = self.db.add_ledger_entry(self.id, txn).unwrap();
+
+                    let my_s: crate::types::investments::StockInfo = StockInfo {
+                        shares: s.shares,
+                        costbasis: s.costbasis,
+                        remaining: s.remaining,
+                        ledger_id: lid,
+                    };
+                    self.db.add_stock_sale(self.id, my_s).unwrap();
                 }
+            } else {
+                // this is just a normal ledger transaction
+                let txn: LedgerInfo = LedgerInfo {
+                    date: entry.date,
+                    amount: entry.amount,
+                    transfer_type: entry.transfer_type as TransferType,
+                    participant: self
+                        .db
+                        .check_and_add_participant(self.id, entry.participant, ptype),
+                    category_id: self.db.check_and_add_category(self.id, entry.category),
+                    description: entry.description,
+                    ancillary_f32data : entry.ancillary_f32
+                };
+    
+                lid = self.db.add_ledger_entry(self.id, txn).unwrap();
             }
         }
     }
