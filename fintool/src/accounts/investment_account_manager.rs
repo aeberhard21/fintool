@@ -167,22 +167,35 @@ impl AccountOperations for InvestmentAccountManager {
             .build();
         let mut rl = Editor::with_config(config).unwrap();
         rl.set_helper(Some(g));
-        let csv = rl.readline("Enter path to CSV file: ").unwrap();
-
+        
         let mut fp = Path::new("~");
-        println!("{}", Path::new(&csv).display());
-        match Path::new(&csv).try_exists() {
-            Ok(true) => {
-                fp = Path::new(&csv);
+        let mut bad_path;
+        let mut csv: String = String::new();
+        loop { 
+            csv = rl.readline("Enter path to CSV file: ").unwrap();
+            bad_path = match Path::new(&csv).try_exists() {
+                Ok(true) => {
+                    false
+                }
+                Ok(false) => {
+                    println!("File {} cannot be found!", Path::new(&csv).display());
+                    true
+                }
+                Err(e) => {
+                    println!("File {} cannot be found: {}!", e, Path::new(&csv).display());
+                    true
+                }
+            };
+            if !bad_path { break; } 
+            else { 
+                let try_again = Confirm::new("Continue import?").prompt().unwrap();
+                if !try_again { 
+                    return;
+                }
             }
-            Ok(false) => {
-                println!("cannot be found!");
-            }
-            Err(e) => {
-                println!("error is: {}", e);
-                // TODO: fill in this
-            }
-        };
+        }
+        fp = Path::new(&csv);
+
 
         let mut rdr = ReaderBuilder::new()
             .has_headers(false)
