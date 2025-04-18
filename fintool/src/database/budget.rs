@@ -66,9 +66,9 @@ impl DbConn {
         }
     }
 
-    pub fn get_budget_categories(&mut self, aid: u32) -> Result<Vec<String>, rusqlite::Error> {
-        let p = rusqlite::params![aid];
-        let sql = "SELECT cid FROM budgets WHERE aid = (?1)";
+    pub fn get_budget_categories(&mut self, uid: u32, aid: u32) -> Result<Vec<String>, rusqlite::Error> {
+        let p = rusqlite::params![aid, uid];
+        let sql = "SELECT cid FROM budgets WHERE aid = (?1) and uid = (?2)";
         let mut cids;
         let mut categories = Vec::new();
         {
@@ -89,7 +89,7 @@ impl DbConn {
         }
 
         for id in cids {
-            categories.push(self.get_category_name(aid, id.unwrap()).unwrap());
+            categories.push(self.get_category_name(uid, aid, id.unwrap()).unwrap());
         }
         Ok(categories)
     }

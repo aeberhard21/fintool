@@ -47,7 +47,7 @@ impl VariableAccount {
         let ticker_msg = "Enter stock ticker:";
         let ticker = if defaults_to_use { 
             let pid = initial.clone().txn_opt.expect("Ledger information not populated!").participant;
-            let initial_ticker = self.db.get_participant(self.id, pid).unwrap();
+            let initial_ticker = self.db.get_participant(self.uid, self.id, pid).unwrap();
             Text::new(ticker_msg)
                 .with_default(initial_ticker.as_str())
                 .prompt()
@@ -114,10 +114,10 @@ impl VariableAccount {
 
         let pid =
             self.db
-                .check_and_add_participant(self.id, ticker.clone(), ParticipantType::Payee);
+                .check_and_add_participant(self.uid, self.id, ticker.clone(), ParticipantType::Payee);
         let cid = self
             .db
-            .check_and_add_category(self.id, "Bought".to_string());
+            .check_and_add_category(self.uid,  self.id, "buy".to_string());
 
         purchase = LedgerInfo {
             date: date_input.clone(),
@@ -136,9 +136,9 @@ impl VariableAccount {
         };
 
         let ledger_id = if defaults_to_use && overwrite_entry { 
-            self.db.update_ledger_item(LedgerRecord { id: initial.info.ledger_id , info: purchase.clone() }).unwrap()
+            self.db.update_ledger_item(self.uid, LedgerRecord { id: initial.info.ledger_id , info: purchase.clone() }).unwrap()
         } else { 
-            self.db.add_ledger_entry(self.id, purchase.clone()).unwrap()
+            self.db.add_ledger_entry(self.uid, self.id, purchase.clone()).unwrap()
         };
 
         let stock_record = StockInfo {
@@ -148,7 +148,7 @@ impl VariableAccount {
             ledger_id: ledger_id,
         };
 
-        self.db.add_stock_purchase(self.id, stock_record).unwrap();
+        self.db.add_stock_purchase(self.uid, self.id, stock_record).unwrap();
 
         return LedgerRecord { id:  ledger_id, info: purchase.clone() };
     }
@@ -167,10 +167,10 @@ impl VariableAccount {
 
         let ticker : String;
         let ticker_msg = "Select which stock you would like to record a sale of:";
-        let tickers = self.db.get_stock_tickers(self.id).unwrap();
+        let tickers = self.db.get_stock_tickers(self.uid, self.id).unwrap();
         ticker = if defaults_to_use {  
             let pid = initial.clone().txn_opt.expect("Ledger information not populated!").participant;
-            let initial_ticker = self.db.get_participant(self.id, pid).unwrap();
+            let initial_ticker = self.db.get_participant(self.uid, self.id, pid).unwrap();
             Select::new(ticker_msg, tickers)
                 .with_starting_filter_input(initial_ticker.as_str())
                 .prompt()
@@ -187,7 +187,7 @@ impl VariableAccount {
 
         let pid =
             self.db
-                .check_and_add_participant(self.id, ticker.clone(), ParticipantType::Payer);
+                .check_and_add_participant(self.uid, self.id, ticker.clone(), ParticipantType::Payer);
 
         let date_msg = "Enter date of sale:";
         let sale_date = if defaults_to_use { 
@@ -219,8 +219,8 @@ impl VariableAccount {
             .unwrap()
         };
 
-        let shares_msg = "Enter quantity sold:";
-        let number_of_shares_sold: f32 = if defaults_to_use { 
+        let shares_msg = "Enter quantity sale:";
+        let number_of_shares_sale: f32 = if defaults_to_use { 
             CustomType::<f32>::new(shares_msg)
             .with_placeholder("00000.00")
             .with_default(initial.info.shares)
@@ -236,10 +236,10 @@ impl VariableAccount {
             .unwrap()
         };
 
-        let value_received = number_of_shares_sold * sale_price;
+        let value_received = number_of_shares_sale * sale_price;
         let stock_cid = self
             .db
-            .check_and_add_category(self.id, "Sold".to_string());
+            .check_and_add_category(self.uid, self.id, "sale".to_string());
 
         let sale = LedgerInfo {
             date: sale_date.to_string(),
@@ -248,8 +248,8 @@ impl VariableAccount {
             participant: pid,
             category_id: stock_cid,
             description: format!(
-                "[Internal]: Sold {} shares of {} at ${} on {}.",
-                number_of_shares_sold,
+                "[Internal]: sale {} shares of {} at ${} on {}.",
+                number_of_shares_sale,
                 ticker,
                 sale_price,
                 sale_date.to_string()
@@ -258,19 +258,19 @@ impl VariableAccount {
         };
 
         let ledger_id: u32 = if defaults_to_use && overwrite_entry {
-            self.db.update_ledger_item(LedgerRecord{id : initial.info.ledger_id, info : sale.clone()}).unwrap()
+            self.db.update_ledger_item(self.uid,LedgerRecord{id : initial.info.ledger_id, info : sale.clone()}).unwrap()
         } else { 
-            self.db.add_ledger_entry(self.id, sale.clone()).unwrap()
+            self.db.add_ledger_entry(self.uid, self.id, sale.clone()).unwrap()
         };
 
         let sale_record = StockInfo {
-            shares: number_of_shares_sold,
+            shares: number_of_shares_sale,
             costbasis: sale_price,
             remaining: 0.0,
             ledger_id: ledger_id,
         };
 
-        let sale_id = self.db.add_stock_sale(self.id, sale_record.clone()).unwrap();
+        let sale_id = self.db.add_stock_sale(self.uid, self.id, sale_record.clone()).unwrap();
         
         let sale_info = StockRecord {
             id: sale_id,
@@ -285,7 +285,7 @@ impl VariableAccount {
                 .unwrap()
                 .to_string();
 
-        self.allocate_sold_stock(sale_info, sell_method);
+        self.allocate_sale_stock(sale_info, sell_method);
 
         return LedgerRecord { id: ledger_id, info: sale.clone() }
     }
@@ -302,11 +302,11 @@ impl VariableAccount {
             defaults_to_use = false;
         }
 
-        let tickers = self.db.get_stock_tickers(self.id).unwrap();
+        let tickers = self.db.get_stock_tickers(self.uid, self.id).unwrap();
         let ticker_msg = "Select which stock you would like to report a split of:";
         let ticker = if defaults_to_use {
                 let pid = initial.clone().txn_opt.expect("Ledger information not populated!").participant;
-                let initial_ticker: String = self.db.get_participant(self.id, pid).unwrap();
+                let initial_ticker: String = self.db.get_participant(self.uid, self.id, pid).unwrap();
                 Select::new(ticker_msg,tickers)
                     .with_starting_filter_input(&initial_ticker.as_str())
                     .prompt()
@@ -346,8 +346,8 @@ impl VariableAccount {
             DateSelect::new(date_msg).prompt().unwrap().to_string()
         };
 
-        let pid = self.db.check_and_add_participant(self.id, ticker.clone(), ParticipantType::Both);
-        let cid = self.db.check_and_add_category(self.id, "stock dividend/split".to_string());
+        let pid = self.db.check_and_add_participant(self.uid, self.id, ticker.clone(), ParticipantType::Both);
+        let cid = self.db.check_and_add_category(self.uid, self.id, "stock dividend/split".to_string());
 
         let ledger_entry = LedgerInfo { 
             date : split_date.clone(), 
@@ -356,17 +356,17 @@ impl VariableAccount {
             participant : pid, 
             category_id : cid, 
             description : format!("[Internal]: Split of {} by factor of {} on {}.", ticker.clone(), split.clone(), split_date),
-            ancillary_f32data : self.db.get_stocks(self.id, ticker.clone()).unwrap().iter().map(|rcrd| rcrd.info.remaining).sum::<f32>() * split
+            ancillary_f32data : self.db.get_stocks(self.uid, self.id, ticker.clone()).unwrap().iter().map(|rcrd| rcrd.info.remaining).sum::<f32>() * split
         };
 
         let lid = if defaults_to_use && overwrite_entry { 
-            self.db.update_ledger_item(LedgerRecord { id: initial.info.ledger_id, info: ledger_entry.clone() }).unwrap()
+            self.db.update_ledger_item(self.uid, LedgerRecord { id: initial.info.ledger_id, info: ledger_entry.clone() }).unwrap()
         } else { 
-            self.db.add_ledger_entry(self.id, ledger_entry.clone()).unwrap()
+            self.db.add_ledger_entry(self.uid, self.id, ledger_entry.clone()).unwrap()
         };
 
         let stock_split_id = self.db
-            .add_stock_split(self.id,  split.clone(), lid)
+            .add_stock_split(self.uid, self.id,  split.clone(), lid)
             .unwrap();
 
         let stock_split_record = StockSplitRecord { 
@@ -387,9 +387,9 @@ impl VariableAccount {
 
         println!("Record id: {}", record.clone().id);
 
-        let was_stock_purchase_opt = self.db.check_and_get_stock_purchase_record_matching_from_ledger_id(record.id).unwrap();
-        let was_stock_sale_opt = self.db.check_and_get_stock_sale_record_matching_from_ledger_id(record.id).unwrap();
-        let was_stock_split_opt = self.db.check_and_get_stock_split_record_matching_from_ledger_id(record.id).unwrap();
+        let was_stock_purchase_opt = self.db.check_and_get_stock_purchase_record_matching_from_ledger_id(self.uid, record.id).unwrap();
+        let was_stock_sale_opt = self.db.check_and_get_stock_sale_record_matching_from_ledger_id(self.uid, record.id).unwrap();
+        let was_stock_split_opt = self.db.check_and_get_stock_split_record_matching_from_ledger_id(self.uid,record.id).unwrap();
 
         let mut is_stock_purchase: bool = false;
         let mut is_stock_sale: bool = false;
@@ -419,11 +419,11 @@ impl VariableAccount {
         match modify_choice { 
             "Update" => {
                 if is_stock_purchase {
-                    self.db.remove_stock_purchase(stock_record.id).unwrap();
+                    self.db.remove_stock_purchase(self.uid, stock_record.id).unwrap();
                     return self.purchase_stock(Some(stock_record), true);
                 } else if is_stock_sale {
-                    self.deallocate_sold_stock(stock_record.id);
-                    self.db.remove_stock_sale(stock_record.info.ledger_id).unwrap();
+                    self.deallocate_sale_stock(stock_record.id);
+                    self.db.remove_stock_sale(self.uid, stock_record.info.ledger_id).unwrap();
                     return self.sell_stock(Some(stock_record), true);
                 } else { 
                     // split stock
@@ -434,17 +434,17 @@ impl VariableAccount {
             "Remove" => {
                 if is_stock_purchase { 
                     // TODO: check if part of any splits or sales before removing
-                    self.db.remove_stock_purchase(stock_record.info.ledger_id);
-                    self.db.remove_ledger_item(stock_record.info.ledger_id);
+                    self.db.remove_stock_purchase(self.uid, stock_record.info.ledger_id);
+                    self.db.remove_ledger_item(self.uid, stock_record.info.ledger_id);
                 } else if is_stock_sale { 
                     println!("{}", stock_record.clone().id);
-                    self.deallocate_sold_stock(stock_record.clone().id);
-                    self.db.remove_stock_sale(stock_record.info.ledger_id);
-                    self.db.remove_ledger_item(stock_record.info.ledger_id);
+                    self.deallocate_sale_stock(stock_record.clone().id);
+                    self.db.remove_stock_sale(self.uid, stock_record.info.ledger_id);
+                    self.db.remove_ledger_item(self.uid, stock_record.info.ledger_id);
                 } else {
                     self.deallocate_stock_split(split_record.clone());
-                    self.db.remove_stock_split(split_record.info.ledger_id);
-                    self.db.remove_ledger_item(split_record.info.ledger_id);
+                    self.db.remove_stock_split(self.uid, split_record.info.ledger_id);
+                    self.db.remove_ledger_item(self.uid, split_record.info.ledger_id);
                 }
                 return record;
             }
@@ -455,21 +455,21 @@ impl VariableAccount {
         
     }
 
-    fn allocate_sold_stock(&mut self, record: StockRecord, method: String) {
+    fn allocate_sale_stock(&mut self, record: StockRecord, method: String) {
         let stocks: Vec<StockRecord>;
-        let ticker = self.db.get_participant(self.id, record.txn_opt.expect("Transaction required but not found!").participant).unwrap();
+        let ticker = self.db.get_participant(self.uid, self.id, record.txn_opt.expect("Transaction required but not found!").participant).unwrap();
         match method.as_str() {
             "LIFO" => {
                 stocks = self
                     .db
-                    .get_stock_history_ascending(self.id, ticker
+                    .get_stock_history_ascending(self.uid, self.id, ticker
                     )
                     .unwrap();
             }
             "FIFO" => {
                 stocks = self
                     .db
-                    .get_stock_history_descending(self.id, ticker
+                    .get_stock_history_descending(self.uid, self.id, ticker
                     )
                     .unwrap();
             }
@@ -499,7 +499,7 @@ impl VariableAccount {
                 .update_stock_remaining(purchase_id.clone(), stock.info.remaining)
                 .unwrap();
             self.db
-                .add_stock_sale_allocation(purchase_id, record.id, num_shares_allocated)
+                .add_stock_sale_allocation(self.uid, purchase_id, record.id, num_shares_allocated)
                 .unwrap();
             num_shares_remaining_to_allocate -= num_shares_allocated;
 
@@ -511,47 +511,47 @@ impl VariableAccount {
         }
     }
 
-    fn deallocate_sold_stock(&mut self, sale_id: u32) {
+    fn deallocate_sale_stock(&mut self, sale_id: u32) {
         let stock_allocation_records = self
             .db
-            .get_stock_sale_allocation_for_sale_id(sale_id)
+            .get_stock_sale_allocation_for_sale_id(self.uid, sale_id)
             .unwrap();
         for record in stock_allocation_records {
             // add shares back to ledger
            let _ = self.db
-                .add_to_stock_remaining(record.info.purchase_id, record.info.quantity).unwrap();
-            self.db.remove_stock_sale_allocation(record.id);
+                .add_to_stock_remaining(self.uid, record.info.purchase_id, record.info.quantity).unwrap();
+            self.db.remove_stock_sale_allocation(self.uid, record.id);
         }
         // self.db.remove_stock_sale(sale_record.info.ledger_id);
     }
 
     pub fn allocate_stock_split(&mut self, record : StockSplitRecord) { 
-        let ticker = self.db.get_participant(self.id, record.txn_opt.expect("Corresponding ledger transaction not provided!").participant).unwrap();
-        let stock_records = self.db.get_stocks(self.id, ticker).unwrap();
+        let ticker = self.db.get_participant(self.uid, self.id, record.txn_opt.expect("Corresponding ledger transaction not provided!").participant).unwrap();
+        let stock_records = self.db.get_stocks(self.uid,self.id, ticker).unwrap();
         for stock in stock_records {
             self.db.update_stock_remaining(stock.id, stock.info.remaining * record.info.split)
                 .unwrap();
-            self.db.update_cost_basis(stock.id, stock.info.costbasis / record.info.split)
+            self.db.update_cost_basis(self.uid, stock.id, stock.info.costbasis / record.info.split)
                 .unwrap();
-            self.db.add_stock_split_allocation(StockSplitAllocationInfo { stock_split_id : record.id, stock_purchase_id : stock.id }).unwrap();
+            self.db.add_stock_split_allocation(self.uid, StockSplitAllocationInfo { stock_split_id : record.id, stock_purchase_id : stock.id }).unwrap();
         }
     }
 
     fn deallocate_stock_split(&mut self, record : StockSplitRecord ) { 
         let stock_split_alloc_records = self
             .db
-            .get_stock_split_allocation_for_stock_split_id(record.id)
+            .get_stock_split_allocation_for_stock_split_id(self.uid,record.id)
             .unwrap();
         for alloc_record in stock_split_alloc_records {
             // add shares back to ledger
-            let stock_purchase = self.db.check_and_get_stock_purchase_record_matching_from_purchase_id(alloc_record.info.stock_purchase_id).unwrap().expect("Stock record not returned");
+            let stock_purchase = self.db.check_and_get_stock_purchase_record_matching_from_purchase_id(self.uid,alloc_record.info.stock_purchase_id).unwrap().expect("Stock record not returned");
             let updated_shares = stock_purchase.info.shares / record.info.split;
             let _ = self.db.update_stock_remaining(stock_purchase.id, updated_shares);
             let updated_costbasis = stock_purchase.info.costbasis * record.info.split;
-            let _ = self.db.update_cost_basis(self.id, updated_costbasis);
-            self.db.remove_stock_split_allocation(alloc_record.id);
+            let _ = self.db.update_cost_basis(self.uid, self.id, updated_costbasis);
+            self.db.remove_stock_split_allocation(self.uid, alloc_record.id);
         }
-        self.db.remove_stock_split(record.info.ledger_id);
+        self.db.remove_stock_split(self.uid, record.info.ledger_id);
     }
 
     pub fn confirm_valid_ticker(&mut self, ticker : String) -> bool { 
@@ -567,7 +567,7 @@ impl VariableAccount {
 
     pub fn get_current_value(&mut self) -> f32 {
         let fixed_value = self.fixed.get_current_value();
-        let variable_value = self.db.get_stock_current_value(self.id).unwrap();
+        let variable_value = self.db.get_stock_current_value(self.uid, self.id).unwrap();
         return fixed_value + variable_value;
     }
 
@@ -578,7 +578,7 @@ impl VariableAccount {
 
         let fixed_transactions = self
             .db
-            .get_ledger_entries_within_timestamps(self.id, period_start, period_end)
+            .get_ledger_entries_within_timestamps(self.uid, self.id, period_start, period_end)
             .unwrap();
         let mut iter = fixed_transactions.iter().peekable();
 
@@ -586,6 +586,7 @@ impl VariableAccount {
         let fixed_value = self
             .db
             .get_cumulative_total_of_ledger_before_date(
+                    self.uid, 
                 self.id,
                 period_start
                     .checked_sub_days(Days::new(1))
@@ -594,18 +595,18 @@ impl VariableAccount {
             .unwrap();
         let variable_value = self
             .db
-            .get_portfolio_value_before_date(self.id, period_start)
+            .get_portfolio_value_before_date(self.uid, self.id, period_start)
             .unwrap();
         let mut vi = fixed_value + variable_value;
         let mut vf: f32;
 
         let final_fixed_value = self
             .db
-            .get_cumulative_total_of_ledger_before_date(self.id, period_end)
+            .get_cumulative_total_of_ledger_before_date(self.uid, self.id, period_end)
             .unwrap();
         let final_portfolio_value = self
             .db
-            .get_portfolio_value_before_date(self.id, period_end)
+            .get_portfolio_value_before_date(self.uid,self.id, period_end)
             .unwrap();
         let final_vf = final_fixed_value + final_portfolio_value;
 
@@ -649,11 +650,11 @@ impl VariableAccount {
                         .expect("Invalid date!");
                 let vf_fixed = self
                     .db
-                    .get_cumulative_total_of_ledger_before_date(self.id, end_of_period)
+                    .get_cumulative_total_of_ledger_before_date(self.uid, self.id, end_of_period)
                     .unwrap();
                 let vf_variable = self
                     .db
-                    .get_portfolio_value_before_date(self.id, end_of_period)
+                    .get_portfolio_value_before_date(self.uid, self.id, end_of_period)
                     .unwrap();
                 vf = vf_fixed + vf_variable;
 

@@ -50,7 +50,9 @@ impl DbConn {
                 aid         INTEGER NOT NULL,
                 type        INTEGER NOT NULL, 
                 name        TEXT NOT NULL,
+                uid         INTEGER NOT NULL,
                 FOREIGN KEY(aid) REFERENCES accounts(id)
+                FOREIGN KEY(uid) REFERENCES users(id)
             )";
 
         self.conn
@@ -61,13 +63,14 @@ impl DbConn {
 
     pub fn add_participant(
         &mut self,
+        uid: u32,
         aid: u32,
         ptype: ParticipantType,
         name: String,
     ) -> Result<u32> {
         let id = self.get_next_people_id().unwrap();
-        let p = rusqlite::params!(id, aid, ptype as u32, name);
-        let sql = "INSERT INTO people (id, aid, type, name) VALUES (?1, ?2, ?3, ?4)";
+        let p = rusqlite::params!(id, aid, ptype as u32, name, uid);
+        let sql = "INSERT INTO people (id, aid, type, name, uid) VALUES (?1, ?2, ?3, ?4, ?5)";
         match self.conn.execute(sql, p) {
             Ok(_) => Ok(id),
             Err(error) => {
@@ -115,12 +118,13 @@ impl DbConn {
 
     pub fn get_participant_id(
         &mut self,
+        uid : u32,
         aid: u32,
         name: String,
         ptype: ParticipantType,
     ) -> Option<u32> {
-        let sql = "SELECT id FROM people WHERE aid = (?1) and name = (?2) and type = (?3)";
-        let p = rusqlite::params![aid, name, ptype as u32];
+        let sql = "SELECT id FROM people WHERE aid = (?1) and name = (?2) and type = (?3) and uid = (?4)";
+        let p = rusqlite::params![aid, name, ptype as u32, uid];
         let conn = self.conn.clone();
         let prepared_stmt = conn.prepare(sql);
         match prepared_stmt {
@@ -148,9 +152,9 @@ impl DbConn {
         }
     }
 
-    pub fn get_participant(&mut self, aid: u32, pid: u32) -> Option<String> {
-        let sql = "SELECT name FROM people WHERE aid = (?1) and id = (?2)";
-        let p = rusqlite::params![aid, pid];
+    pub fn get_participant(&mut self, uid : u32, aid: u32, pid: u32) -> Option<String> {
+        let sql = "SELECT name FROM people WHERE aid = (?1) and id = (?2) and uid = (?3)";
+        let p = rusqlite::params![aid, pid, uid];
         let conn = self.conn.clone();
         let prepared_stmt = conn.prepare(sql);
         match prepared_stmt {
@@ -180,12 +184,13 @@ impl DbConn {
 
     pub fn check_and_add_participant(
         &mut self,
+        uid: u32, 
         aid: u32,
         name: String,
         ptype: ParticipantType,
     ) -> u32 {
-        let sql = "SELECT id FROM people WHERE aid = (?1) and name = (?2) and type = (?3)";
-        let p = rusqlite::params![aid, name, ptype as u32];
+        let sql = "SELECT id FROM people WHERE aid = (?1) and name = (?2) and type = (?3) and uid = (?4)";
+        let p = rusqlite::params![aid, name, ptype as u32, uid];
         let conn = self.conn.clone();
         let prepared_stmt = conn.prepare(sql);
         match prepared_stmt {
@@ -197,7 +202,7 @@ impl DbConn {
                             .unwrap();
                         return id;
                     } else {
-                        self.add_participant(aid, ptype, name).unwrap()
+                        self.add_participant(uid, aid, ptype, name).unwrap()
                     }
                 } else {
                     panic!("Unable to determine if exists!");
@@ -216,6 +221,7 @@ impl DbConn {
 
 #[derive(Clone)]
 pub struct ParticipantAutoCompleter {
+    pub uid: u32,
     pub aid: u32,
     pub db: DbConn,
     pub ptype: ParticipantType,
@@ -228,14 +234,14 @@ impl Autocomplete for ParticipantAutoCompleter {
             ParticipantType::Payee => {
                 let mut x: Vec<String> = self
                     .db
-                    .get_participants(self.aid, TransferType::WithdrawalToExternalAccount)
+                    .get_participants(self.uid, self.aid, TransferType::WithdrawalToExternalAccount)
                     .unwrap()
                     .into_iter()
                     .filter(|name| name.starts_with(input))
                     .collect();
                 let mut y: Vec<String> = self
                     .db
-                    .get_participants(self.aid, TransferType::WithdrawalToInternalAccount)
+                    .get_participants(self.uid, self.aid, TransferType::WithdrawalToInternalAccount)
                     .unwrap()
                     .into_iter()
                     .filter(|name| name.starts_with(input))
@@ -247,14 +253,14 @@ impl Autocomplete for ParticipantAutoCompleter {
             ParticipantType::Payer => {
                 let mut x: Vec<String> = self
                     .db
-                    .get_participants(self.aid, TransferType::DepositFromExternalAccount)
+                    .get_participants(self.uid, self.aid, TransferType::DepositFromExternalAccount)
                     .unwrap()
                     .into_iter()
                     .filter(|name| name.starts_with(input))
                     .collect();
                 let mut y: Vec<String> = self
                     .db
-                    .get_participants(self.aid, TransferType::DepositFromExternalAccount)
+                    .get_participants(self.uid, self.aid, TransferType::DepositFromExternalAccount)
                     .unwrap()
                     .into_iter()
                     .filter(|name| name.starts_with(input))
@@ -266,28 +272,28 @@ impl Autocomplete for ParticipantAutoCompleter {
             ParticipantType::Both => {
                 let mut w: Vec<String> = self
                     .db
-                    .get_participants(self.aid, TransferType::WithdrawalToExternalAccount)
+                    .get_participants(self.uid, self.aid, TransferType::WithdrawalToExternalAccount)
                     .unwrap()
                     .into_iter()
                     .filter(|name| name.starts_with(input))
                     .collect();
                 let mut x: Vec<String> = self
                     .db
-                    .get_participants(self.aid, TransferType::WithdrawalToInternalAccount)
+                    .get_participants(self.uid, self.aid, TransferType::WithdrawalToInternalAccount)
                     .unwrap()
                     .into_iter()
                     .filter(|name| name.starts_with(input))
                     .collect();
                 let mut y: Vec<String> = self
                     .db
-                    .get_participants(self.aid, TransferType::DepositFromExternalAccount)
+                    .get_participants(self.uid, self.aid, TransferType::DepositFromExternalAccount)
                     .unwrap()
                     .into_iter()
                     .filter(|name| name.starts_with(input))
                     .collect();
                 let mut z: Vec<String> = self
                     .db
-                    .get_participants(self.aid, TransferType::DepositFromExternalAccount)
+                    .get_participants(self.uid, self.aid, TransferType::DepositFromExternalAccount)
                     .unwrap()
                     .into_iter()
                     .filter(|name| name.starts_with(input))

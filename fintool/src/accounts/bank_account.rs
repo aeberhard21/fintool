@@ -37,6 +37,7 @@ use super::base::AccountCreation;
 use super::base::AccountOperations;
 
 pub struct BankAccount {
+    uid : u32, 
     id: u32,
     db: DbConn,
     fixed: FixedAccount,
@@ -58,6 +59,7 @@ struct FilePathHelper {
 impl BankAccount {
     pub fn new(uid: u32, id: u32, db: &mut DbConn) -> Self {
         let acct: BankAccount = Self {
+            uid: uid,
             id: id,
             db: db.clone(),
             fixed: FixedAccount::new(uid, id, db.clone()),
@@ -199,12 +201,12 @@ impl AccountOperations for BankAccount {
                 transfer_type: rcrd.transfer_type as TransferType,
                 participant: self
                     .db
-                    .check_and_add_participant(self.id, rcrd.participant, ptype),
-                category_id: self.db.check_and_add_category(self.id, rcrd.category),
+                    .check_and_add_participant(self.uid, self.id, rcrd.participant, ptype),
+                category_id: self.db.check_and_add_category(self.uid, self.id, rcrd.category.to_ascii_uppercase()),
                 description: rcrd.description,
                 ancillary_f32data : 0.0
             };
-            let _lid: u32 = self.db.add_ledger_entry(self.id, entry).unwrap();
+            let _lid: u32 = self.db.add_ledger_entry(self.uid, self.id, entry).unwrap();
         }
     }
 
@@ -243,33 +245,57 @@ impl AccountOperations for BankAccount {
     }
 
     fn link(&mut self, transacting_account: u32, entry: LedgerRecord) -> Option<u32> {
-        let mut my_entry = entry.clone();
         let from_account;
         let to_account;
 
-        match my_entry.info.transfer_type {
+        let cid;
+        let pid;
+        let transacting_account_name : String;
+        let (new_ttype, description) = match entry.info.transfer_type {
             TransferType::DepositFromExternalAccount => {
-                my_entry.info.transfer_type = TransferType::WithdrawalToExternalAccount;
-                from_account = self.id;
-                to_account = transacting_account;
-            }
-            TransferType::WithdrawalToExternalAccount => {
-                my_entry.info.transfer_type = TransferType::DepositFromExternalAccount;
                 from_account = transacting_account;
                 to_account = self.id;
+                cid =self.db.check_and_add_category(self.uid,self.id, "Withdrawal".to_ascii_uppercase());
+                transacting_account_name = self.db.get_account_name(self.uid, transacting_account).unwrap();
+                pid =self.db.check_and_add_participant(self.uid, self.id, transacting_account_name.clone(), ParticipantType::Payee);
+                (
+                    TransferType::WithdrawalToExternalAccount,
+                    format!("[Link]: Withdrawal of ${} to account {} on {}.", entry.info.amount, transacting_account_name, entry.info.date)
+                )
+            }
+            TransferType::WithdrawalToExternalAccount => {
+                from_account = self.id;
+                to_account = transacting_account;
+                cid =self.db.check_and_add_category(self.uid,self.id, "Deposit".to_ascii_uppercase());
+                transacting_account_name = self.db.get_account_name(self.uid, transacting_account).unwrap();
+                pid =self.db.check_and_add_participant(self.uid, self.id, transacting_account_name.clone(), ParticipantType::Payer);
+                (
+                    TransferType::DepositFromExternalAccount,
+                    format!("[Link]: Deposit of ${} from account {} on {}.", entry.info.amount, transacting_account_name, entry.info.date)
+                )
             }
             _ => {
                 return None;
             }
-        }
+        };
+
+        let linked_entry = LedgerInfo { 
+            date : entry.info.date,
+            amount : entry.info.amount,
+            transfer_type : new_ttype, 
+            participant : pid, 
+            category_id: cid, 
+            description : description,
+            ancillary_f32data : 0.0
+        };
 
         let transaction_record = AccountTransaction {
             from_account: from_account,
             to_account: to_account,
             from_ledger: entry.id,
-            to_ledger: self.db.add_ledger_entry(self.id, my_entry.info).unwrap(),
+            to_ledger: self.db.add_ledger_entry(self.uid, self.id, linked_entry).unwrap(),
         };
 
-        return Some(self.db.add_account_transaction(transaction_record).unwrap());
+        return Some(self.db.add_account_transaction(self.uid, transaction_record).unwrap());
     }
 }

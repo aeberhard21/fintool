@@ -22,8 +22,10 @@ impl DbConn {
         let sql: &str = "CREATE TABLE IF NOT EXISTS categories ( 
                 id          INTEGER NOT NULL PRIMARY KEY,
                 aid         INTEGER NOT NULL,
+                uid         INTEGER NOT NULL, 
                 category    TEXT NOT NULL,
                 FOREIGN KEY(aid) REFERENCES accounts(id)
+                FOREIGN KEY(uid) REFERENCES users(id)
             )";
 
         self.conn
@@ -32,10 +34,10 @@ impl DbConn {
         Ok(())
     }
 
-    pub fn add_category(&mut self, aid: u32, category: String) -> Result<u32> {
+    pub fn add_category(&mut self, uid : u32, aid: u32, category: String) -> Result<u32> {
         let id = self.get_next_category_id().unwrap();
-        let p = rusqlite::params!(id, aid, category);
-        let sql = "INSERT INTO categories (id, aid, category) VALUES (?1, ?2, ?3)";
+        let p = rusqlite::params!(id, aid, category, uid);
+        let sql = "INSERT INTO categories (id, aid, category, uid) VALUES (?1, ?2, ?3, ?4)";
         match self.conn.execute(sql, p) {
             Ok(_) => Ok(id),
             Err(error) => {
@@ -44,9 +46,9 @@ impl DbConn {
         }
     }
 
-    pub fn get_categories(&mut self, aid: u32) -> Result<Vec<CategoryRecord>, rusqlite::Error> {
-        let p = rusqlite::params![aid];
-        let sql = "SELECT id, category FROM categories WHERE aid = (?1)";
+    pub fn get_categories(&mut self, uid : u32, aid: u32) -> Result<Vec<CategoryRecord>, rusqlite::Error> {
+        let p = rusqlite::params![aid, uid];
+        let sql = "SELECT id, category FROM categories WHERE aid = (?1) and uid = (?2)";
         let mut stmt = self.conn.prepare(sql)?;
         let exists = stmt.exists(p)?;
         let mut categories: Vec<CategoryRecord> = Vec::new();
@@ -73,11 +75,12 @@ impl DbConn {
 
     pub fn get_category_name(
         &mut self,
+        uid: u32,
         aid: u32,
         cid: u32,
     ) -> rusqlite::Result<String, rusqlite::Error> {
-        let sql: &str = "SELECT category FROM categories WHERE aid = (?1) AND id = (?2)";
-        let p = rusqlite::params![aid, cid];
+        let sql: &str = "SELECT category FROM categories WHERE aid = (?1) AND id = (?2) and uid = (?3)";
+        let p = rusqlite::params![aid, cid, uid];
         let mut stmt = self.conn.prepare(sql)?;
         let exists = stmt.exists(p)?;
         match exists {
@@ -103,9 +106,10 @@ impl DbConn {
         &mut self,
         aid: u32,
         category: String,
+        uid: u32,
     ) -> rusqlite::Result<u32, rusqlite::Error> {
-        let sql: &str = "SELECT id FROM categories WHERE aid = (?1) AND category = (?2)";
-        let p = rusqlite::params![aid, category];
+        let sql: &str = "SELECT id FROM categories WHERE aid = (?1) AND category = (?2) and uid = (?3)";
+        let p = rusqlite::params![aid, category, uid];
         let mut stmt = self.conn.prepare(sql)?;
         let exists = stmt.exists(p)?;
         match exists {
@@ -127,10 +131,10 @@ impl DbConn {
         }
     }
 
-    pub fn check_and_add_category(&mut self, aid: u32, name: String) -> u32 {
-        let sql = "SELECT id FROM categories WHERE aid = (?1) and category = (?2)";
+    pub fn check_and_add_category(&mut self, uid: u32, aid: u32, name: String) -> u32 {
+        let sql = "SELECT id FROM categories WHERE aid = (?1) and category = (?2) and uid = (?3)";
         let conn = self.conn.clone();
-        let p = rusqlite::params![aid, name];
+        let p = rusqlite::params![aid, name, uid];
         let prepared_stmt = conn.prepare(sql);
         match prepared_stmt {
             Ok(mut stmt) => {
@@ -144,7 +148,7 @@ impl DbConn {
                             panic!("Unable to query row!");
                         }
                     } else {
-                        self.add_category(aid, name).unwrap()
+                        self.add_category(uid, aid, name).unwrap()
                     }
                 } else {
                     panic!("Unable to determine if exists!");
@@ -164,6 +168,7 @@ impl DbConn {
 #[derive(Clone)]
 pub struct CategoryAutoCompleter {
     pub aid: u32,
+    pub uid: u32,
     pub db: DbConn,
 }
 
@@ -172,7 +177,7 @@ impl Autocomplete for CategoryAutoCompleter {
         let mut suggestions: Vec<String>;
         suggestions = self
             .db
-            .get_categories(self.aid)
+            .get_categories(self.uid, self.aid)
             .unwrap()
             .into_iter()
             .map(|category| category.category.name)

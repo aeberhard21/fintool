@@ -36,9 +36,11 @@ impl DbConn {
                 desc        TEXT,
                 ancillary_f32 REAL NOT NULL, 
                 aid         INTEGER NOT NULL,
+                uid         INTEGER NOT NULL,
                 FOREIGN KEY(aid) REFERENCES accounts(id)
                 FOREIGN KEY(cid) REFERENCES categories(id)
                 FOREIGN KEY(pid) REFERENCES people(id)
+                FOREIGN KEY(uid) REFERENCES users(id)
             )";
 
         let rs = self.conn.execute(sql, ());
@@ -53,12 +55,13 @@ impl DbConn {
 
     pub fn add_ledger_entry(
         &mut self,
+        uid: u32,
         aid: u32,
         entry: LedgerInfo,
     ) -> rusqlite::Result<u32, rusqlite::Error> {
         let sql: &str;
         let id = self.get_next_ledger_id().unwrap();
-        sql = "INSERT INTO ledgers ( id, date, amount, transfer_type, pid, cid, desc, ancillary_f32, aid) VALUES ( ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)";
+        sql = "INSERT INTO ledgers ( id, date, amount, transfer_type, pid, cid, desc, ancillary_f32, aid, uid) VALUES ( ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)";
         let rs = self.conn.execute(
             sql,
             (
@@ -71,6 +74,7 @@ impl DbConn {
                 entry.description,
                 entry.ancillary_f32data,
                 aid,
+                uid,
             ),
         );
         match rs {
@@ -78,7 +82,7 @@ impl DbConn {
                 // println!("Added statement");
             }
             Err(error) => {
-                println!("Unable to add ledger: {}", error);
+                panic!("Unable to add ledger: {}", error);
             }
         }
         Ok(id)
@@ -86,6 +90,7 @@ impl DbConn {
 
     pub fn update_ledger_item(
         &mut self,
+        uid : u32,
         update: LedgerRecord,
     ) -> rusqlite::Result<u32, rusqlite::Error> {
         let p = rusqlite::params![
@@ -96,9 +101,10 @@ impl DbConn {
             update.info.participant,
             update.info.category_id,
             update.info.description,
-            update.info.ancillary_f32data
+            update.info.ancillary_f32data,
+            uid,
         ];
-        let sql = "UPDATE ledgers SET date = ?2, amount = ?3, transfer_type = ?4, pid = ?5, cid = ?6, desc = ?7, ancillary_f32 = ?8 WHERE id = ?1";
+        let sql = "UPDATE ledgers SET date = ?2, amount = ?3, transfer_type = ?4, pid = ?5, cid = ?6, desc = ?7, ancillary_f32 = ?8 WHERE id = ?1 and uid = ?9";
         let rs = self.conn.execute(sql, p);
         match rs {
             Ok(_usize) => {}
@@ -109,9 +115,18 @@ impl DbConn {
         Ok(update.id)
     }
 
-    pub fn remove_ledger_item(&mut self, id: u32) -> rusqlite::Result<u32, rusqlite::Error> {
-        let p = rusqlite::params![id];
-        let sql = "DELETE FROM ledgers WHERE id = ?1";
+    pub fn remove_ledger_item(&mut self, uid: u32, id: u32) -> rusqlite::Result<u32, rusqlite::Error> {
+        let p = rusqlite::params![id, uid];
+        let sql = "DELETE FROM ledgers WHERE id = ?1 and uid = ?2";
+        let rs = self.conn.execute(sql, p);
+        match rs {
+            Ok(_usize) => {}
+            Err(error) => {
+                println!("Unable to remove ledger item: {}", error);
+            }
+        }
+
+        let sql = "UPDATE ledgers SET id = id-1 WHERE id > ?1 and uid = ?2";
         let rs = self.conn.execute(sql, p);
         match rs {
             Ok(_usize) => {}
@@ -122,9 +137,9 @@ impl DbConn {
         Ok(id)
     }
 
-    pub fn get_ledger(&mut self, aid: u32) -> rusqlite::Result<Vec<LedgerRecord>, rusqlite::Error> {
-        let p = rusqlite::params![aid];
-        let sql = "SELECT id, date, amount, transfer_type, pid, cid, desc, ancillary_f32 FROM ledgers WHERE aid = (?1) order by date DESC";
+    pub fn get_ledger(&mut self, uid: u32, aid: u32) -> rusqlite::Result<Vec<LedgerRecord>, rusqlite::Error> {
+        let p = rusqlite::params![aid, uid];
+        let sql = "SELECT id, date, amount, transfer_type, pid, cid, desc, ancillary_f32 FROM ledgers WHERE aid = (?1) and uid = (?2) order by date DESC";
         let mut stmt = self.conn.prepare(sql)?;
         let exists = stmt.exists(p)?;
         let mut entries: Vec<LedgerRecord> = Vec::new();
@@ -161,12 +176,13 @@ impl DbConn {
 
     pub fn get_ledger_entries_within_timestamps(
         &mut self,
+        uid: u32,
         aid: u32,
         start: NaiveDate,
         end: NaiveDate,
     ) -> rusqlite::Result<Vec<LedgerInfo>, rusqlite::Error> {
-        let p = rusqlite::params![aid, start.to_string(), end.to_string()];
-        let sql = "SELECT * FROM ledgers WHERE aid = (?1) and date >= (?2) and date <= (?3) ORDER by date ASC";
+        let p = rusqlite::params![aid, start.to_string(), end.to_string(), uid];
+        let sql = "SELECT * FROM ledgers WHERE aid = (?1) and date >= (?2) and date <= (?3) and uid = (?4) ORDER by date ASC";
 
         let mut stmt = self.conn.prepare(sql)?;
         let exists = stmt.exists(p)?;
@@ -199,14 +215,14 @@ impl DbConn {
         }
     }
 
-    pub fn get_current_value(&mut self, aid: u32) -> rusqlite::Result<f32, rusqlite::Error> {
-        let p = rusqlite::params![aid];
+    pub fn get_current_value(&mut self, uid: u32, aid: u32) -> rusqlite::Result<f32, rusqlite::Error> {
+        let p = rusqlite::params![aid, uid];
         let mut sum: f32 = 0.0;
         let sql: &str ="SELECT COALESCE(SUM(CASE
                 WHEN transfer_type == 0 or transfer_type = 2 THEN -amount    -- withdrawal
                 WHEN transfer_type == 1 or transfer_type = 3 THEN amount     -- deposit from external account
                 ELSE 0 
-            END), 0) as total_balance FROM ledgers WHERE aid = (?1);";
+            END), 0) as total_balance FROM ledgers WHERE aid = (?1) and uid = (?2);";
 
         let mut stmt = self.conn.prepare(sql)?;
         if stmt.exists(p)? {
@@ -220,16 +236,17 @@ impl DbConn {
 
     pub fn get_cumulative_total_of_ledger_before_date(
         &mut self,
+        uid : u32,
         aid: u32,
         end: NaiveDate,
     ) -> rusqlite::Result<f32, rusqlite::Error> {
-        let p = rusqlite::params![aid, end.to_string()];
+        let p = rusqlite::params![aid, end.to_string(), uid];
         let mut sum: f32 = 0.0;
         let sql = "SELECT COALESCE(SUM(CASE
             WHEN transfer_type == 0 or transfer_type = 2 THEN -amount    -- withdrawal
             WHEN transfer_type == 1 or transfer_type = 3 THEN amount     -- deposit from external account
             ELSE 0 
-        END), 0) as total_balance FROM ledgers WHERE aid = (?1) and date <= (?2);";
+        END), 0) as total_balance FROM ledgers WHERE aid = (?1) and date <= (?2) and uid = (?3);";
 
         let mut stmt = self.conn.prepare(sql)?;
         if stmt.exists(p)? {
@@ -242,12 +259,13 @@ impl DbConn {
 
     pub fn get_participants(
         &mut self,
+        uid: u32, 
         aid: u32,
         transfer_type: TransferType,
     ) -> Result<Vec<String>, rusqlite::Error> {
         let sql;
-        let p = rusqlite::params![aid, transfer_type as u32];
-        sql = "SELECT p.name FROM people p JOIN ledgers l ON p.id = l.cid WHERE l.aid = (?1) and l.transfer_type = (?2)";
+        let p = rusqlite::params![aid, transfer_type as u32, uid];
+        sql = "SELECT p.name FROM people p JOIN ledgers l ON p.id = l.cid WHERE l.aid = (?1) and l.transfer_type = (?2) and l.uid = (?3)";
 
         let mut stmt = self.conn.prepare(sql)?;
         let exists = stmt.exists(p)?;

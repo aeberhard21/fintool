@@ -40,6 +40,7 @@ impl FixedAccount {
 
         let selected_payee = Text::new("Enter payee:")
             .with_autocomplete(ParticipantAutoCompleter {
+                uid: self.uid,
                 aid: self.id,
                 db: self.db.clone(),
                 ptype: ParticipantType::Payee,
@@ -49,17 +50,19 @@ impl FixedAccount {
 
         let pid =
             self.db
-                .check_and_add_participant(self.id, selected_payee, ParticipantType::Payee);
+                .check_and_add_participant(self.uid, self.id, selected_payee, ParticipantType::Payee);
 
         let cid;
         let selected_category = Text::new("Enter category:")
             .with_autocomplete(CategoryAutoCompleter {
+                uid : self.uid,
                 aid: self.id,
                 db: self.db.clone(),
             })
             .prompt()
-            .unwrap();
-        cid = self.db.check_and_add_category(self.id, selected_category);
+            .unwrap()
+            .to_ascii_uppercase();
+        cid = self.db.check_and_add_category(self.uid, self.id, selected_category);
 
         let description_input: String = Text::new("Enter payment description:")
             .prompt()
@@ -81,7 +84,7 @@ impl FixedAccount {
             .unwrap();
         let id = self
             .db
-            .add_ledger_entry(self.id, withdrawal.clone())
+            .add_ledger_entry(self.uid, self.id, withdrawal.clone())
             .unwrap();
         let entry = LedgerRecord {
             id: id,
@@ -139,6 +142,7 @@ impl FixedAccount {
 
         let selected_payee = Text::new("Enter payer:")
             .with_autocomplete(ParticipantAutoCompleter {
+                uid: self.uid,
                 aid: self.id,
                 db: self.db.clone(),
                 ptype: ParticipantType::Payer,
@@ -148,18 +152,20 @@ impl FixedAccount {
 
         let pid =
             self.db
-                .check_and_add_participant(self.id, selected_payee, ParticipantType::Payer);
+                .check_and_add_participant(self.uid, self.id, selected_payee, ParticipantType::Payer);
 
         let cid;
         let selected_category = Text::new("Enter category:")
             .with_autocomplete(CategoryAutoCompleter {
+                uid: self.uid,
                 aid: self.id,
                 db: self.db.clone(),
             })
             .prompt()
-            .unwrap();
+            .unwrap()
+            .to_ascii_uppercase();
 
-        cid = self.db.check_and_add_category(self.id, selected_category);
+        cid = self.db.check_and_add_category(self.uid, self.id, selected_category);
 
         let description_input: String = Text::new("Enter payment description:")
             .prompt()
@@ -176,7 +182,7 @@ impl FixedAccount {
             ancillary_f32data : 0.0
         };
 
-        let id = self.db.add_ledger_entry(self.id, deposit.clone()).unwrap();
+        let id = self.db.add_ledger_entry(self.uid, self.id, deposit.clone()).unwrap();
         let entry = LedgerRecord {
             id: id,
             info: deposit,
@@ -255,11 +261,12 @@ impl FixedAccount {
         let updated_payee = Text::new("Enter payee:")
             .with_default(
                 self.db
-                    .get_participant(self.id, selected_record.info.participant)
+                    .get_participant(self.uid, self.id, selected_record.info.participant)
                     .unwrap()
                     .as_str(),
             )
             .with_autocomplete(ParticipantAutoCompleter {
+                uid: self.uid,
                 aid: self.id,
                 db: self.db.clone(),
                 ptype: ptype.clone(),
@@ -269,23 +276,25 @@ impl FixedAccount {
 
         let updated_pid = self
             .db
-            .check_and_add_participant(self.id, updated_payee, ptype);
+            .check_and_add_participant(self.uid, self.id, updated_payee, ptype);
 
         let updated_category = Text::new("Enter category:")
             .with_default(
                 self.db
-                    .get_category_name(self.id, selected_record.info.category_id)
+                    .get_category_name(self.uid, self.id, selected_record.info.category_id)
                     .unwrap()
-                    .as_str(),
+                    .as_str()
             )
             .with_autocomplete(CategoryAutoCompleter {
+                uid :self.uid,
                 aid: self.id,
                 db: self.db.clone(),
             })
             .prompt()
-            .unwrap();
+            .unwrap()
+            .to_ascii_uppercase();
 
-        let updated_cid = self.db.check_and_add_category(self.id, updated_category);
+        let updated_cid = self.db.check_and_add_category(self.uid, self.id, updated_category);
 
         let updated_description = Text::new("Enter description:")
             .with_default(&selected_record.info.description)
@@ -305,17 +314,17 @@ impl FixedAccount {
             },
         };
 
-        self.db.update_ledger_item(updated_entry.clone()).unwrap();
+        self.db.update_ledger_item(self.uid, updated_entry.clone()).unwrap();
 
         // check if link was made
         let link_if_exists = self
             .db
-            .check_and_get_account_transaction_record_matching_from_ledger_id(selected_record.id)
+            .check_and_get_account_transaction_record_matching_from_ledger_id(self.uid,selected_record.id)
             .unwrap();
         if link_if_exists.is_some() {
             let record = link_if_exists.unwrap();
-            self.db.remove_account_transaction(record.id).unwrap();
-            self.db.remove_ledger_item(record.info.to_ledger).unwrap();
+            self.db.remove_account_transaction(self.uid, record.id).unwrap();
+            self.db.remove_ledger_item(self.uid, record.info.to_ledger).unwrap();
 
             let link = Confirm::new("Link transaction to another account?")
                 .prompt()
@@ -330,7 +339,7 @@ impl FixedAccount {
 
     // returns uid of selected ledger entry
     pub fn select_ledger_entry(&mut self) -> Option<LedgerRecord> {
-        let records = self.db.get_ledger(self.id).unwrap();
+        let records = self.db.get_ledger(self.uid, self.id).unwrap();
         let mut entries: HashMap<String, u32> = HashMap::new();
         let mut strings: Vec<String> = Vec::new();
         let mut mapped_records: HashMap<u32, LedgerInfo> = HashMap::new();
@@ -339,10 +348,10 @@ impl FixedAccount {
                 "{} | {} | {} | {} | ",
                 rcrd.info.date,
                 self.db
-                    .get_category_name(self.id, rcrd.info.category_id)
+                    .get_category_name(self.uid, self.id, rcrd.info.category_id)
                     .unwrap(),
                 self.db
-                    .get_participant(self.id, rcrd.info.participant)
+                    .get_participant(self.uid, self.id, rcrd.info.participant)
                     .unwrap(),
                 rcrd.info.amount
             );
@@ -398,18 +407,18 @@ impl FixedAccount {
     }
 
     pub fn get_current_value(&mut self) -> f32 {
-        return self.db.get_current_value(self.id).unwrap();
+        return self.db.get_current_value(self.uid, self.id).unwrap();
     }
 
     pub fn simple_rate_of_return(&mut self, start_date: NaiveDate, end_date: NaiveDate) -> f32 {
         let mut rate: f32 = 0.0;
         let starting_amount = self
             .db
-            .get_cumulative_total_of_ledger_before_date(self.id, start_date)
+            .get_cumulative_total_of_ledger_before_date(self.uid, self.id, start_date)
             .unwrap();
         let ending_amount: f32 = self
             .db
-            .get_cumulative_total_of_ledger_before_date(self.id, end_date)
+            .get_cumulative_total_of_ledger_before_date(self.uid, self.id, end_date)
             .unwrap();
         rate = (ending_amount - starting_amount) / (starting_amount);
         return rate;
@@ -423,11 +432,11 @@ impl FixedAccount {
         let mut rate: f32 = 0.0;
         let starting_amount: f32 = self
             .db
-            .get_cumulative_total_of_ledger_before_date(self.id, start_date)
+            .get_cumulative_total_of_ledger_before_date(self.uid, self.id, start_date)
             .unwrap();
         let ending_amount: f32 = self
             .db
-            .get_cumulative_total_of_ledger_before_date(self.id, end_date)
+            .get_cumulative_total_of_ledger_before_date(self.uid, self.id, end_date)
             .unwrap();
         let date_diff: i32 = end_date.num_days_from_ce() - start_date.num_days_from_ce();
         let year_diff: f32 = date_diff as f32 / 365.0;

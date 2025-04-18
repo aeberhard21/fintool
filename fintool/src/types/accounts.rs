@@ -106,10 +106,12 @@ impl DbConn {
             from_ledger_id  INTEGER NOT NULL, 
             to_account_id   INTEGER NOT NULL,
             to_ledger_id    INTEGER NOT NULL, 
+            uid             INTEGER NOT NULL, 
             FOREIGN KEY (from_account_id) REFERENCES accounts(id),
             FOREIGN KEY (to_account_id) REFERENCES accounts(id),
             FOREIGN KEY (from_ledger_id) REFERENCES ledgers(id),
             FOREIGN KEY (to_ledger_id) REFERENCES ledgers(id)
+            FOREIGN KEY (uid) REFERENCES users(id)
         )";
 
         let rs = self.conn.execute(sql, ());
@@ -156,16 +158,17 @@ impl DbConn {
         }
     }
 
-    pub fn add_account_transaction(&mut self, info: AccountTransaction) -> Result<u32> {
+    pub fn add_account_transaction(&mut self, uid : u32, info: AccountTransaction) -> Result<u32> {
         let tid = self.get_next_transaction_id().unwrap();
         let p = rusqlite::params![
             tid,
             info.from_account,
             info.to_account,
             info.from_ledger,
-            info.to_ledger
+            info.to_ledger,
+            uid
         ];
-        let sql = "INSERT INTO account_transactions (id, from_account_id, to_account_id, from_ledger_id, to_ledger_id) VALUES (?1, ?2, ?3, ?4, ?5)";
+        let sql = "INSERT INTO account_transactions (id, from_account_id, to_account_id, from_ledger_id, to_ledger_id, uid) VALUES (?1, ?2, ?3, ?4, ?5, ?6)";
         let rs = self.conn.execute(sql, p);
         match rs {
             Ok(_) => Ok(tid),
@@ -180,10 +183,11 @@ impl DbConn {
 
     pub fn check_and_get_account_transaction_record_matching_from_ledger_id(
         &mut self,
+        uid : u32,
         id: u32,
     ) -> rusqlite::Result<Option<AccountTransactionRecord>, rusqlite::Error> {
-        let p = rusqlite::params![id];
-        let sql = "SELECT * FROM account_transactions WHERE from_ledger_id = (?1)";
+        let p = rusqlite::params![id,  uid];
+        let sql = "SELECT * FROM account_transactions WHERE from_ledger_id = (?1) and uid = (?2)";
         let mut stmt = self.conn.prepare(sql)?;
         let exists = stmt.exists(p)?;
         match exists {
@@ -209,10 +213,11 @@ impl DbConn {
 
     pub fn remove_account_transaction(
         &mut self,
+        uid : u32, 
         id: u32,
     ) -> rusqlite::Result<u32, rusqlite::Error> {
-        let p = rusqlite::params![id];
-        let sql = "DELETE FROM account_transactions WHERE id = ?1 VALUES (?1)";
+        let p = rusqlite::params![id,uid];
+        let sql = "DELETE FROM account_transactions WHERE id = ?1 and uid = ?2 VALUES (?1, ?2)";
         let rs = self.conn.execute(sql, p);
         match rs {
             Ok(_usize) => {}
@@ -356,7 +361,7 @@ impl DbConn {
         }
     }
     pub fn get_account_name(&mut self, uid: u32, aid: u32) -> rusqlite::Result<String, Error> {
-        let sql: &str = "SELECT id from accounts WHERE aid = (?1) AND uid = (?2)";
+        let sql: &str = "SELECT name from accounts WHERE id = (?1) AND uid = (?2)";
         let mut stmt = self.conn.prepare(sql)?;
         let exists = stmt.exists((&aid, uid))?;
         match exists {
@@ -377,9 +382,9 @@ impl DbConn {
             }
         }
     }
-    pub fn get_account(&mut self, aid: u32) -> rusqlite::Result<AccountRecord, Error> {
-        let sql: &str = "SELECT * from accounts WHERE id = (?1)";
-        let p = rusqlite::params![aid];
+    pub fn get_account(&mut self, uid : u32, aid: u32, ) -> rusqlite::Result<AccountRecord, Error> {
+        let sql: &str = "SELECT * from accounts WHERE id = (?1) and uid = (?2)";
+        let p = rusqlite::params![aid, uid];
         let mut stmt = self.conn.prepare(sql)?;
         let exists = stmt.exists(p)?;
         match exists {

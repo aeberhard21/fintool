@@ -227,7 +227,7 @@ impl AccountOperations for InvestmentAccountManager {
                 if s.is_buy {
                     if s.is_split {
                         // if split, check that we own this symbol
-                        let symbols_owned = self.db.get_stock_tickers(self.id).unwrap();
+                        let symbols_owned = self.db.get_stock_tickers(self.uid, self.id).unwrap();
                         let symbol_found = symbols_owned.iter().any(|i| *i == entry.participant.clone());
                         if !symbol_found {
                             panic!("Attempting to register split of symbol not owned by account!");
@@ -239,21 +239,21 @@ impl AccountOperations for InvestmentAccountManager {
                             transfer_type: entry.transfer_type as TransferType,
                             participant: self
                                 .db
-                                .check_and_add_participant(self.id, entry.participant.clone(), ptype),
-                            category_id: self.db.check_and_add_category(self.id, entry.category),
+                                .check_and_add_participant(self.uid, self.id, entry.participant.clone(), ptype),
+                            category_id: self.db.check_and_add_category(self.uid, self.id, entry.category.to_ascii_uppercase()),
                             description: entry.description,
                             ancillary_f32data : entry.ancillary_f32
                         };
 
-                        lid = self.db.add_ledger_entry(self.id, txn.clone()).unwrap();
+                        lid = self.db.add_ledger_entry(self.uid, self.id, txn.clone()).unwrap();
 
                         // get total shares for ticker and divide by split
                         let stocks_owned =
-                            self.db.get_stocks(self.id, entry.participant.clone()).unwrap();
+                            self.db.get_stocks(self.uid, self.id, entry.participant.clone()).unwrap();
                         let all_shares: f32 = stocks_owned.iter().map(|x| x.info.shares).sum();
                         let split_factor = s.shares / all_shares;
                         let stock_split_id = self.db
-                            .add_stock_split(self.id, split_factor.clone(), lid)
+                            .add_stock_split(self.uid, self.id, split_factor.clone(), lid)
                             .unwrap();
 
                         let stock_split_record = StockSplitRecord { 
@@ -279,13 +279,13 @@ impl AccountOperations for InvestmentAccountManager {
                             transfer_type: entry.transfer_type as TransferType,
                             participant: self
                                 .db
-                                .check_and_add_participant(self.id, entry.participant.clone(), ptype),
-                            category_id: self.db.check_and_add_category(self.id, entry.category),
+                                .check_and_add_participant(self.uid,self.id, entry.participant.clone(), ptype),
+                            category_id: self.db.check_and_add_category(self.uid, self.id, entry.category.to_ascii_uppercase()),
                             description: entry.description,
                             ancillary_f32data : entry.ancillary_f32
                         };
 
-                        lid = self.db.add_ledger_entry(self.id, txn).unwrap();
+                        lid = self.db.add_ledger_entry(self.uid, self.id, txn).unwrap();
                         
                         let my_s: crate::types::investments::StockInfo = StockInfo {
                             shares: s.shares,
@@ -294,11 +294,11 @@ impl AccountOperations for InvestmentAccountManager {
                             ledger_id: lid,
                         };
 
-                        self.db.add_stock_purchase(self.id, my_s).unwrap();
+                        self.db.add_stock_purchase(self.uid, self.id, my_s).unwrap();
                     }
                 } else {
                     // if split, check that we own this symbol
-                    let symbols_owned = self.db.get_stock_tickers(self.id).unwrap();
+                    let symbols_owned = self.db.get_stock_tickers(self.uid, self.id).unwrap();
                     let symbol_found = symbols_owned.iter().any(|i| *i == entry.participant.clone());
                     if !symbol_found {
                         panic!("Attempting to register sale of symbol not owned by account!");
@@ -310,13 +310,13 @@ impl AccountOperations for InvestmentAccountManager {
                         transfer_type: entry.transfer_type as TransferType,
                         participant: self
                             .db
-                            .check_and_add_participant(self.id, entry.participant.clone(), ptype),
-                        category_id: self.db.check_and_add_category(self.id, entry.category),
+                            .check_and_add_participant(self.uid, self.id, entry.participant.clone(), ptype),
+                        category_id: self.db.check_and_add_category(self.uid, self.id, entry.category.to_ascii_uppercase()),
                         description: entry.description,
                         ancillary_f32data : entry.ancillary_f32
                     };
 
-                    lid = self.db.add_ledger_entry(self.id, txn).unwrap();
+                    lid = self.db.add_ledger_entry(self.uid, self.id, txn).unwrap();
 
                     let my_s: crate::types::investments::StockInfo = StockInfo {
                         shares: s.shares,
@@ -324,7 +324,7 @@ impl AccountOperations for InvestmentAccountManager {
                         remaining: s.remaining,
                         ledger_id: lid,
                     };
-                    self.db.add_stock_sale(self.id, my_s).unwrap();
+                    self.db.add_stock_sale(self.uid,self.id, my_s).unwrap();
                 }
             } else {
                 // this is just a normal ledger transaction
@@ -334,13 +334,13 @@ impl AccountOperations for InvestmentAccountManager {
                     transfer_type: entry.transfer_type as TransferType,
                     participant: self
                         .db
-                        .check_and_add_participant(self.id, entry.participant, ptype),
-                    category_id: self.db.check_and_add_category(self.id, entry.category),
+                        .check_and_add_participant(self.uid, self.id, entry.participant, ptype),
+                    category_id: self.db.check_and_add_category(self.uid, self.id, entry.category.to_ascii_uppercase()),
                     description: entry.description,
                     ancillary_f32data : entry.ancillary_f32
                 };
     
-                lid = self.db.add_ledger_entry(self.id, txn).unwrap();
+                lid = self.db.add_ledger_entry(self.uid, self.id, txn).unwrap();
             }
         }
     }
@@ -375,7 +375,7 @@ impl AccountOperations for InvestmentAccountManager {
                     "\t\tVariable Account Value: {}",
                     self.variable
                         .db
-                        .get_stock_current_value(self.variable.id)
+                        .get_stock_current_value(self.uid, self.variable.id)
                         .unwrap()
                 );
             }
@@ -394,33 +394,57 @@ impl AccountOperations for InvestmentAccountManager {
     }
 
     fn link(&mut self, transacting_account: u32, entry: LedgerRecord) -> Option<u32> {
-        let mut my_entry = entry.clone();
         let from_account;
         let to_account;
 
-        match my_entry.info.transfer_type {
+        let cid;
+        let pid;
+        let transacting_account_name : String;
+        let (new_ttype, description) = match entry.info.transfer_type {
             TransferType::DepositFromExternalAccount => {
-                my_entry.info.transfer_type = TransferType::WithdrawalToExternalAccount;
                 from_account = self.id;
                 to_account = transacting_account;
+                cid =self.db.check_and_add_category(self.uid,self.id, "Withdrawal".to_ascii_uppercase());
+                transacting_account_name = self.db.get_account_name(self.uid, transacting_account).unwrap();
+                pid =self.db.check_and_add_category(self.uid, self.id, transacting_account_name.clone());
+                (
+                    TransferType::WithdrawalToExternalAccount,
+                    format!("[Link]: Withdrawal of ${} to account {} on {}.", entry.info.amount, transacting_account_name, entry.info.date)
+                )
             }
             TransferType::WithdrawalToExternalAccount => {
-                my_entry.info.transfer_type = TransferType::DepositFromExternalAccount;
                 from_account = transacting_account;
                 to_account = self.id;
+                cid =self.db.check_and_add_category(self.uid,self.id, "Deposit".to_ascii_uppercase());
+                transacting_account_name = self.db.get_account_name(self.uid, transacting_account).unwrap();
+                pid =self.db.check_and_add_category(self.uid, self.id, transacting_account_name.clone());
+                (
+                    TransferType::DepositFromExternalAccount,
+                    format!("[Link]: Deposit of ${} from account {} on {}.", entry.info.amount, transacting_account_name, entry.info.date)
+                )
             }
             _ => {
                 return None;
             }
-        }
+        };
+
+        let linked_entry = LedgerInfo { 
+            date : entry.info.date,
+            amount : entry.info.amount,
+            transfer_type : new_ttype, 
+            participant : pid, 
+            category_id: cid, 
+            description : description,
+            ancillary_f32data : 0.0
+        };
 
         let transaction_record = AccountTransaction {
             from_account: from_account,
             to_account: to_account,
             from_ledger: entry.id,
-            to_ledger: self.db.add_ledger_entry(self.id, my_entry.info).unwrap(),
+            to_ledger: self.db.add_ledger_entry(self.uid, self.id, linked_entry).unwrap(),
         };
 
-        return Some(self.db.add_account_transaction(transaction_record).unwrap());
+        return Some(self.db.add_account_transaction(self.uid, transaction_record).unwrap());
     }
 }
