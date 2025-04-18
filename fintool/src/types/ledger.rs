@@ -27,7 +27,7 @@ impl DbConn {
     pub fn create_ledger_table(&mut self) -> Result<()> {
         let sql: &str;
         sql = "CREATE TABLE IF NOT EXISTS ledgers (
-                id          INTEGER NOT NULL PRIMARY KEY,
+                id          INTEGER NOT NULL,
                 date        TEXT NOT NULL, 
                 amount      REAL NOT NULL, 
                 transfer_type INTEGER NOT NULL, 
@@ -37,9 +37,10 @@ impl DbConn {
                 ancillary_f32 REAL NOT NULL, 
                 aid         INTEGER NOT NULL,
                 uid         INTEGER NOT NULL,
-                FOREIGN KEY(aid) REFERENCES accounts(id)
-                FOREIGN KEY(cid) REFERENCES categories(id)
-                FOREIGN KEY(pid) REFERENCES people(id)
+                PRIMARY KEY(uid, aid, id),
+                FOREIGN KEY(uid,aid) REFERENCES accounts(uid,id)
+                FOREIGN KEY(uid, aid, cid) REFERENCES categories(uid, aid, id)
+                FOREIGN KEY(uid, aid, pid) REFERENCES people(uid, aid, id)
                 FOREIGN KEY(uid) REFERENCES users(id)
             )";
 
@@ -60,7 +61,7 @@ impl DbConn {
         entry: LedgerInfo,
     ) -> rusqlite::Result<u32, rusqlite::Error> {
         let sql: &str;
-        let id = self.get_next_ledger_id().unwrap();
+        let id = self.get_next_ledger_id(uid, aid).unwrap();
         sql = "INSERT INTO ledgers ( id, date, amount, transfer_type, pid, cid, desc, ancillary_f32, aid, uid) VALUES ( ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)";
         let rs = self.conn.execute(
             sql,
@@ -91,6 +92,7 @@ impl DbConn {
     pub fn update_ledger_item(
         &mut self,
         uid : u32,
+        aid : u32,
         update: LedgerRecord,
     ) -> rusqlite::Result<u32, rusqlite::Error> {
         let p = rusqlite::params![
@@ -103,8 +105,9 @@ impl DbConn {
             update.info.description,
             update.info.ancillary_f32data,
             uid,
+            aid
         ];
-        let sql = "UPDATE ledgers SET date = ?2, amount = ?3, transfer_type = ?4, pid = ?5, cid = ?6, desc = ?7, ancillary_f32 = ?8 WHERE id = ?1 and uid = ?9";
+        let sql = "UPDATE ledgers SET date = ?2, amount = ?3, transfer_type = ?4, pid = ?5, cid = ?6, desc = ?7, ancillary_f32 = ?8 WHERE id = ?1 and uid = ?9 and aid = ?10";
         let rs = self.conn.execute(sql, p);
         match rs {
             Ok(_usize) => {}
@@ -115,9 +118,9 @@ impl DbConn {
         Ok(update.id)
     }
 
-    pub fn remove_ledger_item(&mut self, uid: u32, id: u32) -> rusqlite::Result<u32, rusqlite::Error> {
-        let p = rusqlite::params![id, uid];
-        let sql = "DELETE FROM ledgers WHERE id = ?1 and uid = ?2";
+    pub fn remove_ledger_item(&mut self, uid: u32, aid :u32, id: u32) -> rusqlite::Result<u32, rusqlite::Error> {
+        let p = rusqlite::params![id, uid, aid];
+        let sql = "DELETE FROM ledgers WHERE id = ?1 and uid = ?2 and aid = ?3";
         let rs = self.conn.execute(sql, p);
         match rs {
             Ok(_usize) => {}
@@ -126,7 +129,7 @@ impl DbConn {
             }
         }
 
-        let sql = "UPDATE ledgers SET id = id-1 WHERE id > ?1 and uid = ?2";
+        let sql = "UPDATE ledgers SET id = id-1 WHERE id > ?1 and uid = ?2 and aid = ?3";
         let rs = self.conn.execute(sql, p);
         match rs {
             Ok(_usize) => {}

@@ -29,7 +29,7 @@ pub fn menu(_db: &mut DbConn) {
     if _db.is_admin(uid).unwrap() {
         menu_options = vec!["Create User", "Change User", "Access Account(s)", "Exit"];
     } else {
-        menu_options = vec!["Change User", "Account Operations", "Exit"];
+        menu_options = vec!["Change User", "Access Account(s)", "Exit"];
     }
 
     let rf = &menu_options;
@@ -63,7 +63,7 @@ pub fn menu(_db: &mut DbConn) {
 
 fn access_account(uid: u32, db: &mut DbConn) {
     const ACCOUNT_OPTIONS: [&'static str; 3] = ["Create Account", "Select Account", "Exit"];
-    let mut accounts: Vec<AccountRecord> = db.get_user_account_info(uid).unwrap();
+    let mut accounts: Vec<AccountRecord> = db.get_user_accounts(uid).unwrap();
     let mut acct: Box<dyn AccountOperations>;
     let mut choice;
     let mut new_account;
@@ -83,7 +83,11 @@ fn access_account(uid: u32, db: &mut DbConn) {
 
         match choice.as_str() {
             "Create Account" => {
-                (acct, new_account) = create_new_account(uid, db);
+                let user_input = create_new_account(uid, db);
+                if user_input.is_none() { 
+                    continue;
+                }
+                (acct, new_account) = user_input.unwrap();
                 accounts.push(new_account);
                 accounts_is_empty = false;
                 // acct.record();
@@ -256,8 +260,8 @@ pub fn query_user_for_analysis_period() -> (NaiveDate, NaiveDate) {
 pub fn create_new_account(
     uid: u32,
     db: &mut DbConn,
-) -> (Box<dyn AccountOperations>, AccountRecord) {
-    const ACCOUNT_TYPES: [&'static str; 2] = ["Bank Account", "Investment Account"];
+) -> (Option<(Box<dyn AccountOperations>, AccountRecord)>) {
+    const ACCOUNT_TYPES: [&'static str; 3] = ["Bank Account", "Investment Account", "None"];
     let selected_account_type = Select::new(
         "What account type would you like to create: ",
         ACCOUNT_TYPES.to_vec(),
@@ -279,16 +283,19 @@ pub fn create_new_account(
             id = db.add_account(uid, &new_account).unwrap();
             acct = Box::new(InvestmentAccountManager::new(uid, id, db));
         }
+        "None" => {
+            return None;
+        }
         _ => {
             panic!("Unrecognized input!");
         }
     }
 
-    return (
+    return Some((
         acct,
         AccountRecord {
             id: id,
             info: new_account,
-        },
+        },)
     );
 }

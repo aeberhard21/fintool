@@ -20,11 +20,12 @@ pub struct CategoryRecord {
 impl DbConn {
     pub fn create_budget_categories_table(&mut self) -> Result<()> {
         let sql: &str = "CREATE TABLE IF NOT EXISTS categories ( 
-                id          INTEGER NOT NULL PRIMARY KEY,
+                id          INTEGER NOT NULL,
                 aid         INTEGER NOT NULL,
                 uid         INTEGER NOT NULL, 
                 category    TEXT NOT NULL,
-                FOREIGN KEY(aid) REFERENCES accounts(id)
+                PRIMARY KEY (uid, aid, id)
+                FOREIGN KEY(uid,aid) REFERENCES accounts(uid,id)
                 FOREIGN KEY(uid) REFERENCES users(id)
             )";
 
@@ -35,7 +36,7 @@ impl DbConn {
     }
 
     pub fn add_category(&mut self, uid : u32, aid: u32, category: String) -> Result<u32> {
-        let id = self.get_next_category_id().unwrap();
+        let id = self.get_next_category_id(uid, aid).unwrap();
         let p = rusqlite::params!(id, aid, category, uid);
         let sql = "INSERT INTO categories (id, aid, category, uid) VALUES (?1, ?2, ?3, ?4)";
         match self.conn.execute(sql, p) {

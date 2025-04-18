@@ -2,6 +2,54 @@ use super::DbConn;
 use rusqlite::{params, Error};
 
 impl DbConn {
+
+    pub fn create_users_id_table(&mut self) -> rusqlite::Result<()> { 
+        let sql = "
+            CREATE TABLE IF NOT EXISTS user_ids (
+            next_user_id INTEGER NOT NULL PRIMARY KEY
+        )";
+        let rs = self.conn.execute(sql, ());
+        match rs {
+            Ok(_) => {}
+            Err(error) => {
+                panic!(
+                    "{}",
+                    error
+                );
+            }
+        }
+        let sql: &str = "SELECT * FROM user_ids";
+        let mut stmt = self.conn.prepare(sql)?;
+        let exists = stmt.exists(())?;
+        if !exists {
+            let sql = "INSERT INTO user_ids (next_user_id) VALUES (?1)";
+            match self.conn.execute(sql, [0]) {
+                Ok(_rows_inserted) => {}
+                Err(error) => {
+                    panic!("Unable to initialize user_ids table: {}", error);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn get_next_user_id(&mut self) -> rusqlite::Result<u32> {
+        let sql = "SELECT next_user_id FROM user_ids";
+        let mut stmt = self.conn.prepare(sql)?;
+        let exists = stmt.exists(())?;
+        match exists {
+            true => {
+                let id = stmt.query_row((), |row| row.get::<_, u32>(0))?;
+                let sql = "UPDATE user_ids SET next_user_id = next_user_id + 1";
+                self.conn.execute(sql, ())?;
+                Ok(id)
+            }
+            false => {
+                panic!("The next user ID within table 'info' does not exist.");
+            }
+        }
+    }
+
     pub fn create_user_table(&mut self) -> rusqlite::Result<()> {
         let sql: &str;
         sql = "CREATE TABLE IF NOT EXISTS users (
@@ -21,41 +69,16 @@ impl DbConn {
 
     pub fn add_user(&mut self, name: String, admin: bool) -> rusqlite::Result<u32, Error> {
         let sql: &str = "INSERT INTO users (id, name, admin) VALUES ( ?1, ?2, ?3)";
-
-        // let mut s = DefaultHasher::new();
-        // name.hash(&mut s);
-        // let id: u32 = s.finish() as u32;
         let id = self.get_next_user_id().unwrap();
-
-        let test_db: &str = "SELECT * FROM users where id = ?1";
-        let mut stmt = self.conn.prepare(test_db);
-        match stmt {
-            Ok(mut stmt) => {
-                let exists = stmt.exists(params![&id]);
-                match exists {
-                    Ok(true) => {
-                        panic!("User already exists!");
-                    }
-                    Ok(false) => {
-                        let number_of_rows_inserted =
-                            self.conn.execute(sql, params![id, name, admin]);
-                        match number_of_rows_inserted {
-                            Ok(rows_inserted) => {
-                                println!("({}) Saved user: {}", rows_inserted, name);
-                                Ok(id)
-                            }
-                            Err(err) => {
-                                panic!("Unable to add user {}: {}", &name, err);
-                            }
-                        }
-                    }
-                    Err(err) => {
-                        panic!("Unable to add user {}: {}", &name, err);
-                    }
-                }
-            }
-            Err(err) => {
-                panic!("Unable to add user {}: {}", &name, err);
+        let p = rusqlite::params![id, name, admin];
+        let rs = self.conn.execute(sql, p);
+        match rs {
+            Ok(rows_inserted) => { 
+                self.initialize_user_account_table(id).unwrap();
+                Ok(id)
+            } 
+            Err(error) =>  { 
+                panic!("Unable to allocate user!");
             }
         }
     }
@@ -99,7 +122,7 @@ impl DbConn {
                         return Ok(id);
                     }
                     Err(err) => {
-                        panic!("Unable t retrieve id for user {}: {}", &name, err);
+                        panic!("Unable to retrieve id for user {}: {}", &name, err);
                     }
                 }
             }

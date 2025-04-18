@@ -201,7 +201,7 @@ impl AccountOperations for BankAccount {
                 transfer_type: rcrd.transfer_type as TransferType,
                 participant: self
                     .db
-                    .check_and_add_participant(self.uid, self.id, rcrd.participant, ptype),
+                    .check_and_add_participant(self.uid, self.id, rcrd.participant, ptype, false),
                 category_id: self.db.check_and_add_category(self.uid, self.id, rcrd.category.to_ascii_uppercase()),
                 description: rcrd.description,
                 ancillary_f32data : 0.0
@@ -257,7 +257,7 @@ impl AccountOperations for BankAccount {
                 to_account = self.id;
                 cid =self.db.check_and_add_category(self.uid,self.id, "Withdrawal".to_ascii_uppercase());
                 transacting_account_name = self.db.get_account_name(self.uid, transacting_account).unwrap();
-                pid =self.db.check_and_add_participant(self.uid, self.id, transacting_account_name.clone(), ParticipantType::Payee);
+                pid =self.db.check_and_add_participant(self.uid, self.id, transacting_account_name.clone(), ParticipantType::Payee, false);
                 (
                     TransferType::WithdrawalToExternalAccount,
                     format!("[Link]: Withdrawal of ${} to account {} on {}.", entry.info.amount, transacting_account_name, entry.info.date)
@@ -268,7 +268,7 @@ impl AccountOperations for BankAccount {
                 to_account = transacting_account;
                 cid =self.db.check_and_add_category(self.uid,self.id, "Deposit".to_ascii_uppercase());
                 transacting_account_name = self.db.get_account_name(self.uid, transacting_account).unwrap();
-                pid =self.db.check_and_add_participant(self.uid, self.id, transacting_account_name.clone(), ParticipantType::Payer);
+                pid =self.db.check_and_add_participant(self.uid, self.id, transacting_account_name.clone(), ParticipantType::Payer, false);
                 (
                     TransferType::DepositFromExternalAccount,
                     format!("[Link]: Deposit of ${} from account {} on {}.", entry.info.amount, transacting_account_name, entry.info.date)

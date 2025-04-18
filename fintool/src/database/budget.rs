@@ -22,20 +22,20 @@ impl DbConn {
         Ok(())
     }
 
-    pub fn add_budget_item(&mut self, aid: u32, item: BudgetItem) -> Result<u32> {
-        let id = self.get_next_budget_item_id().unwrap();
-        let p = rusqlite::params!(id, item.category_id, item.value, aid);
-        let sql = "INSERT INTO budgets (id, cid, value, aid ) VALUES (?1, ?2, ?3, ?4)";
-        match self.conn.execute(sql, p) {
-            Ok(_) => Ok(id),
-            Err(error) => {
-                panic!(
-                    "Unable to add budget item {} for account {}: {}",
-                    item.category_id, aid, error
-                );
-            }
-        }
-    }
+    // pub fn add_budget_item(&mut self, aid: u32, item: BudgetItem) -> Result<u32> {
+    //     let id = self.get_next_budget_item_id(aid).unwrap();
+    //     let p = rusqlite::params!(id, item.category_id, item.value, aid);
+    //     let sql = "INSERT INTO budgets (id, cid, value, aid ) VALUES (?1, ?2, ?3, ?4)";
+    //     match self.conn.execute(sql, p) {
+    //         Ok(_) => Ok(id),
+    //         Err(error) => {
+    //             panic!(
+    //                 "Unable to add budget item {} for account {}: {}",
+    //                 item.category_id, aid, error
+    //             );
+    //         }
+    //     }
+    // }
 
     pub fn get_budget(&mut self, aid: u32) -> Result<Vec<BudgetItem>, rusqlite::Error> {
         let p = rusqlite::params![aid];

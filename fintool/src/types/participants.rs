@@ -1,3 +1,4 @@
+
 use inquire::autocompletion;
 use inquire::autocompletion::Replacement;
 use inquire::{Autocomplete, CustomUserError};
@@ -46,12 +47,14 @@ impl From<u32> for ParticipantType {
 impl DbConn {
     pub fn create_people_table(&mut self) -> Result<()> {
         let sql: &str = "CREATE TABLE IF NOT EXISTS people ( 
-                id          INTEGER NOT NULL PRIMARY KEY,
+                id          INTEGER NOT NULL,
                 aid         INTEGER NOT NULL,
                 type        INTEGER NOT NULL, 
                 name        TEXT NOT NULL,
                 uid         INTEGER NOT NULL,
-                FOREIGN KEY(aid) REFERENCES accounts(id)
+                is_account  BOOL NOT NULL,
+                PRIMARY KEY (uid, aid, id),
+                FOREIGN KEY(uid,aid) REFERENCES accounts(uid,id)
                 FOREIGN KEY(uid) REFERENCES users(id)
             )";
 
@@ -67,10 +70,11 @@ impl DbConn {
         aid: u32,
         ptype: ParticipantType,
         name: String,
+        is_account : bool
     ) -> Result<u32> {
-        let id = self.get_next_people_id().unwrap();
-        let p = rusqlite::params!(id, aid, ptype as u32, name, uid);
-        let sql = "INSERT INTO people (id, aid, type, name, uid) VALUES (?1, ?2, ?3, ?4, ?5)";
+        let id = self.get_next_people_id(uid, aid).unwrap();
+        let p = rusqlite::params!(id, aid, ptype as u32, name, uid, is_account);
+        let sql = "INSERT INTO people (id, aid, type, name, uid, is_account) VALUES (?1, ?2, ?3, ?4, ?5, ?6)";
         match self.conn.execute(sql, p) {
             Ok(_) => Ok(id),
             Err(error) => {
@@ -188,9 +192,10 @@ impl DbConn {
         aid: u32,
         name: String,
         ptype: ParticipantType,
+        is_account : bool
     ) -> u32 {
-        let sql = "SELECT id FROM people WHERE aid = (?1) and name = (?2) and type = (?3) and uid = (?4)";
-        let p = rusqlite::params![aid, name, ptype as u32, uid];
+        let sql = "SELECT id FROM people WHERE aid = (?1) and name = (?2) and (type = (?3) or type = (?4)) and uid = (?5)";
+        let p = rusqlite::params![aid, name, ptype as u32, ParticipantType::Both as u32, uid];
         let conn = self.conn.clone();
         let prepared_stmt = conn.prepare(sql);
         match prepared_stmt {
@@ -202,7 +207,7 @@ impl DbConn {
                             .unwrap();
                         return id;
                     } else {
-                        self.add_participant(uid, aid, ptype, name).unwrap()
+                        self.add_participant(uid, aid, ptype, name, is_account).unwrap()
                     }
                 } else {
                     panic!("Unable to determine if exists!");
@@ -225,89 +230,98 @@ pub struct ParticipantAutoCompleter {
     pub aid: u32,
     pub db: DbConn,
     pub ptype: ParticipantType,
+    pub with_accounts : bool,
 }
 
 impl Autocomplete for ParticipantAutoCompleter {
     fn get_suggestions(&mut self, input: &str) -> Result<Vec<String>, CustomUserError> {
-        let mut suggestions: Vec<String>;
-        match self.ptype {
-            ParticipantType::Payee => {
-                let mut x: Vec<String> = self
-                    .db
-                    .get_participants(self.uid, self.aid, TransferType::WithdrawalToExternalAccount)
-                    .unwrap()
-                    .into_iter()
-                    .filter(|name| name.starts_with(input))
-                    .collect();
-                let mut y: Vec<String> = self
-                    .db
-                    .get_participants(self.uid, self.aid, TransferType::WithdrawalToInternalAccount)
-                    .unwrap()
-                    .into_iter()
-                    .filter(|name| name.starts_with(input))
-                    .collect();
-                x.dedup();
-                y.dedup();
-                suggestions = [x, y].concat();
-            }
-            ParticipantType::Payer => {
-                let mut x: Vec<String> = self
-                    .db
-                    .get_participants(self.uid, self.aid, TransferType::DepositFromExternalAccount)
-                    .unwrap()
-                    .into_iter()
-                    .filter(|name| name.starts_with(input))
-                    .collect();
-                let mut y: Vec<String> = self
-                    .db
-                    .get_participants(self.uid, self.aid, TransferType::DepositFromExternalAccount)
-                    .unwrap()
-                    .into_iter()
-                    .filter(|name| name.starts_with(input))
-                    .collect();
-                x.dedup();
-                y.dedup();
-                suggestions = [x, y].concat();
-            }
-            ParticipantType::Both => {
-                let mut w: Vec<String> = self
-                    .db
-                    .get_participants(self.uid, self.aid, TransferType::WithdrawalToExternalAccount)
-                    .unwrap()
-                    .into_iter()
-                    .filter(|name| name.starts_with(input))
-                    .collect();
-                let mut x: Vec<String> = self
-                    .db
-                    .get_participants(self.uid, self.aid, TransferType::WithdrawalToInternalAccount)
-                    .unwrap()
-                    .into_iter()
-                    .filter(|name| name.starts_with(input))
-                    .collect();
-                let mut y: Vec<String> = self
-                    .db
-                    .get_participants(self.uid, self.aid, TransferType::DepositFromExternalAccount)
-                    .unwrap()
-                    .into_iter()
-                    .filter(|name| name.starts_with(input))
-                    .collect();
-                let mut z: Vec<String> = self
-                    .db
-                    .get_participants(self.uid, self.aid, TransferType::DepositFromExternalAccount)
-                    .unwrap()
-                    .into_iter()
-                    .filter(|name| name.starts_with(input))
-                    .collect();
-                w.dedup();
-                x.dedup();
-                y.dedup();
-                z.dedup();
-                suggestions = [[w, x].concat(), [y, z].concat()].concat();
-            }
-            _ => {
-                panic!("Unable to match ParticipantType in Autocomplete!");
-            }
+        let suggestions: Vec<String>;
+        if !self.with_accounts { 
+            suggestions = match self.ptype {
+                ParticipantType::Payee => {
+                    let mut x: Vec<String> = self
+                        .db
+                        .get_participants(self.uid, self.aid, TransferType::WithdrawalToExternalAccount)
+                        .unwrap()
+                        .into_iter()
+                        .filter(|name| name.starts_with(input))
+                        .collect();
+                    let mut y: Vec<String> = self
+                        .db
+                        .get_participants(self.uid, self.aid, TransferType::WithdrawalToInternalAccount)
+                        .unwrap()
+                        .into_iter()
+                        .filter(|name| name.starts_with(input))
+                        .collect();
+                    x.dedup();
+                    y.dedup();
+                    [x, y].concat()
+                }
+                ParticipantType::Payer => {
+                    let mut x: Vec<String> = self
+                        .db
+                        .get_participants(self.uid, self.aid, TransferType::DepositFromExternalAccount)
+                        .unwrap()
+                        .into_iter()
+                        .filter(|name| name.starts_with(input))
+                        .collect();
+                    let mut y: Vec<String> = self
+                        .db
+                        .get_participants(self.uid, self.aid, TransferType::DepositFromExternalAccount)
+                        .unwrap()
+                        .into_iter()
+                        .filter(|name| name.starts_with(input))
+                        .collect();
+                    x.dedup();
+                    y.dedup();
+                    [x, y].concat()
+                }
+                ParticipantType::Both => {
+                    let mut w: Vec<String> = self
+                        .db
+                        .get_participants(self.uid, self.aid, TransferType::WithdrawalToExternalAccount)
+                        .unwrap()
+                        .into_iter()
+                        .filter(|name| name.starts_with(input))
+                        .collect();
+                    let mut x: Vec<String> = self
+                        .db
+                        .get_participants(self.uid, self.aid, TransferType::WithdrawalToInternalAccount)
+                        .unwrap()
+                        .into_iter()
+                        .filter(|name| name.starts_with(input))
+                        .collect();
+                    let mut y: Vec<String> = self
+                        .db
+                        .get_participants(self.uid, self.aid, TransferType::DepositFromExternalAccount)
+                        .unwrap()
+                        .into_iter()
+                        .filter(|name| name.starts_with(input))
+                        .collect();
+                    let mut z: Vec<String> = self
+                        .db
+                        .get_participants(self.uid, self.aid, TransferType::DepositFromExternalAccount)
+                        .unwrap()
+                        .into_iter()
+                        .filter(|name| name.starts_with(input))
+                        .collect();
+                    w.dedup();
+                    x.dedup();
+                    y.dedup();
+                    z.dedup();
+                    [[w, x].concat(), [y, z].concat()].concat()
+                }
+                _ => {
+                    panic!("Unable to match ParticipantType in Autocomplete!");
+                }
+            };
+        } else { 
+            let current_account_name = self.db.get_account_name(self.uid, self.aid).unwrap();
+            let mut x : Vec<String> = self.db.get_user_accounts(self.uid).unwrap().iter().map(|acct| acct.info.name.clone()).filter(|x| *x!=current_account_name).collect();
+            x.push("New Account".to_string());
+            suggestions = x;
         }
+
         Ok(suggestions)
     }
 

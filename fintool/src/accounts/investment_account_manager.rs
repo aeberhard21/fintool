@@ -239,7 +239,7 @@ impl AccountOperations for InvestmentAccountManager {
                             transfer_type: entry.transfer_type as TransferType,
                             participant: self
                                 .db
-                                .check_and_add_participant(self.uid, self.id, entry.participant.clone(), ptype),
+                                .check_and_add_participant(self.uid, self.id, entry.participant.clone(), ptype, false),
                             category_id: self.db.check_and_add_category(self.uid, self.id, entry.category.to_ascii_uppercase()),
                             description: entry.description,
                             ancillary_f32data : entry.ancillary_f32
@@ -279,7 +279,7 @@ impl AccountOperations for InvestmentAccountManager {
                             transfer_type: entry.transfer_type as TransferType,
                             participant: self
                                 .db
-                                .check_and_add_participant(self.uid,self.id, entry.participant.clone(), ptype),
+                                .check_and_add_participant(self.uid,self.id, entry.participant.clone(), ptype, false),
                             category_id: self.db.check_and_add_category(self.uid, self.id, entry.category.to_ascii_uppercase()),
                             description: entry.description,
                             ancillary_f32data : entry.ancillary_f32
@@ -310,7 +310,7 @@ impl AccountOperations for InvestmentAccountManager {
                         transfer_type: entry.transfer_type as TransferType,
                         participant: self
                             .db
-                            .check_and_add_participant(self.uid, self.id, entry.participant.clone(), ptype),
+                            .check_and_add_participant(self.uid, self.id, entry.participant.clone(), ptype, false),
                         category_id: self.db.check_and_add_category(self.uid, self.id, entry.category.to_ascii_uppercase()),
                         description: entry.description,
                         ancillary_f32data : entry.ancillary_f32
@@ -334,7 +334,7 @@ impl AccountOperations for InvestmentAccountManager {
                     transfer_type: entry.transfer_type as TransferType,
                     participant: self
                         .db
-                        .check_and_add_participant(self.uid, self.id, entry.participant, ptype),
+                        .check_and_add_participant(self.uid, self.id, entry.participant, ptype, false),
                     category_id: self.db.check_and_add_category(self.uid, self.id, entry.category.to_ascii_uppercase()),
                     description: entry.description,
                     ancillary_f32data : entry.ancillary_f32
