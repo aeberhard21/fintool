@@ -114,10 +114,10 @@ impl AccountOperations for BankAccount {
             .to_string();
             match action.as_str() {
                 "Deposit" => {
-                    self.fixed.deposit();
+                    self.fixed.deposit(None, false);
                 }
                 "Withdrawal" => {
-                    self.fixed.withdrawal();
+                    self.fixed.withdrawal(None, false);
                 }
                 "None" => {
                     return;

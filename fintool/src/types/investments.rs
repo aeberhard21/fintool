@@ -71,8 +71,8 @@ impl DbConn {
             lid         INTEGER NOT NULL,
             uid         INTEGER NOT NULL, 
             PRIMARY KEY (uid, aid, id),
-            FOREIGN     KEY (uid,aid) REFERENCES accounts(uid,id)
-            FOREIGN     KEY (lid) REFERENCES ledgers(id)
+            FOREIGN     KEY (uid,aid) REFERENCES accounts(uid,id),
+            FOREIGN     KEY (uid, aid, lid) REFERENCES ledgers(uid, aid, id) ON DELETE CASCADE,
             FOREIGN     KEY (uid) REFERENCES users(id)
         )";
         match self.conn.execute(sql, ()) {
@@ -95,8 +95,9 @@ impl DbConn {
             aid         INTEGER NOT NULL,
             lid         INTEGER NOT NULL,
             uid         INTEGER NOT NULL,
-            FOREIGN     KEY (uid,aid) REFERENCES accounts(uid,id)
-            FOREIGN     KEY (lid) REFERENCES ledgers(id)
+            PRIMARY KEY (uid, aid, id),
+            FOREIGN     KEY (uid,aid) REFERENCES accounts(uid,id),
+            FOREIGN     KEY (uid, aid, lid) REFERENCES ledgers(uid, aid, id) ON DELETE CASCADE,
             FOREIGN     KEY (uid) REFERENCES users(id)
         )";
         match self.conn.execute(sql, ()) {
@@ -117,9 +118,9 @@ impl DbConn {
             uid         INTEGER NOT NULL,
             aid         INTEGER NOT NULL,
             PRIMARY KEY (uid, aid, id),
-            FOREIGN KEY (purchase_id) REFERENCES stock_purchases(id), 
-            FOREIGN KEY (sale_id) REFERENCES stock_sales(id)
-            FOREIGN     KEY (uid) REFERENCES users(id)
+            FOREIGN KEY (uid, aid, purchase_id) REFERENCES stock_purchases(uid, aid, id) ON DELETE CASCADE,
+            FOREIGN KEY (uid, aid, sale_id) REFERENCES stock_sales(uid, aid, id) ON DELETE CASCADE,
+            FOREIGN     KEY (uid) REFERENCES users(id),
             FOREIGN     KEY (uid,aid) REFERENCES accounts(uid,id)
         )";
         match self.conn.execute(sql, ()) {
@@ -142,9 +143,8 @@ impl DbConn {
             lid         INTEGER NOT NULL,
             uid         INTEGER NOT NULL,
             PRIMARY KEY (uid, aid, id),
-            FOREIGN KEY (aid) REFERENCES accounts(id)
-            FOREIGN KEY (lid) REFERENCES ledgers(id)
-            FOREIGN KEY (uid) REFERENCES users(id)
+            FOREIGN KEY (uid, aid, lid) REFERENCES ledgers(uid, aid, id) ON DELETE CASCADE,
+            FOREIGN KEY (uid) REFERENCES users(id),
             FOREIGN KEY (uid,aid) REFERENCES accounts(uid,id)
         )";
         match self.conn.execute(sql, ()) {
@@ -167,8 +167,8 @@ impl DbConn {
             uid INTEGER NOT NULL,
             aid INTEGER NOT NULL,
             PRIMARY KEY (uid, aid, id),
-            FOREIGN KEY (stock_purchase_id) REFERENCES stock_purchases(id)
-            FOREIGN KEY (stock_split_id) REFERENCES stock_splits(id)
+            FOREIGN KEY (uid, aid, stock_purchase_id) REFERENCES stock_purchases(uid, aid, id) ON DELETE CASCADE
+            FOREIGN KEY (uid, aid, stock_split_id) REFERENCES stock_splits(uid, aid, id) ON DELETE CASCADE
             FOREIGN KEY (uid) REFERENCES users(id)
             FOREIGN KEY (uid,aid) REFERENCES accounts(uid,id)
         )";

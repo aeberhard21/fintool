@@ -38,9 +38,9 @@ impl DbConn {
                 aid         INTEGER NOT NULL,
                 uid         INTEGER NOT NULL,
                 PRIMARY KEY(uid, aid, id),
-                FOREIGN KEY(uid,aid) REFERENCES accounts(uid,id)
-                FOREIGN KEY(uid, aid, cid) REFERENCES categories(uid, aid, id)
-                FOREIGN KEY(uid, aid, pid) REFERENCES people(uid, aid, id)
+                FOREIGN KEY(uid,aid) REFERENCES accounts(uid,id),
+                FOREIGN KEY(uid, aid, cid) REFERENCES categories(uid, aid, id),
+                FOREIGN KEY(uid, aid, pid) REFERENCES people(uid, aid, id),
                 FOREIGN KEY(uid) REFERENCES users(id)
             )";
 

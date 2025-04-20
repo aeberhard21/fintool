@@ -263,7 +263,7 @@ pub fn create_new_account(
 ) -> (Option<(Box<dyn AccountOperations>, AccountRecord)>) {
     const ACCOUNT_TYPES: [&'static str; 3] = ["Bank Account", "Investment Account", "None"];
     let selected_account_type = Select::new(
-        "What account type would you like to create: ",
+        "What account type would you like to create:",
         ACCOUNT_TYPES.to_vec(),
     )
     .prompt()

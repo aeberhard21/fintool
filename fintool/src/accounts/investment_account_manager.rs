@@ -121,10 +121,10 @@ impl AccountOperations for InvestmentAccountManager {
             .to_string();
             match action.as_str() {
                 "Deposit" => {
-                    self.variable.fixed.deposit();
+                    self.variable.fixed.deposit(None, false);
                 }
                 "Withdrawal" => {
-                    self.variable.fixed.withdrawal();
+                    self.variable.fixed.withdrawal(None, false);
                 }
                 "Purchase" => {
                     self.variable.purchase_stock(None, false);

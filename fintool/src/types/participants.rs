@@ -54,7 +54,7 @@ impl DbConn {
                 uid         INTEGER NOT NULL,
                 is_account  BOOL NOT NULL,
                 PRIMARY KEY (uid, aid, id),
-                FOREIGN KEY(uid,aid) REFERENCES accounts(uid,id)
+                FOREIGN KEY(uid,aid) REFERENCES accounts(uid,id),
                 FOREIGN KEY(uid) REFERENCES users(id)
             )";
 

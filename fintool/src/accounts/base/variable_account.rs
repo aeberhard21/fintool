@@ -385,8 +385,6 @@ impl VariableAccount {
 
     pub fn modify(&mut self, record : LedgerRecord) -> LedgerRecord {
 
-        println!("Record id: {}", record.clone().id);
-
         let was_stock_purchase_opt = self.db.check_and_get_stock_purchase_record_matching_from_ledger_id(self.uid, self.id, record.id).unwrap();
         let was_stock_sale_opt = self.db.check_and_get_stock_sale_record_matching_from_ledger_id(self.uid, self.id, record.id).unwrap();
         let was_stock_split_opt = self.db.check_and_get_stock_split_record_matching_from_ledger_id(self.uid, self.id, record.id).unwrap();

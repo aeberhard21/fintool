@@ -24,8 +24,8 @@ impl DbConn {
                 aid         INTEGER NOT NULL,
                 uid         INTEGER NOT NULL, 
                 category    TEXT NOT NULL,
-                PRIMARY KEY (uid, aid, id)
-                FOREIGN KEY(uid,aid) REFERENCES accounts(uid,id)
+                PRIMARY KEY (uid, aid, id),
+                FOREIGN KEY(uid,aid) REFERENCES accounts(uid,id),
                 FOREIGN KEY(uid) REFERENCES users(id)
             )";
 

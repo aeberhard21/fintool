@@ -1,6 +1,8 @@
 use crate::database::DbConn;
 use rusqlite::{Error, Result};
 
+use super::ledger;
+
 #[derive(Clone, Copy)]
 pub enum AccountType {
     Ledger,
@@ -221,8 +223,8 @@ impl DbConn {
             PRIMARY KEY (uid, id),
             FOREIGN KEY (uid, from_account_id) REFERENCES accounts(uid, id),
             FOREIGN KEY (uid, to_account_id) REFERENCES accounts(uid, id),
-            FOREIGN KEY (uid, from_account_id, from_ledger_id) REFERENCES ledgers(uid, aid, id),
-            FOREIGN KEY (uid, to_account_id, to_ledger_id) REFERENCES ledgers(uid, aid, id)
+            FOREIGN KEY (uid, from_account_id, from_ledger_id) REFERENCES ledgers(uid, aid, id) ON DELETE CASCADE,
+            FOREIGN KEY (uid, to_account_id, to_ledger_id) REFERENCES ledgers(uid, aid, id) ON DELETE CASCADE,
             FOREIGN KEY (uid) REFERENCES users(id)
         )";
 
@@ -266,7 +268,7 @@ impl DbConn {
         id: u32,
     ) -> rusqlite::Result<Option<AccountTransactionRecord>, rusqlite::Error> {
         let p = rusqlite::params![id,  uid];
-        let sql = "SELECT * FROM account_transactions WHERE from_ledger_id = (?1) and uid = (?2)";
+        let sql = "SELECT id, from_account_id, to_account_id, from_ledger_id, to_ledger_id FROM account_transactions WHERE (from_ledger_id = (?1) or to_ledger_id = (?1)) and uid = (?2)";
         let mut stmt = self.conn.prepare(sql)?;
         let exists = stmt.exists(p)?;
         match exists {
@@ -306,6 +308,24 @@ impl DbConn {
         }
         Ok(id)
     }
+
+    pub fn remove_account_transaction_matching_ledger_id(
+        &mut self,
+        uid : u32, 
+        ledger_id: u32,
+    ) -> rusqlite::Result<u32, rusqlite::Error> {
+        let p = rusqlite::params![ledger_id,uid];
+        let sql = "DELETE FROM account_transactions WHERE from_ledger_id = ?1 and uid = ?2 VALUES (?1, ?2)";
+        let rs = self.conn.execute(sql, p);
+        match rs {
+            Ok(_usize) => {}
+            Err(error) => {
+                println!("Unable to remove account transaction: {}", error);
+            }
+        }
+        Ok(ledger_id)
+    }
+
 
     pub fn get_user_accounts(
         &mut self,
