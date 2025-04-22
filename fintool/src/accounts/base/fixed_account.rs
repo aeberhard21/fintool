@@ -32,7 +32,7 @@ impl FixedAccount {
 
     pub fn withdrawal(&mut self, initial_opt : Option<LedgerRecord>, overwrite : bool) {
         let default_to_use : bool;
-        let mut initial = LedgerRecord { id : 0, info : LedgerInfo { date: "1970-01-01".to_string(), amount: 0.0, transfer_type: TransferType::DepositFromExternalAccount, participant: 0, category_id: 0, description: "".to_string(), ancillary_f32data: 0.0 }};
+        let mut initial = LedgerRecord { id : 0, info : LedgerInfo { date: "1970-01-01".to_string(), amount: 0.0, transfer_type: TransferType::WithdrawalToExternalAccount, participant: 0, category_id: 0, description: "".to_string(), ancillary_f32data: 0.0 }};
 
         if initial_opt.is_some() { 
             default_to_use = true;
@@ -149,17 +149,17 @@ impl FixedAccount {
             pid = self.db
                 .check_and_add_participant(self.uid, self.id, selected_payee, ParticipantType::Payee, false);
 
-            let deposit = LedgerInfo {
+            let withdrawal = LedgerInfo {
                 date: date_input,
                 amount: amount_input,
-                transfer_type: TransferType::DepositFromExternalAccount,
+                transfer_type: TransferType::WithdrawalToExternalAccount,
                 participant: pid,
                 category_id: cid,
                 description: description_input,
                 ancillary_f32data : 0.0
             };
     
-            let id = self.db.add_ledger_entry(self.uid, self.id, deposit.clone()).unwrap();
+            let id = self.db.add_ledger_entry(self.uid, self.id, withdrawal.clone()).unwrap();
         } else {
             
             let initial_account_opt = if default_to_use {
@@ -179,7 +179,7 @@ impl FixedAccount {
             let withdrawal = LedgerInfo {
                 date: date_input,
                 amount: amount_input,
-                transfer_type: TransferType::DepositFromExternalAccount,
+                transfer_type: TransferType::WithdrawalToExternalAccount,
                 participant: pid,
                 category_id: cid,
                 description: description_input,
@@ -395,36 +395,40 @@ impl FixedAccount {
         let modify_choice = Select::new("What would you like to do:", OPTIONS.to_vec()).prompt().unwrap();
         match modify_choice { 
             "Update" => {
-                let account_transaction_opt = self.db.check_and_get_account_transaction_record_matching_from_ledger_id(self.uid, selected_record.id).unwrap();
-                if account_transaction_opt.is_some() { 
-                    let account_transaction = account_transaction_opt.unwrap();
-                    // remove ledger entry from transacting account
-                    if account_transaction.info.from_account == self.id { 
-                        // if we are the "from" account, then we want to remove the 'to' account
-                        self.db.remove_ledger_item(self.uid, account_transaction.info.to_account, account_transaction.info.to_ledger);
-                    } else {
-                        // if we are the "to" account, then we want to remove the 'from' acount
+                let account_transaction_opt: Option<crate::types::accounts::AccountTransactionRecord>;
+                if was_deposit { 
+                    account_transaction_opt = self.db.check_and_get_account_transaction_record_matching_to_ledger_id(self.uid, self.id, selected_record.id).unwrap();
+                    if account_transaction_opt.is_some() { 
+                        let account_transaction = account_transaction_opt.unwrap();
+                        self.db.remove_account_transaction(self.uid, account_transaction.id).unwrap();
                         self.db.remove_ledger_item(self.uid, account_transaction.info.from_account, account_transaction.info.from_ledger);
                     }
-                }
-                if was_deposit { 
                     self.deposit(Some(selected_record.clone()), true);
                 } else { 
+                    account_transaction_opt = self.db.check_and_get_account_transaction_record_matching_from_ledger_id(self.uid, self.id, selected_record.id).unwrap();
+                    if account_transaction_opt.is_some() { 
+                        let account_transaction = account_transaction_opt.unwrap();
+                        self.db.remove_ledger_item(self.uid, account_transaction.info.to_account, account_transaction.info.to_ledger);
+                    }                    
                     self.withdrawal(Some(selected_record.clone()), true);
                 }
             }
             "Remove" => { 
-                let account_transaction_opt = self.db.check_and_get_account_transaction_record_matching_from_ledger_id(self.uid, selected_record.id).unwrap();
-                if account_transaction_opt.is_some() { 
-                    let account_transaction = account_transaction_opt.unwrap();
-                     // remove ledger entry from transacting account
-                     if account_transaction.info.from_account == self.id { 
-                        // if we are the "from" account, then we want to remove the 'to' account
-                        self.db.remove_ledger_item(self.uid, account_transaction.info.to_account, account_transaction.info.to_ledger);
-                    } else {
-                        // if we are the "to" account, then we want to remove the 'from' acount
+                let account_transaction_opt: Option<crate::types::accounts::AccountTransactionRecord>;
+                if was_deposit { 
+                    account_transaction_opt = self.db.check_and_get_account_transaction_record_matching_to_ledger_id(self.uid, self.id, selected_record.id).unwrap();
+                    if account_transaction_opt.is_some() { 
+                        let account_transaction = account_transaction_opt.unwrap();
+                        self.db.remove_account_transaction(self.uid, account_transaction.id).unwrap();
                         self.db.remove_ledger_item(self.uid, account_transaction.info.from_account, account_transaction.info.from_ledger);
                     }
+                } else { 
+                    account_transaction_opt = self.db.check_and_get_account_transaction_record_matching_from_ledger_id(self.uid, self.id, selected_record.id).unwrap();
+                    if account_transaction_opt.is_some() { 
+                        let account_transaction = account_transaction_opt.unwrap();
+                        self.db.remove_account_transaction(self.uid, account_transaction.id).unwrap();
+                        self.db.remove_ledger_item(self.uid, account_transaction.info.to_account, account_transaction.info.to_ledger);
+                    }                    
                 }
                 self.db.remove_ledger_item(self.uid, self.id, selected_record.id.clone());
             }

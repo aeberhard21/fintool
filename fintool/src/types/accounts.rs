@@ -223,8 +223,8 @@ impl DbConn {
             PRIMARY KEY (uid, id),
             FOREIGN KEY (uid, from_account_id) REFERENCES accounts(uid, id),
             FOREIGN KEY (uid, to_account_id) REFERENCES accounts(uid, id),
-            FOREIGN KEY (uid, from_account_id, from_ledger_id) REFERENCES ledgers(uid, aid, id) ON DELETE CASCADE,
-            FOREIGN KEY (uid, to_account_id, to_ledger_id) REFERENCES ledgers(uid, aid, id) ON DELETE CASCADE,
+            FOREIGN KEY (uid, from_account_id, from_ledger_id) REFERENCES ledgers(uid, aid, id) ON DELETE CASCADE ON UPDATE CASCADE,
+            FOREIGN KEY (uid, to_account_id, to_ledger_id) REFERENCES ledgers(uid, aid, id) ON DELETE CASCADE ON UPDATE CASCADE,
             FOREIGN KEY (uid) REFERENCES users(id)
         )";
 
@@ -265,10 +265,42 @@ impl DbConn {
     pub fn check_and_get_account_transaction_record_matching_from_ledger_id(
         &mut self,
         uid : u32,
+        aid : u32,
         id: u32,
     ) -> rusqlite::Result<Option<AccountTransactionRecord>, rusqlite::Error> {
-        let p = rusqlite::params![id,  uid];
-        let sql = "SELECT id, from_account_id, to_account_id, from_ledger_id, to_ledger_id FROM account_transactions WHERE (from_ledger_id = (?1) or to_ledger_id = (?1)) and uid = (?2)";
+        let p = rusqlite::params![id, uid, aid];
+        let sql = "SELECT id, from_account_id, to_account_id, from_ledger_id, to_ledger_id FROM account_transactions WHERE from_ledger_id = (?1) and from_account_id = (?3) and uid = (?2)";
+        let mut stmt = self.conn.prepare(sql)?;
+        let exists = stmt.exists(p)?;
+        match exists {
+            true => {
+                stmt = self.conn.prepare(sql)?;
+
+                let record = stmt.query_row(p, |row| {
+                    Ok(AccountTransactionRecord {
+                        id: row.get(0)?,
+                        info: AccountTransaction {
+                            from_account: row.get(1)?,
+                            to_account: row.get(2)?,
+                            from_ledger: row.get(3)?,
+                            to_ledger: row.get(4)?,
+                        },
+                    })
+                });
+                Ok(Some(record.unwrap()))
+            }
+            false => Ok(None),
+        }
+    }
+
+    pub fn check_and_get_account_transaction_record_matching_to_ledger_id(
+        &mut self,
+        uid : u32,
+        aid : u32,
+        id: u32,
+    ) -> rusqlite::Result<Option<AccountTransactionRecord>, rusqlite::Error> {
+        let p = rusqlite::params![id, uid, aid];
+        let sql = "SELECT id, from_account_id, to_account_id, from_ledger_id, to_ledger_id FROM account_transactions WHERE to_ledger_id = (?1) and to_account_id = (?3) and uid = (?2)";
         let mut stmt = self.conn.prepare(sql)?;
         let exists = stmt.exists(p)?;
         match exists {
@@ -298,7 +330,7 @@ impl DbConn {
         id: u32,
     ) -> rusqlite::Result<u32, rusqlite::Error> {
         let p = rusqlite::params![id,uid];
-        let sql = "DELETE FROM account_transactions WHERE id = ?1 and uid = ?2 VALUES (?1, ?2)";
+        let sql = "DELETE FROM account_transactions WHERE id = ?1 and uid = ?2";
         let rs = self.conn.execute(sql, p);
         match rs {
             Ok(_usize) => {}
@@ -306,6 +338,26 @@ impl DbConn {
                 println!("Unable to remove account transaction: {}", error);
             }
         }
+
+        let sql = "UPDATE account_transactions SET id = id-1 WHERE id > ?1 and uid = ?2";
+        let rs = self.conn.execute(sql, p);
+        match rs {
+            Ok(_usize) => {}
+            Err(error) => {
+                println!("Unable to update 'id' within account transactions: {}", error);
+            }
+        }
+
+        let p = rusqlite::params![uid];
+        let sql = "UPDATE account_ids SET next_account_transaction_id = next_account_transaction_id-1 WHERE uid = ?1";
+        let rs = self.conn.execute(sql, p);
+        match rs {
+            Ok(_usize) => {}
+            Err(error) => {
+                println!("Unable to update 'next_account_transaction_id': {}", error);
+            }
+        }
+
         Ok(id)
     }
 

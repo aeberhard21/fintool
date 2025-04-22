@@ -137,6 +137,16 @@ impl DbConn {
                 println!("Unable to remove ledger item: {}", error);
             }
         }
+        
+        let p = rusqlite::params![uid, aid];
+        let sql = "UPDATE user_account_info SET lid = lid - 1 WHERE uid = ?1 and aid = ?2";
+        let rs = self.conn.execute(sql, p);
+        match rs {
+            Ok(_usize) => {}
+            Err(error) => {
+                println!("Unable to update 'lid' value in 'user_account_info': {}", error);
+            }
+        }
         Ok(id)
     }
 

@@ -72,7 +72,7 @@ impl DbConn {
             uid         INTEGER NOT NULL, 
             PRIMARY KEY (uid, aid, id),
             FOREIGN     KEY (uid,aid) REFERENCES accounts(uid,id),
-            FOREIGN     KEY (uid, aid, lid) REFERENCES ledgers(uid, aid, id) ON DELETE CASCADE,
+            FOREIGN     KEY (uid, aid, lid) REFERENCES ledgers(uid, aid, id) ON DELETE CASCADE ON UPDATE CASCADE,
             FOREIGN     KEY (uid) REFERENCES users(id)
         )";
         match self.conn.execute(sql, ()) {
@@ -97,7 +97,7 @@ impl DbConn {
             uid         INTEGER NOT NULL,
             PRIMARY KEY (uid, aid, id),
             FOREIGN     KEY (uid,aid) REFERENCES accounts(uid,id),
-            FOREIGN     KEY (uid, aid, lid) REFERENCES ledgers(uid, aid, id) ON DELETE CASCADE,
+            FOREIGN     KEY (uid, aid, lid) REFERENCES ledgers(uid, aid, id) ON DELETE CASCADE ON UPDATE CASCADE,
             FOREIGN     KEY (uid) REFERENCES users(id)
         )";
         match self.conn.execute(sql, ()) {
@@ -118,8 +118,8 @@ impl DbConn {
             uid         INTEGER NOT NULL,
             aid         INTEGER NOT NULL,
             PRIMARY KEY (uid, aid, id),
-            FOREIGN KEY (uid, aid, purchase_id) REFERENCES stock_purchases(uid, aid, id) ON DELETE CASCADE,
-            FOREIGN KEY (uid, aid, sale_id) REFERENCES stock_sales(uid, aid, id) ON DELETE CASCADE,
+            FOREIGN KEY (uid, aid, purchase_id) REFERENCES stock_purchases(uid, aid, id) ON DELETE CASCADE ON UPDATE CASCADE,
+            FOREIGN KEY (uid, aid, sale_id) REFERENCES stock_sales(uid, aid, id) ON DELETE CASCADE ON UPDATE CASCADE,
             FOREIGN     KEY (uid) REFERENCES users(id),
             FOREIGN     KEY (uid,aid) REFERENCES accounts(uid,id)
         )";
@@ -143,7 +143,7 @@ impl DbConn {
             lid         INTEGER NOT NULL,
             uid         INTEGER NOT NULL,
             PRIMARY KEY (uid, aid, id),
-            FOREIGN KEY (uid, aid, lid) REFERENCES ledgers(uid, aid, id) ON DELETE CASCADE,
+            FOREIGN KEY (uid, aid, lid) REFERENCES ledgers(uid, aid, id) ON DELETE CASCADE ON UPDATE CASCADE,
             FOREIGN KEY (uid) REFERENCES users(id),
             FOREIGN KEY (uid,aid) REFERENCES accounts(uid,id)
         )";
@@ -167,9 +167,9 @@ impl DbConn {
             uid INTEGER NOT NULL,
             aid INTEGER NOT NULL,
             PRIMARY KEY (uid, aid, id),
-            FOREIGN KEY (uid, aid, stock_purchase_id) REFERENCES stock_purchases(uid, aid, id) ON DELETE CASCADE
-            FOREIGN KEY (uid, aid, stock_split_id) REFERENCES stock_splits(uid, aid, id) ON DELETE CASCADE
-            FOREIGN KEY (uid) REFERENCES users(id)
+            FOREIGN KEY (uid, aid, stock_purchase_id) REFERENCES stock_purchases(uid, aid, id) ON DELETE CASCADE ON UPDATE CASCADE,
+            FOREIGN KEY (uid, aid, stock_split_id) REFERENCES stock_splits(uid, aid, id) ON DELETE CASCADE ON UPDATE CASCADE,
+            FOREIGN KEY (uid) REFERENCES users(id),
             FOREIGN KEY (uid,aid) REFERENCES accounts(uid,id)
         )";
         match self.conn.execute(sql, ())  {
@@ -444,9 +444,30 @@ impl DbConn {
                 return Ok(None);
             }
         }
+
         let rm_sql = "DELETE FROM stock_sales WHERE lid = (?1) and uid = (?2) and aid = (?3)";
         stmt = self.conn.prepare(rm_sql).unwrap();
         stmt.execute(p)?;
+
+        let sql = "UPDATE stock_sales SET id = id-1 WHERE id > ?1 and uid = ?2 and aid = ?3";
+        let rs = self.conn.execute(sql, p);
+        match rs {
+            Ok(_usize) => {}
+            Err(error) => {
+                println!("Unable to stock sale ids: {}", error);
+            }
+        }
+
+        let p = rusqlite::params![uid, aid];
+        let sql = "UPDATE user_account_info SET ssid = ssid - 1 WHERE uid = ?1 and aid = ?2";
+        let rs = self.conn.execute(sql, p);
+        match rs {
+            Ok(_usize) => {}
+            Err(error) => {
+                println!("Unable to update 'ssid' value in 'user_account_info': {}", error);
+            }
+        }
+
         return Ok(Some(id));
     }
 
@@ -473,6 +494,26 @@ impl DbConn {
         let rm_sql = "DELETE FROM stock_purchases WHERE lid = (?1) and uid = (?2) and aid = (?3)";
         stmt = self.conn.prepare(rm_sql).unwrap();
         stmt.execute(p)?;
+
+        let sql = "UPDATE stock_purchases SET id = id-1 WHERE id > ?1 and uid = ?2 and aid = ?3";
+        let rs = self.conn.execute(sql, p);
+        match rs {
+            Ok(_usize) => {}
+            Err(error) => {
+                println!("Unable to stock purchase ids: {}", error);
+            }
+        }
+
+        let p = rusqlite::params![uid, aid];
+        let sql = "UPDATE user_account_info SET spid = spid - 1 WHERE uid = ?1 and aid = ?2";
+        let rs = self.conn.execute(sql, p);
+        match rs {
+            Ok(_usize) => {}
+            Err(error) => {
+                println!("Unable to update 'spid' value in 'user_account_info': {}", error);
+            }
+        }
+
         return Ok(Some(id));
     }
 
@@ -499,6 +540,26 @@ impl DbConn {
         let rm_sql = "DELETE FROM stock_splits WHERE lid = (?1) and uid = (?2) and aid = (?3)";
         stmt = self.conn.prepare(rm_sql).unwrap();
         stmt.execute(p)?;
+
+        let sql = "UPDATE stock_splits SET id = id-1 WHERE id > ?1 and uid = ?2 and aid = ?3";
+        let rs = self.conn.execute(sql, p);
+        match rs {
+            Ok(_usize) => {}
+            Err(error) => {
+                println!("Unable to stock split ids: {}", error);
+            }
+        }
+
+        let p = rusqlite::params![uid, aid];
+        let sql = "UPDATE user_account_info SET splid = splid - 1 WHERE uid = ?1 and aid = ?2";
+        let rs = self.conn.execute(sql, p);
+        match rs {
+            Ok(_usize) => {}
+            Err(error) => {
+                println!("Unable to update 'splid' value in 'user_account_info': {}", error);
+            }
+        }
+
         return Ok(Some(id));
     }
 
@@ -525,6 +586,26 @@ impl DbConn {
         let rm_sql = "DELETE FROM stock_sale_allocation WHERE id = (?1) and uid = (?2) and aid = (?3)";
         stmt = self.conn.prepare(rm_sql).unwrap();
         stmt.execute(p)?;
+
+        let sql = "UPDATE stock_sale_allocation SET id = id-1 WHERE id > ?1 and uid = ?2 and aid = ?3";
+        let rs = self.conn.execute(sql, p);
+        match rs {
+            Ok(_usize) => {}
+            Err(error) => {
+                println!("Unable to stock split ids: {}", error);
+            }
+        }
+
+        let p = rusqlite::params![uid, aid];
+        let sql = "UPDATE user_account_info SET said = said - 1 WHERE uid = ?1 and aid = ?2";
+        let rs = self.conn.execute(sql, p);
+        match rs {
+            Ok(_usize) => {}
+            Err(error) => {
+                println!("Unable to update 'said' value in 'user_account_info': {}", error);
+            }
+        }
+
         return Ok(Some(id));
     }
 
@@ -551,6 +632,26 @@ impl DbConn {
         let rm_sql = "DELETE FROM stock_split_allocations WHERE id = (?1) and uid = (?2) and aid = (?3)";
         stmt = self.conn.prepare(rm_sql).unwrap();
         stmt.execute(p)?;
+
+        let sql = "UPDATE stock_split_allocations SET id = id-1 WHERE id > ?1 and uid = ?2 and aid = ?3";
+        let rs = self.conn.execute(sql, p);
+        match rs {
+            Ok(_usize) => {}
+            Err(error) => {
+                println!("Unable to stock sale ids: {}", error);
+            }
+        }
+
+        let p = rusqlite::params![uid, aid];
+        let sql = "UPDATE user_account_info SET stock_split_allocation_id = stock_split_allocation_id - 1 WHERE uid = ?1 and aid = ?2";
+        let rs = self.conn.execute(sql, p);
+        match rs {
+            Ok(_usize) => {}
+            Err(error) => {
+                println!("Unable to update 'ssid' value in 'stock_split_allocation_id': {}", error);
+            }
+        }
+
         return Ok(Some(id));
     }
 
