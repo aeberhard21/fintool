@@ -64,7 +64,6 @@ impl BankAccount {
             db: db.clone(),
             fixed: FixedAccount::new(uid, id, db.clone()),
         };
-        // acct.db.add_participant(id, ParticipantType::Payee, "Fixed".to_string());
         acct
     }
 }
