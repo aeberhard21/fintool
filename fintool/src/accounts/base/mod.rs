@@ -5,7 +5,7 @@ pub mod fixed_account;
 pub mod variable_account;
 
 pub trait AccountCreation {
-    fn create() -> AccountInfo;
+    fn create(name: String) -> AccountInfo;
 }
 
 pub trait AccountOperations {

@@ -269,22 +269,48 @@ pub fn create_new_account(
     .prompt()
     .unwrap()
     .to_string();
+
     let id;
     let new_account;
     let acct: Box<dyn AccountOperations>;
+
+    if selected_account_type == "None" {
+        return None;
+    }
+
+    let mut name: String;
+    loop { 
+        name = Text::new("Enter account name:")
+        .prompt()
+        .unwrap()
+        .to_string();
+
+        if name.len() == 0 { 
+            println!("Invalid account name!");
+        } else if db.account_with_name_exists(uid, name.clone()).unwrap() { 
+            println!("Account with name {} already exists!", name);
+        } else { 
+            break;
+        }
+
+        let try_again = Confirm::new("Try again?")
+            .prompt()
+            .unwrap();
+        if !try_again {
+            return None; 
+        }
+    }
+
     match selected_account_type.as_str() {
         "Bank Account" => {
-            new_account = BankAccount::create();
+            new_account = BankAccount::create(name);
             id = db.add_account(uid, &new_account).unwrap();
             acct = Box::new(BankAccount::new(uid, id, db));
         }
         "Investment Account" => {
-            new_account = InvestmentAccountManager::create();
+            new_account = InvestmentAccountManager::create(name);
             id = db.add_account(uid, &new_account).unwrap();
             acct = Box::new(InvestmentAccountManager::new(uid, id, db));
-        }
-        "None" => {
-            return None;
         }
         _ => {
             panic!("Unrecognized input!");

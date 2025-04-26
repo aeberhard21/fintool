@@ -176,6 +176,19 @@ impl DbConn {
         Ok(())
     }
 
+    pub fn account_with_name_exists(&mut self, uid : u32, name : String) -> Result<bool, rusqlite::Error> { 
+        let p = rusqlite::params![uid, name];
+        let sql = "
+            SELECT * FROM
+                accounts
+            WHERE  
+                uid = (?1) AND
+                name = (?2)
+        ";
+        let exists = self.conn.prepare(sql)?.exists(p);
+        return exists;
+    }
+
     pub fn add_account(&mut self, uid: u32, info: &AccountInfo) -> Result<u32> {
         let aid = self.get_next_account_id(uid).unwrap();
         let p = rusqlite::params![
@@ -188,14 +201,6 @@ impl DbConn {
             info.has_budget,
             uid
         ];
-        let sql: &str = "SELECT * FROM accounts WHERE uid = (?1) and name = (?2)";
-        let exists = self
-            .conn
-            .prepare(sql)?
-            .exists(rusqlite::params![uid, info.name])?;
-        if exists {
-            panic!("Account with name {} already exists for user!", info.name);
-        }
         let sql: &str = "INSERT INTO accounts (id, type, name, stocks, bank, ledger, budget, uid) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)";
         let rs = self.conn.execute(sql, p);
         match rs {

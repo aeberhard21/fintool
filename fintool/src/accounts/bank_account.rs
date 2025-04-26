@@ -69,19 +69,8 @@ impl BankAccount {
 }
 
 impl AccountCreation for BankAccount {
-    fn create() -> AccountInfo {
-        let mut name: String = String::new();
-        loop {
-            name = Text::new("Enter account name:")
-                .prompt()
-                .unwrap()
-                .to_string();
-            if name.len() == 0 {
-                println!("Invalid account name!")
-            } else {
-                break;
-            }
-        }
+    fn create(name: String) -> AccountInfo {
+
         let has_bank = true;
         let has_stocks = false;
         let has_ledger = false;
