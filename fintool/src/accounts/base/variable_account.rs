@@ -52,14 +52,16 @@ impl VariableAccount {
                 .with_default(initial_ticker.as_str())
                 .prompt()
                 .unwrap()
-                .to_string()
                 .to_ascii_uppercase()
+                .trim()
+                .to_string()
         } else { 
             Text::new(ticker_msg)
                 .prompt()
                 .unwrap()
-                .to_string()
                 .to_ascii_uppercase()
+                .trim()
+                .to_string()
         };
 
         let ticker_valid = self.confirm_valid_ticker(ticker.clone());
@@ -126,7 +128,7 @@ impl VariableAccount {
             participant: pid,
             category_id: cid,
             description: format!(
-                "[Internal] Purchase {} shares of {} at ${} on {}",
+                "[Internal] Purchase {} shares of {} at ${} on {}.",
                 shares,
                 ticker,
                 costbasis,
@@ -219,7 +221,7 @@ impl VariableAccount {
             .unwrap()
         };
 
-        let shares_msg = "Enter quantity sale:";
+        let shares_msg = "Enter quantity sold:";
         let number_of_shares_sale: f32 = if defaults_to_use { 
             CustomType::<f32>::new(shares_msg)
             .with_placeholder("00000.00")
@@ -248,7 +250,7 @@ impl VariableAccount {
             participant: pid,
             category_id: stock_cid,
             description: format!(
-                "[Internal]: sale {} shares of {} at ${} on {}.",
+                "[Internal]: Sell {} shares of {} at ${} on {}.",
                 number_of_shares_sale,
                 ticker,
                 sale_price,
@@ -412,7 +414,7 @@ impl VariableAccount {
             split_record.txn_opt = Some(record.info.clone());
         }
 
-        const OPTIONS: [&'static str; 2] = ["Update", "Remove"];
+        const OPTIONS: [&'static str; 3] = ["Update", "Remove", "None"];
         let modify_choice = Select::new("What would you like to do:", OPTIONS.to_vec()).prompt().unwrap();
         match modify_choice { 
             "Update" => {
@@ -432,18 +434,20 @@ impl VariableAccount {
             "Remove" => {
                 if is_stock_purchase { 
                     // TODO: check if part of any splits or sales before removing
-                    self.db.remove_stock_purchase(self.uid, self.id, stock_record.info.ledger_id);
+                    // self.db.remove_stock_purchase(self.uid, self.id, stock_record.info.ledger_id);
                     self.db.remove_ledger_item(self.uid, self.id, stock_record.info.ledger_id);
                 } else if is_stock_sale { 
-                    println!("{}", stock_record.clone().id);
                     self.deallocate_sale_stock(stock_record.clone().id);
-                    self.db.remove_stock_sale(self.uid, self.id, stock_record.info.ledger_id);
+                    // self.db.remove_stock_sale(self.uid, self.id, stock_record.info.ledger_id);
                     self.db.remove_ledger_item(self.uid, self.id, stock_record.info.ledger_id);
                 } else {
                     self.deallocate_stock_split(split_record.clone());
-                    self.db.remove_stock_split(self.uid, self.id, split_record.info.ledger_id);
+                    // self.db.remove_stock_split(self.uid, self.id, split_record.info.ledger_id);
                     self.db.remove_ledger_item(self.uid, self.id, split_record.info.ledger_id);
                 }
+                return record;
+            }
+            "None" => { 
                 return record;
             }
             _ => { 
@@ -487,19 +491,19 @@ impl VariableAccount {
             }
 
             if stock.info.remaining > num_shares_remaining_to_allocate {
-                stock.info.remaining -= num_shares_remaining_to_allocate;
+                stock.info.remaining = stock.info.remaining - num_shares_remaining_to_allocate;
                 num_shares_allocated = num_shares_remaining_to_allocate;
             } else {
-                stock.info.remaining = 0.0;
                 num_shares_allocated = stock.info.remaining;
+                stock.info.remaining = 0.0;
             }
             self.db
-                .update_stock_remaining(purchase_id.clone(), self.id, stock.id, stock.info.remaining)
+                .update_stock_remaining(self.uid, self.id, stock.id, stock.info.remaining)
                 .unwrap();
             self.db
                 .add_stock_sale_allocation(self.uid, self.id, purchase_id, record.id, num_shares_allocated)
                 .unwrap();
-            num_shares_remaining_to_allocate -= num_shares_allocated;
+            num_shares_remaining_to_allocate = num_shares_remaining_to_allocate - num_shares_allocated;
 
             // if there are no shares to allocate, we are done here and all sales
             // are accounted for
@@ -527,7 +531,7 @@ impl VariableAccount {
         let ticker = self.db.get_participant(self.uid, self.id, record.txn_opt.expect("Corresponding ledger transaction not provided!").participant).unwrap();
         let stock_records = self.db.get_stocks(self.uid,self.id, ticker).unwrap();
         for stock in stock_records {
-            self.db.update_stock_remaining(stock.id, self.id, stock.id, stock.info.remaining * record.info.split)
+            self.db.update_stock_remaining(self.uid, self.id, stock.id, stock.info.remaining * record.info.split)
                 .unwrap();
             self.db.update_cost_basis(self.uid, self.id, stock.id, stock.info.costbasis / record.info.split)
                 .unwrap();
@@ -543,7 +547,7 @@ impl VariableAccount {
         for alloc_record in stock_split_alloc_records {
             // add shares back to ledger
             let stock_purchase = self.db.check_and_get_stock_purchase_record_matching_from_purchase_id(self.uid, self.id, alloc_record.info.stock_purchase_id).unwrap().expect("Stock record not returned");
-            let updated_shares = stock_purchase.info.shares / record.info.split;
+            let updated_shares = stock_purchase.info.remaining / record.info.split;
             let _ = self.db.update_stock_remaining(stock_purchase.id, self.id, alloc_record.info.stock_purchase_id, updated_shares);
             let updated_costbasis = stock_purchase.info.costbasis * record.info.split;
             let _ = self.db.update_cost_basis(self.uid, self.id, alloc_record.info.stock_purchase_id, updated_costbasis);

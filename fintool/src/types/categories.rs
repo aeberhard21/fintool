@@ -182,7 +182,7 @@ impl Autocomplete for CategoryAutoCompleter {
             .unwrap()
             .into_iter()
             .map(|category| category.category.name)
-            .filter(|cname| cname.starts_with(input))
+            .filter(|cname| cname.starts_with(input.to_ascii_uppercase().as_str()))
             .collect();
         suggestions.dedup();
         Ok(suggestions)
@@ -196,7 +196,7 @@ impl Autocomplete for CategoryAutoCompleter {
         Ok(match highlighted_suggestion {
             Some(suggestion) => Replacement::Some(suggestion),
             None => {
-                let suggestions = self.get_suggestions(input).unwrap();
+                let suggestions = self.get_suggestions(input.to_ascii_uppercase().as_str()).unwrap();
                 if suggestions.len() == 0 {
                     autocompletion::Replacement::None
                 } else {

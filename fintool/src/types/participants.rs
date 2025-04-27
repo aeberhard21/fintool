@@ -241,17 +241,17 @@ impl Autocomplete for ParticipantAutoCompleter {
                 ParticipantType::Payee => {
                     let mut x: Vec<String> = self
                         .db
-                        .get_participants(self.uid, self.aid, TransferType::WithdrawalToExternalAccount)
+                        .get_participants(self.uid, self.aid, TransferType::WithdrawalToExternalAccount, false)
                         .unwrap()
                         .into_iter()
-                        .filter(|name| name.starts_with(input))
+                        .filter(|name| name.starts_with(input.to_ascii_uppercase().as_str()))
                         .collect();
                     let mut y: Vec<String> = self
                         .db
-                        .get_participants(self.uid, self.aid, TransferType::WithdrawalToInternalAccount)
+                        .get_participants(self.uid, self.aid, TransferType::WithdrawalToInternalAccount, false)
                         .unwrap()
                         .into_iter()
-                        .filter(|name| name.starts_with(input))
+                        .filter(|name| name.starts_with(input.to_ascii_uppercase().as_str()))
                         .collect();
                     x.dedup();
                     y.dedup();
@@ -260,17 +260,17 @@ impl Autocomplete for ParticipantAutoCompleter {
                 ParticipantType::Payer => {
                     let mut x: Vec<String> = self
                         .db
-                        .get_participants(self.uid, self.aid, TransferType::DepositFromExternalAccount)
+                        .get_participants(self.uid, self.aid, TransferType::DepositFromExternalAccount, false)
                         .unwrap()
                         .into_iter()
-                        .filter(|name| name.starts_with(input))
+                        .filter(|name| name.starts_with(input.to_ascii_uppercase().as_str()))
                         .collect();
                     let mut y: Vec<String> = self
                         .db
-                        .get_participants(self.uid, self.aid, TransferType::DepositFromExternalAccount)
+                        .get_participants(self.uid, self.aid, TransferType::DepositFromInternalAccount, false)
                         .unwrap()
                         .into_iter()
-                        .filter(|name| name.starts_with(input))
+                        .filter(|name| name.starts_with(input.to_ascii_uppercase().as_str()))
                         .collect();
                     x.dedup();
                     y.dedup();
@@ -279,31 +279,31 @@ impl Autocomplete for ParticipantAutoCompleter {
                 ParticipantType::Both => {
                     let mut w: Vec<String> = self
                         .db
-                        .get_participants(self.uid, self.aid, TransferType::WithdrawalToExternalAccount)
+                        .get_participants(self.uid, self.aid, TransferType::WithdrawalToExternalAccount, false)
                         .unwrap()
                         .into_iter()
-                        .filter(|name| name.starts_with(input))
+                        .filter(|name| name.starts_with(input.to_ascii_uppercase().as_str()))
                         .collect();
                     let mut x: Vec<String> = self
                         .db
-                        .get_participants(self.uid, self.aid, TransferType::WithdrawalToInternalAccount)
+                        .get_participants(self.uid, self.aid, TransferType::WithdrawalToInternalAccount, false)
                         .unwrap()
                         .into_iter()
-                        .filter(|name| name.starts_with(input))
+                        .filter(|name| name.starts_with(input.to_ascii_uppercase().as_str()))
                         .collect();
                     let mut y: Vec<String> = self
                         .db
-                        .get_participants(self.uid, self.aid, TransferType::DepositFromExternalAccount)
+                        .get_participants(self.uid, self.aid, TransferType::DepositFromInternalAccount, false)
                         .unwrap()
                         .into_iter()
-                        .filter(|name| name.starts_with(input))
+                        .filter(|name| name.starts_with(input.to_ascii_uppercase().as_str()))
                         .collect();
                     let mut z: Vec<String> = self
                         .db
-                        .get_participants(self.uid, self.aid, TransferType::DepositFromExternalAccount)
+                        .get_participants(self.uid, self.aid, TransferType::DepositFromExternalAccount, false)
                         .unwrap()
                         .into_iter()
-                        .filter(|name| name.starts_with(input))
+                        .filter(|name| name.starts_with(input.to_ascii_uppercase().as_str()))
                         .collect();
                     w.dedup();
                     x.dedup();
@@ -318,7 +318,8 @@ impl Autocomplete for ParticipantAutoCompleter {
         } else { 
             let current_account_name = self.db.get_account_name(self.uid, self.aid).unwrap();
             let mut x : Vec<String> = self.db.get_user_accounts(self.uid).unwrap().iter().map(|acct| acct.info.name.clone()).filter(|x| *x!=current_account_name).collect();
-            x.push("New Account".to_string());
+            x.push("New Account".to_ascii_uppercase().to_string());
+            x.push("None".to_ascii_uppercase().to_string());
             suggestions = x;
         }
 
@@ -333,7 +334,7 @@ impl Autocomplete for ParticipantAutoCompleter {
         Ok(match highlighted_suggestion {
             Some(suggestion) => Replacement::Some(suggestion),
             None => {
-                let suggestions = self.get_suggestions(input).unwrap();
+                let suggestions = self.get_suggestions(input.to_ascii_uppercase().as_str()).unwrap();
                 if suggestions.len() == 0 {
                     autocompletion::Replacement::None
                 } else {

@@ -391,22 +391,24 @@ impl AccountOperations for InvestmentAccountManager {
         let transacting_account_name : String;
         let (new_ttype, description) = match entry.info.transfer_type {
             TransferType::DepositFromExternalAccount => {
+                // if the transacting account received a deposit, then self must be the "from" account
                 from_account = self.id;
                 to_account = transacting_account;
                 cid =self.db.check_and_add_category(self.uid,self.id, "Withdrawal".to_ascii_uppercase());
                 transacting_account_name = self.db.get_account_name(self.uid, transacting_account).unwrap();
-                pid =self.db.check_and_add_category(self.uid, self.id, transacting_account_name.clone());
+                pid =self.db.check_and_add_participant(self.uid, self.id, transacting_account_name.clone(), ParticipantType::Payee, true);
                 (
                     TransferType::WithdrawalToExternalAccount,
                     format!("[Link]: Withdrawal of ${} to account {} on {}.", entry.info.amount, transacting_account_name, entry.info.date)
                 )
             }
             TransferType::WithdrawalToExternalAccount => {
+                // if the transacting account had an amount withdrawn, then self must be the "to" account
                 from_account = transacting_account;
                 to_account = self.id;
                 cid =self.db.check_and_add_category(self.uid,self.id, "Deposit".to_ascii_uppercase());
                 transacting_account_name = self.db.get_account_name(self.uid, transacting_account).unwrap();
-                pid =self.db.check_and_add_category(self.uid, self.id, transacting_account_name.clone());
+                pid =self.db.check_and_add_participant(self.uid, self.id, transacting_account_name.clone(), ParticipantType::Payer, true);
                 (
                     TransferType::DepositFromExternalAccount,
                     format!("[Link]: Deposit of ${} from account {} on {}.", entry.info.amount, transacting_account_name, entry.info.date)
@@ -420,18 +422,30 @@ impl AccountOperations for InvestmentAccountManager {
         let linked_entry = LedgerInfo { 
             date : entry.info.date,
             amount : entry.info.amount,
-            transfer_type : new_ttype, 
+            transfer_type : new_ttype.clone(), 
             participant : pid, 
             category_id: cid, 
             description : description,
             ancillary_f32data : 0.0
         };
 
+        let (from_ledger_id, to_ledger_id) = match new_ttype { 
+            TransferType::WithdrawalToExternalAccount => { (
+                self.db.add_ledger_entry(self.uid, self.id, linked_entry).unwrap(), 
+                entry.id
+            )}
+            TransferType::DepositFromExternalAccount => {(
+                entry.id,
+                self.db.add_ledger_entry(self.uid, self.id, linked_entry).unwrap(), 
+            )}
+            _ => { panic!("Unrecognized input!")}
+        };
+
         let transaction_record = AccountTransaction {
             from_account: from_account,
             to_account: to_account,
-            from_ledger: entry.id,
-            to_ledger: self.db.add_ledger_entry(self.uid, self.id, linked_entry).unwrap(),
+            from_ledger: from_ledger_id,
+            to_ledger: to_ledger_id,
         };
 
         return Some(self.db.add_account_transaction(self.uid, transaction_record).unwrap());

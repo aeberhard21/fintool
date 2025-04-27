@@ -620,7 +620,7 @@ impl DbConn {
         let exists = stmt.exists(p)?;
         match exists {
             true => {
-                let id = stmt.query_row((), |row| row.get::<_, u32>(0))?;
+                let id = stmt.query_row(p, |row| row.get::<_, u32>(0))?;
                 let sql = "UPDATE user_account_info SET spid = spid + 1 WHERE uid = (?1) and aid = (?2)";
                 self.conn.execute(sql, p)?;
                 Ok(id)
@@ -740,14 +740,14 @@ impl DbConn {
     }
 
     pub fn get_next_stock_split_id(&mut self, uid : u32, aid : u32) -> rusqlite::Result<u32> {
-        let sql = "SELECT splid FROM user_account_info";
+        let sql = "SELECT splid FROM user_account_info WHERE uid = (?1) and aid = (?2)";
         let p = rusqlite::params![uid, aid];
         let mut stmt = self.conn.prepare(sql)?;
         let exists = stmt.exists(p)?;
         match exists {
             true => {
                 let id = stmt.query_row(p, |row| row.get::<_, u32>(0))?;
-                let sql = "UPDATE user_account_info SET splid = splid + 1";
+                let sql = "UPDATE user_account_info SET splid = splid + 1 WHERE uid = (?1) and aid = (?2)";
                 self.conn.execute(sql, p)?;
                 Ok(id)
             }
@@ -759,14 +759,14 @@ impl DbConn {
 
 
    pub fn get_next_stock_split_allocation_id(&mut self, uid : u32, aid :u32) -> rusqlite::Result<u32> {
-        let sql = "SELECT stock_split_allocation_id FROM user_account_info";
+        let sql = "SELECT stock_split_allocation_id FROM user_account_info WHERE uid = (?1) and aid = (?2)";
         let p = rusqlite::params![uid, aid];
         let mut stmt = self.conn.prepare(sql)?;
         let exists = stmt.exists(p)?;
         match exists {
             true => {
                 let id = stmt.query_row(p, |row| row.get::<_, u32>(0))?;
-                let sql = "UPDATE user_account_info SET stock_split_allocation_id = stock_split_allocation_id + 1";
+                let sql = "UPDATE user_account_info SET stock_split_allocation_id = stock_split_allocation_id + 1 WHERE uid = (?1) and aid = (?2)";
                 self.conn.execute(sql, p)?;
                 Ok(id)
             }

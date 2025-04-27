@@ -275,10 +275,15 @@ impl DbConn {
         uid: u32, 
         aid: u32,
         transfer_type: TransferType,
+        include_accounts : bool
     ) -> Result<Vec<String>, rusqlite::Error> {
         let sql;
-        let p = rusqlite::params![aid, transfer_type as u32, uid];
-        sql = "SELECT p.name FROM people p JOIN ledgers l ON p.id = l.cid WHERE l.aid = (?1) and l.transfer_type = (?2) and l.uid = (?3)";
+        let p = rusqlite::params![aid, transfer_type as u32, uid, include_accounts];
+        sql = if include_accounts {
+            "SELECT p.name FROM people p JOIN ledgers l ON p.id = l.cid WHERE l.aid = (?1) and l.transfer_type = (?2) and l.uid = (?3) and l.uid = (?4)"
+        } else { 
+            "SELECT p.name FROM people p JOIN ledgers l ON p.id = l.cid WHERE l.aid = (?1) and l.transfer_type = (?2) and l.uid = (?3) and l.uid = (?4) and p.is_account = false"
+        };
 
         let mut stmt = self.conn.prepare(sql)?;
         let exists = stmt.exists(p)?;

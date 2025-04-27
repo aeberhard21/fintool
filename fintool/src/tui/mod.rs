@@ -92,7 +92,7 @@ fn access_account(uid: u32, db: &mut DbConn) {
                 accounts_is_empty = false;
                 // acct.record();
                 const ACCT_ACTIONS: [&'static str; 3] = ["Record", "Import", "None"];
-                let selected_menu_item = Select::new("Select action: ", ACCT_ACTIONS.to_vec())
+                let selected_menu_item = Select::new("Select action:", ACCT_ACTIONS.to_vec())
                     .prompt()
                     .unwrap()
                     .to_string();
@@ -150,7 +150,7 @@ fn access_account(uid: u32, db: &mut DbConn) {
         }
 
         loop {
-            let selected_menu_item = Select::new("Select action: ", ACCT_ACTIONS.to_vec())
+            let selected_menu_item = Select::new("Select action:", ACCT_ACTIONS.to_vec())
                 .prompt()
                 .unwrap()
                 .to_string();
@@ -179,6 +179,8 @@ fn access_account(uid: u32, db: &mut DbConn) {
                 break;
             }
         }
+
+        accounts = db.get_user_accounts(uid).unwrap();
     }
 }
 
@@ -283,6 +285,7 @@ pub fn create_new_account(
         name = Text::new("Enter account name:")
         .prompt()
         .unwrap()
+        .trim()
         .to_string();
 
         if name.len() == 0 { 

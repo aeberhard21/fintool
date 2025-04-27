@@ -246,7 +246,7 @@ impl DbConn {
         aid : u32,
         ledger_id: u32,
     ) -> rusqlite::Result<Option<StockRecord>, rusqlite::Error> {
-        let p = rusqlite::params![ledger_id, uid];
+        let p = rusqlite::params![ledger_id, uid, aid];
         let sql = "SELECT id, shares, costbasis, remaining, lid FROM stock_purchases WHERE id = (?1) and uid = (?2) and aid = (?3)";
         let mut stmt = self.conn.prepare(sql)?;
         let exists = stmt.exists(p)?;
@@ -278,7 +278,7 @@ impl DbConn {
         aid : u32,
         ledger_id: u32,
     ) -> rusqlite::Result<Option<StockRecord>, rusqlite::Error> {
-        let p = rusqlite::params![ledger_id, uid];
+        let p = rusqlite::params![ledger_id, uid, aid];
         let sql = "SELECT id, shares, price, lid FROM stock_sales WHERE lid = (?1) and uid = (?2) and aid = (?3)";
         let mut stmt = self.conn.prepare(sql)?;
         let exists = stmt.exists(p)?;
@@ -885,7 +885,7 @@ impl DbConn {
                 ledgers.pid = people.id
             WHERE 
                 ledgers.aid = (?1) and 
-                ledgers.uid = (?2) and
+                ledgers.uid = (?3) and
                 people.name LIKE (?2)
             ";
         let mut stmt = self.conn.prepare(sql)?;
@@ -1055,7 +1055,7 @@ impl DbConn {
                 ledgers.pid = people.id
             WHERE 
                 ledgers.aid = (?1) and 
-                ledgers.uid = (?2) and 
+                ledgers.uid = (?3) and 
                 people.name LIKE (?2)
             ORDER BY
                 ledgers.date ASC

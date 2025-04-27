@@ -246,7 +246,7 @@ impl AccountOperations for BankAccount {
                 to_account = transacting_account;
                 cid =self.db.check_and_add_category(self.uid,self.id, "Withdrawal".to_ascii_uppercase());
                 transacting_account_name = self.db.get_account_name(self.uid, transacting_account).unwrap();
-                pid =self.db.check_and_add_participant(self.uid, self.id, transacting_account_name.clone(), ParticipantType::Payee, false);
+                pid =self.db.check_and_add_participant(self.uid, self.id, transacting_account_name.clone(), ParticipantType::Payee, true);
                 (
                     TransferType::WithdrawalToExternalAccount,
                     format!("[Link]: Withdrawal of ${} to account {} on {}.", entry.info.amount, transacting_account_name, entry.info.date)
@@ -258,7 +258,7 @@ impl AccountOperations for BankAccount {
                 to_account = self.id;
                 cid =self.db.check_and_add_category(self.uid,self.id, "Deposit".to_ascii_uppercase());
                 transacting_account_name = self.db.get_account_name(self.uid, transacting_account).unwrap();
-                pid =self.db.check_and_add_participant(self.uid, self.id, transacting_account_name.clone(), ParticipantType::Payer, false);
+                pid =self.db.check_and_add_participant(self.uid, self.id, transacting_account_name.clone(), ParticipantType::Payer, true);
                 (
                     TransferType::DepositFromExternalAccount,
                     format!("[Link]: Deposit of ${} from account {} on {}.", entry.info.amount, transacting_account_name, entry.info.date)

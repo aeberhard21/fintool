@@ -261,6 +261,8 @@ impl FixedAccount {
             .prompt()
             .unwrap()
             .to_ascii_uppercase()
+            .trim()
+            .to_string()
         } else { 
             Text::new(category_prompt)
             .with_autocomplete(CategoryAutoCompleter {
@@ -272,6 +274,8 @@ impl FixedAccount {
             .prompt()
             .unwrap()
             .to_ascii_uppercase()
+            .trim()
+            .to_string()
         };
 
         cid = self.db.check_and_add_category(self.uid, self.id, selected_category);
@@ -283,10 +287,14 @@ impl FixedAccount {
             .prompt()
             .unwrap()
             .to_string()
+            .trim()
+            .to_string()
         } else { 
             Text::new(description_prompt)
             .prompt()
             .unwrap()
+            .to_string()
+            .trim()
             .to_string()
         };
         
@@ -312,6 +320,8 @@ impl FixedAccount {
                 .with_validator(participant_validator)
                 .prompt()
                 .unwrap()
+                .trim()
+                .to_string()
             } else {
                 Text::new("Enter payer:")
                 .with_autocomplete(ParticipantAutoCompleter {
@@ -324,6 +334,8 @@ impl FixedAccount {
                 .with_validator(participant_validator)
                 .prompt()
                 .unwrap()
+                .trim()
+                .to_string()
             };
             pid = self.db
                 .check_and_add_participant(self.uid, self.id, selected_payer, ParticipantType::Payer, false);
@@ -509,7 +521,7 @@ impl FixedAccount {
         }
 
         let select_account_prompt = "Select account:";
-        let selected_account = if default_to_use {
+        let mut selected_account = if default_to_use {
             Text::new(select_account_prompt)
             .with_autocomplete(ParticipantAutoCompleter {
                 uid: self.uid,
@@ -539,12 +551,14 @@ impl FixedAccount {
         }
 
         let acct: Box<dyn AccountOperations>;
-        if selected_account.clone() == "New Account" {
+        let record: AccountRecord;
+        if selected_account.clone() == "New Account".to_ascii_uppercase().to_string() {
             let user_input = create_new_account(self.uid, &mut self.db);
             if user_input.is_none() { 
                 return None;
             }
-            (acct, _) = user_input.unwrap();
+            (acct, record) = user_input.unwrap();
+            selected_account = record.info.name;
         } else {
             let acctx = account_map
                 .get(&selected_account)
