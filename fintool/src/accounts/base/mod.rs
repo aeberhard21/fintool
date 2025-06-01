@@ -17,3 +17,9 @@ pub trait AccountOperations {
     fn report(&mut self);
     fn link(&mut self, transacting_account: u32, ledger: LedgerRecord) -> Option<u32>;
 }
+
+pub trait AccountData {
+    fn get_id(&mut self) -> u32;
+}
+
+pub trait Account: AccountData + AccountOperations {}

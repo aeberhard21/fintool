@@ -16,7 +16,9 @@ impl DbConn {
             open_date   STRINT NOT NULL, 
             length      INTEGER NOT NULL,
             aid         INTEGER NOT NULL, 
-            FOREIGN     KEY (aid) REFERENCES accounts(id)
+            uid         INTEGER NOT NULL,
+            PRIMARY KEY (uid, aid)
+            FOREIGN     KEY (uid, aid) REFERENCES accounts(uid, id) ON DELETE CASCADE ON UPDATE CASCADE
         )";
         match self.conn.execute(sql, ()) {
             Ok(_) => {}

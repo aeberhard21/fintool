@@ -34,7 +34,9 @@ use shared_lib::TransferType;
 
 use super::base::variable_account::VariableAccount;
 use super::base::AccountCreation;
+use super::base::AccountData;
 use super::base::AccountOperations;
+use super::base::Account;
 
 pub struct InvestmentAccountManager {
     uid: u32,
@@ -451,3 +453,11 @@ impl AccountOperations for InvestmentAccountManager {
         return Some(self.db.add_account_transaction(self.uid, transaction_record).unwrap());
     }
 }
+
+impl AccountData for InvestmentAccountManager {
+    fn get_id(&mut self) -> u32 {
+        return self.id
+    } 
+}
+
+impl Account for InvestmentAccountManager {}

@@ -5,7 +5,6 @@ use std::path::Path;
 use std::sync::Arc;
 
 pub mod budget;
-pub mod db_banks;
 pub mod db_cd;
 pub mod db_hsa;
 mod db_user;
@@ -47,7 +46,6 @@ impl DbConn {
         Self::create_budget_categories_table(self);
         Self::create_people_table(self);
         Self::create_ledger_table(self);
-        Self::create_bank_table(self);
         Self::create_investment_purchase_table(self);
         Self::create_investment_sale_table(self);
         Self::create_investment_sale_allocation_table(self);

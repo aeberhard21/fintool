@@ -38,9 +38,9 @@ impl DbConn {
                 aid         INTEGER NOT NULL,
                 uid         INTEGER NOT NULL,
                 PRIMARY KEY(uid, aid, id),
-                FOREIGN KEY(uid,aid) REFERENCES accounts(uid,id),
-                FOREIGN KEY(uid, aid, cid) REFERENCES categories(uid, aid, id),
-                FOREIGN KEY(uid, aid, pid) REFERENCES people(uid, aid, id),
+                FOREIGN KEY(uid,aid) REFERENCES accounts(uid,id) ON DELETE CASCADE ON UPDATE CASCADE,
+                FOREIGN KEY(uid, aid, cid) REFERENCES categories(uid, aid, id) ON DELETE CASCADE ON UPDATE CASCADE,
+                FOREIGN KEY(uid, aid, pid) REFERENCES people(uid, aid, id) ON DELETE CASCADE ON UPDATE CASCADE,
                 FOREIGN KEY(uid) REFERENCES users(id)
             )";
 
@@ -187,6 +187,129 @@ impl DbConn {
         }
     }
 
+    pub fn check_if_ledger_references_category(&mut self, uid: u32, aid: u32, category: String) -> rusqlite::Result<Option<Vec<LedgerRecord>>, rusqlite::Error> {
+        let p = rusqlite::params![uid, aid, category];
+        let sql = "
+            SELECT 
+                l.id, l.date, l.amount, l.transfer_type, l.pid, l.cid, l.desc, l.ancillary_f32 
+            FROM ledgers AS l
+            INNER JOIN categories ON 
+                l.cid = categories.id AND
+                l.aid = categories.aid AND
+                l.uid = categories.uid
+            WHERE
+                l.uid = (?1) and
+                l.aid = (?2) and
+                categories.category = (?3)
+        ";
+
+        let mut stmt = self.conn.prepare(sql)?;
+        let exists = stmt.exists(p)?;
+        if exists {
+            let matched_record_wrap = stmt.query_map(
+                p, 
+                |row| {
+                    Ok(LedgerRecord {
+                        id : row.get(0)?,
+                        info : LedgerInfo { 
+                            date: row.get(1)?,
+                            amount: row.get(2)?,
+                            transfer_type: TransferType::from(row.get::<_, u32>(3)? as u32),
+                            participant: row.get(4)?,
+                            category_id: row.get(5)?,
+                            description: row.get(6)?,
+                            ancillary_f32data : row.get(7)?,
+                        }
+                    })
+                }
+            ).unwrap().collect::<Vec<_>>();
+
+            let mut records : Vec<LedgerRecord> = Vec::new();
+            for wrapped_record in matched_record_wrap {
+                records.push(wrapped_record.unwrap());
+            }
+
+            return Ok(Some(records));
+
+        }
+        return Ok(None);
+    }
+
+    pub fn check_if_ledger_references_participant(&mut self, uid: u32, aid: u32, ptype: ParticipantType, name : String) -> rusqlite::Result<Option<Vec<LedgerRecord>>, rusqlite::Error> {
+        
+        let (p, sql) = match ptype {
+            ParticipantType::Both => {
+                (
+                    rusqlite::params![uid, aid, name],
+                    "
+                        SELECT 
+                            l.id, l.date, l.amount, l.transfer_type, l.pid, l.cid, l.desc, l.ancillary_f32 
+                        FROM ledgers AS l
+                        INNER JOIN people ON 
+                            l.cid = people.id AND
+                            l.aid = people.aid AND
+                            l.uid = people.uid
+                        WHERE
+                            l.uid = (?1) and
+                            l.aid = (?2) and
+                            people.name = (?3)
+                    "
+                )
+            }
+            _ => {
+                (
+                    rusqlite::params![uid, aid, name, ptype as u32],
+                    "
+                        SELECT 
+                            l.id, l.date, l.amount, l.transfer_type, l.pid, l.cid, l.desc, l.ancillary_f32 
+                        FROM ledgers AS l
+                        INNER JOIN people ON 
+                            l.cid = people.id AND
+                            l.aid = people.aid AND
+                            l.uid = people.uid
+                        WHERE
+                            l.uid = (?1) and
+                            l.aid = (?2) and
+                            people.name = (?3) and
+                            people.type = (?4)
+                    "
+                )
+            }
+        };
+
+        let mut stmt = self.conn.prepare(sql)?;
+        let exists = stmt.exists(p)?;
+        if exists {
+            let matched_record_wrap = stmt.query_map(
+                p, 
+                |row| {
+                    Ok(LedgerRecord {
+                        id : row.get(0)?,
+                        info : LedgerInfo { 
+                            date: row.get(1)?,
+                            amount: row.get(2)?,
+                            transfer_type: TransferType::from(row.get::<_, u32>(3)? as u32),
+                            participant: row.get(4)?,
+                            category_id: row.get(5)?,
+                            description: row.get(6)?,
+                            ancillary_f32data : row.get(7)?,
+                        }
+                    })
+                }
+            ).unwrap().collect::<Vec<_>>();
+
+            let mut records : Vec<LedgerRecord> = Vec::new();
+            for wrapped_record in matched_record_wrap {
+                records.push(wrapped_record.unwrap());
+            }
+
+            return Ok(Some(records));
+
+        }
+        return Ok(None);
+    }
+
+
     pub fn get_ledger_entries_within_timestamps(
         &mut self,
         uid: u32,
@@ -270,37 +393,4 @@ impl DbConn {
         Ok(sum)
     }
 
-    pub fn get_participants(
-        &mut self,
-        uid: u32, 
-        aid: u32,
-        transfer_type: TransferType,
-        include_accounts : bool
-    ) -> Result<Vec<String>, rusqlite::Error> {
-        let sql;
-        let p = rusqlite::params![aid, transfer_type as u32, uid, include_accounts];
-        sql = if include_accounts {
-            "SELECT p.name FROM people p JOIN ledgers l ON p.id = l.cid WHERE l.aid = (?1) and l.transfer_type = (?2) and l.uid = (?3) and l.uid = (?4)"
-        } else { 
-            "SELECT p.name FROM people p JOIN ledgers l ON p.id = l.cid WHERE l.aid = (?1) and l.transfer_type = (?2) and l.uid = (?3) and l.uid = (?4) and p.is_account = false"
-        };
-
-        let mut stmt = self.conn.prepare(sql)?;
-        let exists = stmt.exists(p)?;
-        let mut participants: Vec<String> = Vec::new();
-        match exists {
-            true => {
-                stmt = self.conn.prepare(sql)?;
-                let party = stmt
-                    .query_map(p, |row| Ok(row.get(0)?))
-                    .unwrap()
-                    .collect::<Vec<_>>();
-                for participant in party {
-                    participants.push(participant.unwrap());
-                }
-            }
-            false => {}
-        }
-        Ok(participants)
-    }
 }

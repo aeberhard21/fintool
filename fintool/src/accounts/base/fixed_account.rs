@@ -12,7 +12,7 @@ use core::panic;
 use std::collections::HashMap;
 use std::hash::Hash;
 
-use super::AccountOperations;
+use super::{Account, AccountOperations};
 
 pub struct FixedAccount {
     pub id: u32,
@@ -118,7 +118,7 @@ impl FixedAccount {
             .unwrap();
 
         let selected_payee;
-        let mut acct: Box<dyn AccountOperations>;
+        let mut acct: Box<dyn Account>;
         let pid;
         let payee_prompt = "Enter payee:";
         if !link { 
@@ -128,7 +128,7 @@ impl FixedAccount {
                     uid: self.uid,
                     aid: self.id,
                     db: self.db.clone(),
-                    ptype: ParticipantType::Payer,
+                    ptype: ParticipantType::Payee,
                     with_accounts : false
                 })
                 .with_default(self.db.get_participant(self.uid, self.id, initial.info.participant).unwrap().as_str())
@@ -140,7 +140,7 @@ impl FixedAccount {
                     uid: self.uid,
                     aid: self.id,
                     db: self.db.clone(),
-                    ptype: ParticipantType::Payer,
+                    ptype: ParticipantType::Payee,
                     with_accounts : false
                 })
                 .prompt()
@@ -159,7 +159,11 @@ impl FixedAccount {
                 ancillary_f32data : 0.0
             };
     
-            let id = self.db.add_ledger_entry(self.uid, self.id, withdrawal.clone()).unwrap();
+            let id = if default_to_use && overwrite { 
+                self.db.update_ledger_item(self.uid, self.id, LedgerRecord { id: initial.id, info: withdrawal.clone()} ).unwrap()
+            } else { 
+                self.db.add_ledger_entry(self.uid, self.id, withdrawal.clone()).unwrap()
+            };
         } else {
             
             let initial_account_opt = if default_to_use {
@@ -303,7 +307,7 @@ impl FixedAccount {
             .unwrap();
 
         let selected_payer;
-        let mut acct: Box<dyn AccountOperations>;
+        let mut acct: Box<dyn Account>;
         let pid;
         let participant_validator = MinLengthValidator::new(1).with_message("Payer cannot be empty!");
         if !link { 
@@ -350,7 +354,11 @@ impl FixedAccount {
                 ancillary_f32data : 0.0
             };
     
-            let id = self.db.add_ledger_entry(self.uid, self.id, deposit.clone()).unwrap();
+            let id = if default_to_use && overwrite { 
+                self.db.update_ledger_item(self.uid, self.id, LedgerRecord { id: initial.id, info: deposit.clone() } ).unwrap()
+            } else {  
+                self.db.add_ledger_entry(self.uid, self.id, deposit.clone()).unwrap()
+            };
         } else {
             
             let initial_account_opt = if default_to_use {
@@ -501,7 +509,7 @@ impl FixedAccount {
         Some(selected_record)
     }
 
-    pub fn link_transaction(&mut self, initial_opt : Option<String>) -> Option<(Box<dyn AccountOperations>, String)> {
+    pub fn link_transaction(&mut self, initial_opt : Option<String>) -> Option<(Box<dyn Account>, String)> {
 
         let default_to_use;
         let mut initial_account = String::new();
@@ -550,7 +558,7 @@ impl FixedAccount {
             return None;
         }
 
-        let acct: Box<dyn AccountOperations>;
+        let acct: Box<dyn Account>;
         let record: AccountRecord;
         if selected_account.clone() == "New Account".to_ascii_uppercase().to_string() {
             let user_input = create_new_account(self.uid, &mut self.db);

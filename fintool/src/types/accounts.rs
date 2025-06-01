@@ -582,7 +582,7 @@ impl DbConn {
             stock_split_allocation_id INTEGER NOT NULL,
             PRIMARY KEY(uid, aid)
             FOREIGN KEY(uid) REFERENCES users(id)
-            FOREIGN KEY(uid,aid) REFERENCES accounts(uid, id)
+            FOREIGN KEY(uid,aid) REFERENCES accounts(uid, id) ON DELETE CASCADE ON UPDATE CASCADE
         )";
 
         let rs = self.conn.execute(sql, ());
@@ -774,5 +774,49 @@ impl DbConn {
                 panic!("The next stock split ID within table 'user_account_info' does not exist.");
             }
         }
+    }
+
+    pub fn remove_account(&mut self, uid : u32, aid : u32) -> rusqlite::Result<u32, rusqlite::Error> {
+        let sql = "DELETE FROM accounts WHERE uid = (?1) and id = (?2)";
+        let p= rusqlite::params![uid, aid];
+        let rs = self.conn.execute(sql, p);
+        match rs {
+            Ok(_usize) => {}
+            Err(error) => {
+                panic!("Unable to remove account: {}!", error);
+            }
+        }
+        let sql = "UPDATE accounts SET id = id -1 WHERE id > (?2) and uid = (?1)";
+        let rs = self.conn.execute(sql, p);
+        match rs {
+            Ok(_usize) => {}
+            Err(error) => {
+                panic!("Unable to remove account: {}!", error);
+            }
+        }
+
+        let p = rusqlite::params![uid];
+        let sql = "UPDATE account_ids SET next_account_transaction_id = next_account_transaction_id -1 WHERE uid = (?1)";
+        let rs = self.conn.execute(sql, p);
+        match rs {
+            Ok(_usize) => {}
+            Err(error) => {
+                panic!("Unable to remove account: {}!", error);
+            }
+        }
+        Ok(aid)
+    }
+
+    pub fn rename_account(&mut self, uid : u32, aid : u32, new_name : String) -> rusqlite::Result<u32, rusqlite::Error> {
+        let p = rusqlite::params![uid, aid, new_name];
+        let sql = "UPDATE accounts SET name = (?3) WHERE uid = (?1) and id = (?2)";
+        let rs = self.conn.execute(sql, p);
+        match rs {
+            Ok(_usize) => {}
+            Err(error) => {
+                panic!("Unable to name account: {}!", error);
+            }
+        }
+        Ok(aid)
     }
 }

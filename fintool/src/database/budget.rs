@@ -9,12 +9,14 @@ pub struct BudgetItem {
 impl DbConn {
     pub fn create_budget_table(&mut self) -> Result<()> {
         let sql: &str = "CREATE TABLE IF NOT EXISTS budgets (
-            id          INTEGER NOT NULL PRIMARY KEY, 
+            id          INTEGER NOT NULL, 
             cid         INTEGER NOT NULL, 
             value       INTEGER NOT NULL,
             aid         INTEGER NOT NULL, 
-            FOREIGN KEY(aid) references accounts(id)
-            FOREIGN KEY(cid) references categories(id)
+            uid         INTEGER NOT NULL,
+            PRIMARY KEY(uid, aid, id),
+            FOREIGN KEY(aid,uid) references accounts(id,uid) ON DELETE CASCADE ON UPDATE CASCADE
+            FOREIGN KEY(cid,uid,aid) references categories(id, uid, aid) ON DELETE CASCADE ON UPDATE CASCADE
         )";
         self.conn
             .execute(sql, ())

@@ -71,7 +71,7 @@ impl DbConn {
             lid         INTEGER NOT NULL,
             uid         INTEGER NOT NULL, 
             PRIMARY KEY (uid, aid, id),
-            FOREIGN     KEY (uid,aid) REFERENCES accounts(uid,id),
+            FOREIGN     KEY (uid,aid) REFERENCES accounts(uid,id) ON DELETE CASCADE ON UPDATE CASCADE,
             FOREIGN     KEY (uid, aid, lid) REFERENCES ledgers(uid, aid, id) ON DELETE CASCADE ON UPDATE CASCADE,
             FOREIGN     KEY (uid) REFERENCES users(id)
         )";
@@ -96,7 +96,7 @@ impl DbConn {
             lid         INTEGER NOT NULL,
             uid         INTEGER NOT NULL,
             PRIMARY KEY (uid, aid, id),
-            FOREIGN     KEY (uid,aid) REFERENCES accounts(uid,id),
+            FOREIGN     KEY (uid,aid) REFERENCES accounts(uid,id) ON DELETE CASCADE ON UPDATE CASCADE,
             FOREIGN     KEY (uid, aid, lid) REFERENCES ledgers(uid, aid, id) ON DELETE CASCADE ON UPDATE CASCADE,
             FOREIGN     KEY (uid) REFERENCES users(id)
         )";
@@ -121,7 +121,7 @@ impl DbConn {
             FOREIGN KEY (uid, aid, purchase_id) REFERENCES stock_purchases(uid, aid, id) ON DELETE CASCADE ON UPDATE CASCADE,
             FOREIGN KEY (uid, aid, sale_id) REFERENCES stock_sales(uid, aid, id) ON DELETE CASCADE ON UPDATE CASCADE,
             FOREIGN     KEY (uid) REFERENCES users(id),
-            FOREIGN     KEY (uid,aid) REFERENCES accounts(uid,id)
+            FOREIGN     KEY (uid,aid) REFERENCES accounts(uid,id) ON DELETE CASCADE ON UPDATE CASCADE
         )";
         match self.conn.execute(sql, ()) {
             Ok(_) => {}
@@ -145,7 +145,7 @@ impl DbConn {
             PRIMARY KEY (uid, aid, id),
             FOREIGN KEY (uid, aid, lid) REFERENCES ledgers(uid, aid, id) ON DELETE CASCADE ON UPDATE CASCADE,
             FOREIGN KEY (uid) REFERENCES users(id),
-            FOREIGN KEY (uid,aid) REFERENCES accounts(uid,id)
+            FOREIGN KEY (uid,aid) REFERENCES accounts(uid,id) ON DELETE CASCADE ON UPDATE CASCADE
         )";
         match self.conn.execute(sql, ()) {
             Ok(_) => {}
@@ -170,7 +170,7 @@ impl DbConn {
             FOREIGN KEY (uid, aid, stock_purchase_id) REFERENCES stock_purchases(uid, aid, id) ON DELETE CASCADE ON UPDATE CASCADE,
             FOREIGN KEY (uid, aid, stock_split_id) REFERENCES stock_splits(uid, aid, id) ON DELETE CASCADE ON UPDATE CASCADE,
             FOREIGN KEY (uid) REFERENCES users(id),
-            FOREIGN KEY (uid,aid) REFERENCES accounts(uid,id)
+            FOREIGN KEY (uid,aid) REFERENCES accounts(uid,id) ON DELETE CASCADE ON UPDATE CASCADE
         )";
         match self.conn.execute(sql, ())  {
             Ok(_) => {}

@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::vec;
 
 use crate::accounts::bank_account::BankAccount;
+use crate::accounts::base::Account;
 use crate::accounts::base::AccountCreation;
 use crate::accounts::base::AccountOperations;
 use crate::accounts::investment_account_manager::InvestmentAccountManager;
@@ -62,9 +63,9 @@ pub fn menu(_db: &mut DbConn) {
 }
 
 fn access_account(uid: u32, db: &mut DbConn) {
-    const ACCOUNT_OPTIONS: [&'static str; 3] = ["Create Account", "Select Account", "Exit"];
+    const ACCOUNT_OPTIONS: [&'static str; 4] = ["Create Account", "Select Account", "Modify Account", "Exit"];
     let mut accounts: Vec<AccountRecord> = db.get_user_accounts(uid).unwrap();
-    let mut acct: Box<dyn AccountOperations>;
+    let mut acct: Box<dyn Account>;
     let mut choice;
     let mut new_account;
     const ACCT_ACTIONS: [&'static str; 5] = ["Import", "Modify", "Record", "Report", "None"];
@@ -141,6 +142,55 @@ fn access_account(uid: u32, db: &mut DbConn) {
                 acct = decode_and_create_account_type(uid, db, acctx);
                 // acct.info();
             }
+            "Modify Account" => {    
+                const MODIFY_ACCT_ACTIONS: [&'static str; 3] = ["Rename", "Remove", "None"];
+                let mut account_map: HashMap<String, AccountRecord> = HashMap::new();
+                let mut account_names: Vec<String> = Vec::new();
+                for account in accounts.iter() {
+                    account_names.push(account.info.name.clone());
+                    account_map.insert(account.info.name.clone(), account.clone());
+                }
+
+                // add none clause
+                account_names.push("None".to_string());
+                let selected_account = Select::new("Select account:", account_names)
+                    .prompt()
+                    .unwrap()
+                    .to_string();
+                if selected_account == "None" {
+                    continue;
+                }
+
+                let acctx = account_map
+                    .get(&selected_account)
+                    .expect("Account not found!");
+                acct = decode_and_create_account_type(uid, db, acctx);
+
+                let selected_action = Select::new("What would you like to do:", MODIFY_ACCT_ACTIONS.to_vec())
+                    .prompt()
+                    .unwrap();
+
+                let id = acct.get_id();
+
+                match selected_action {
+                    "Rename" => {
+                        // acct
+                        rename_account(db, uid, id);
+                        return;
+                    }
+                    "Remove" => {
+                        db.remove_account(uid, id).unwrap();
+                        return;
+                    }
+                    "None" => {
+                        continue;
+                    }
+                    _ => {
+                        panic!("Unrecognized input: {}", selected_action);
+                    }
+                }
+
+            }
             "Exit" => {
                 return;
             }
@@ -188,7 +238,7 @@ pub fn decode_and_create_account_type(
     uid: u32,
     db: &mut DbConn,
     account: &AccountRecord,
-) -> Box<dyn AccountOperations> {
+) -> Box<dyn Account> {
     match account.info.atype {
         AccountType::Bank => Box::new(BankAccount::new(uid, account.id, db)),
         AccountType::Investment => Box::new(InvestmentAccountManager::new(uid, account.id, db)),
@@ -262,7 +312,7 @@ pub fn query_user_for_analysis_period() -> (NaiveDate, NaiveDate) {
 pub fn create_new_account(
     uid: u32,
     db: &mut DbConn,
-) -> (Option<(Box<dyn AccountOperations>, AccountRecord)>) {
+) -> (Option<(Box<dyn Account>, AccountRecord)>) {
     const ACCOUNT_TYPES: [&'static str; 3] = ["Bank Account", "Investment Account", "None"];
     let selected_account_type = Select::new(
         "What account type would you like to create:",
@@ -274,35 +324,13 @@ pub fn create_new_account(
 
     let id;
     let new_account;
-    let acct: Box<dyn AccountOperations>;
+    let acct: Box<dyn Account>;
 
     if selected_account_type == "None" {
         return None;
     }
 
-    let mut name: String;
-    loop { 
-        name = Text::new("Enter account name:")
-        .prompt()
-        .unwrap()
-        .trim()
-        .to_string();
-
-        if name.len() == 0 { 
-            println!("Invalid account name!");
-        } else if db.account_with_name_exists(uid, name.clone()).unwrap() { 
-            println!("Account with name {} already exists!", name);
-        } else { 
-            break;
-        }
-
-        let try_again = Confirm::new("Try again?")
-            .prompt()
-            .unwrap();
-        if !try_again {
-            return None; 
-        }
-    }
+    let name: String = name_account(uid, db);
 
     match selected_account_type.as_str() {
         "Bank Account" => {
@@ -327,4 +355,30 @@ pub fn create_new_account(
             info: new_account,
         },)
     );
+}
+
+pub fn name_account(uid : u32, db: &mut DbConn) -> String {
+    let mut name;
+    loop {
+        name = Text::new("Enter account name:")
+            .prompt()
+            .unwrap()
+            .trim()
+            .to_string();
+
+        if name.len() == 0 { 
+            println!("Invalid account name!");
+        } else if db.account_with_name_exists(uid, name.clone()).unwrap() { 
+            println!("Account with name {} already exists!", name);
+        } else { 
+            break;
+        }
+    }
+
+    return name;
+}
+
+pub fn rename_account(db : &mut DbConn, uid : u32, id : u32) {
+    let new_name = name_account(uid, db);
+    db.rename_account(uid, id, new_name).unwrap();
 }

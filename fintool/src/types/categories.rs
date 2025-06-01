@@ -25,7 +25,7 @@ impl DbConn {
                 uid         INTEGER NOT NULL, 
                 category    TEXT NOT NULL,
                 PRIMARY KEY (uid, aid, id),
-                FOREIGN KEY(uid,aid) REFERENCES accounts(uid,id),
+                FOREIGN KEY(uid,aid) REFERENCES accounts(uid,id) ON DELETE CASCADE ON UPDATE CASCADE,
                 FOREIGN KEY(uid) REFERENCES users(id)
             )";
 
@@ -43,6 +43,17 @@ impl DbConn {
             Ok(_) => Ok(id),
             Err(error) => {
                 panic!("Unable to add {} for account {}: {}", category, aid, error);
+            }
+        }
+    }
+
+    pub fn update_category_name(&mut self, uid : u32, aid: u32, old : String, new : String) -> Result<String> {
+        let p = rusqlite::params!(uid, aid, old, new);
+        let sql = "UPDATE categories SET name = ?(4) WHERE uid = (?1) and aid = (?2) and name = (?3)";
+        match self.conn.execute(sql, p) {
+            Ok(_) => Ok(new),
+            Err(error) => {
+                panic!("Unable to update category {} in account {}: {}!", old, aid, error);
             }
         }
     }
@@ -163,6 +174,40 @@ impl DbConn {
                 );
             }
         }
+    }
+
+    pub fn remove_category(&mut self, uid: u32, aid : u32, name : String) -> rusqlite::Result<u32, rusqlite::Error> {
+        let id = self.get_category_id(aid, name.clone(), uid).unwrap();
+        let p = rusqlite::params![uid, aid, name];
+        let sql = "DELETE FROM categories WHERE uid = (?1) and aid = (?2) and category = (?3)";
+        let rs = self.conn.execute(sql, p);
+        match rs { 
+            Ok(_usize) => {}
+            Err(error) => { 
+                panic!("Unable to remove category item: {}!", error);
+            }
+        }
+        let p = rusqlite::params![id, uid, aid];
+        let sql = "UPDATE categories SET id = id-1 WHERE id > ?1 and uid = ?2 and aid = ?3";
+        let rs = self.conn.execute(sql, p);
+        match rs {
+            Ok(_usize) => {}
+            Err(error) => {
+                panic!("Unable to update category ids: {}!", error);
+            }
+        }
+
+        let p = rusqlite::params![uid, aid];
+        let sql = "UPDATE user_account_info SET cid = cid - 1 WHERE uid = ?1 and aid = ?2";
+        let rs = self.conn.execute(sql, p);
+        match rs {
+            Ok(_usize) => {}
+            Err(error) => {
+                panic!("Unable to update 'cid' value in 'user_account_info': {}!", error);
+            }
+        }
+
+        Ok(id)
     }
 }
 

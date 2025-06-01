@@ -14,7 +14,7 @@ pub enum ParticipantType {
     Both,
 }
 
-struct Participant {
+pub struct Participant {
     pub name: String,
     pub ptype: ParticipantType,
 }
@@ -54,7 +54,7 @@ impl DbConn {
                 uid         INTEGER NOT NULL,
                 is_account  BOOL NOT NULL,
                 PRIMARY KEY (uid, aid, id),
-                FOREIGN KEY(uid,aid) REFERENCES accounts(uid,id),
+                FOREIGN KEY(uid,aid) REFERENCES accounts(uid,id) ON DELETE CASCADE ON UPDATE CASCADE,
                 FOREIGN KEY(uid) REFERENCES users(id)
             )";
 
@@ -88,37 +88,6 @@ impl DbConn {
             }
         }
     }
-
-    // pub fn get_participants(&mut self, aid: u32, ptype: ParticipantType) -> Result<Vec<ParticipantRecord>, rusqlite::Error> {
-    //     let sql;
-    //     let p = rusqlite::params![aid, ptype as u32];
-    //     sql = "SELECT id, name, type FROM people WHERE aid = (?1) and type = (?2)";
-
-    //     let mut stmt = self.conn.prepare(sql)?;
-    //     let exists = stmt.exists(p)?;
-    //     let mut participants: Vec<ParticipantRecord> = Vec::new();
-    //     match exists {
-    //         true => {
-    //             stmt = self.conn.prepare(sql)?;
-    //             let party = stmt
-    //                 .query_map(p, |row| Ok(
-    //                     ParticipantRecord {
-    //                         id : row.get(0)?,
-    //                         participant : Participant {
-    //                             name : row.get(1)?,
-    //                             ptype : ParticipantType::from(row.get::<_, u32>(2)? as u32)
-    //                         }
-    //                     }))
-    //                 .unwrap()
-    //                 .collect::<Vec<_>>();
-    //             for participant in party {
-    //                 participants.push(participant.unwrap());
-    //             }
-    //         }
-    //         false => {}
-    //     }
-    //     Ok(participants)
-    // }
 
     pub fn get_participant_id(
         &mut self,
@@ -222,6 +191,135 @@ impl DbConn {
             }
         }
     }
+
+    pub fn get_participants(&mut self, uid: u32, aid: u32, ptype: ParticipantType) -> Result<Vec<ParticipantRecord>, rusqlite::Error> {
+        let (sql, p) = if ptype as u32 == ParticipantType::Both as u32 {
+            ("SELECT id, name, type FROM people WHERE uid = (?1) and aid = (?2)",
+            rusqlite::params![uid, aid])
+        } else {
+            ("SELECT id, name, type FROM people WHERE uid = (?1) and aid = (?2) and type = (?3)",
+            rusqlite::params![uid, aid, ptype as u32])
+        };
+        let mut stmt = self.conn.prepare(sql)?;
+        let exists = stmt.exists(p)?;
+        let mut participants: Vec<ParticipantRecord> = Vec::new();
+        match exists {
+            true => {
+                stmt = self.conn.prepare(sql)?;
+                let party = stmt
+                    .query_map(p, |row| Ok(
+                        ParticipantRecord { 
+                            id : row.get(0)?, 
+                            participant : Participant { 
+                                name: row.get(1)?, 
+                                ptype: ParticipantType::from(row.get::<_, u32>(2)? as u32)
+                            }
+                    }))
+                    .unwrap()
+                    .collect::<Vec<_>>();
+                for participant in party {
+                    participants.push(participant.unwrap());
+                }
+            }
+            false => {}
+        }
+        Ok(participants)
+    }
+
+    pub fn get_participants_by_transfer_type(
+        &mut self,
+        uid: u32, 
+        aid: u32,
+        transfer_type: TransferType,
+        include_accounts : bool
+    ) -> Result<Vec<String>, rusqlite::Error> {
+        let sql;
+        let p = rusqlite::params![aid, transfer_type as u32, uid, include_accounts];
+        sql = if include_accounts {
+            "SELECT p.name FROM people p JOIN ledgers l ON p.id = l.cid WHERE l.aid = (?1) and l.transfer_type = (?2) and l.uid = (?3) and l.uid = (?4)"
+        } else { 
+            "SELECT p.name FROM people p JOIN ledgers l ON p.id = l.cid WHERE l.aid = (?1) and l.transfer_type = (?2) and l.uid = (?3) and l.uid = (?4) and p.is_account = false"
+        };
+
+        let mut stmt = self.conn.prepare(sql)?;
+        let exists = stmt.exists(p)?;
+        let mut participants: Vec<String> = Vec::new();
+        match exists {
+            true => {
+                stmt = self.conn.prepare(sql)?;
+                let party = stmt
+                    .query_map(p, |row| Ok(row.get(0)?))
+                    .unwrap()
+                    .collect::<Vec<_>>();
+                for participant in party {
+                    participants.push(participant.unwrap());
+                }
+            }
+            false => {}
+        }
+        Ok(participants)
+    }
+
+    pub fn update_participant_name(&mut self, uid : u32, aid: u32, ptype : ParticipantType, old : String, new : String) -> Result<String> {
+        let (p, sql) = match ptype { 
+            ParticipantType::Both => {
+                (
+                    rusqlite::params![uid, aid, old, new],
+                    "UPDATE people SET name = (?4) WHERE uid = (?1) and aid = (?2) and name = (?3)"
+                )
+            } 
+            _ => {
+                (
+                    rusqlite::params![uid, aid, old, new, ptype as u32],
+                    "UPDATE people SET name = (?4) WHERE uid = (?1) and aid = (?2) and name = (?3) and type = (?5)"
+                )
+            }
+        };
+        match self.conn.execute(sql, p) {
+            Ok(_) => Ok(new),
+            Err(error) => {
+                panic!("Unable to update participant {} in account {}: {}!", old, aid, error);
+            }
+        }
+    }
+
+    pub fn remove_participant(&mut self, uid : u32, aid : u32, ptype: ParticipantType, name : String) -> rusqlite::Result<Option<u32>, rusqlite::Error> {
+        let id_opt = self.get_participant_id(uid, aid, name.clone(), ptype);
+        if id_opt.is_none() {
+            return Ok(None);
+        }
+        let id = id_opt.unwrap();
+        let p = rusqlite::params![uid, aid, name, ptype as u32];
+        let sql =  "DELETE FROM people WHERE uid = (?1) and aid = (?2) and name = (?3) and type = (?4)";
+        let rs = self.conn.execute(sql, p);
+        match rs {
+            Ok(_usize) => {}
+            Err(error) => {
+                panic!("Unable to remove participant: {}!", error);
+            }
+        }
+        let p = rusqlite::params![id, uid, aid];
+        let sql = "UPDATE people SET id = id-1 WHERE id > ?1 and uid = ?2 and aid = ?3";
+        let rs = self.conn.execute(sql, p);
+        match rs {
+            Ok(_usize) => {}
+            Err(error) => {
+                panic!("Unable to update participants ids: {}!", error);
+            }
+        }
+
+        let p = rusqlite::params![uid, aid];
+        let sql = "UPDATE user_account_info SET pid = pid - 1 WHERE uid = ?1 and aid = ?2";
+        let rs = self.conn.execute(sql, p);
+        match rs {
+            Ok(_usize) => {}
+            Err(error) => {
+                panic!("Unable to update 'pid' value in 'user_account_info': {}!", error);
+            }
+        }
+
+        Ok(Some(id)) 
+    }
 }
 
 #[derive(Clone)]
@@ -241,14 +339,14 @@ impl Autocomplete for ParticipantAutoCompleter {
                 ParticipantType::Payee => {
                     let mut x: Vec<String> = self
                         .db
-                        .get_participants(self.uid, self.aid, TransferType::WithdrawalToExternalAccount, false)
+                        .get_participants_by_transfer_type(self.uid, self.aid, TransferType::WithdrawalToExternalAccount, false)
                         .unwrap()
                         .into_iter()
                         .filter(|name| name.starts_with(input.to_ascii_uppercase().as_str()))
                         .collect();
                     let mut y: Vec<String> = self
                         .db
-                        .get_participants(self.uid, self.aid, TransferType::WithdrawalToInternalAccount, false)
+                        .get_participants_by_transfer_type(self.uid, self.aid, TransferType::WithdrawalToInternalAccount, false)
                         .unwrap()
                         .into_iter()
                         .filter(|name| name.starts_with(input.to_ascii_uppercase().as_str()))
@@ -260,14 +358,14 @@ impl Autocomplete for ParticipantAutoCompleter {
                 ParticipantType::Payer => {
                     let mut x: Vec<String> = self
                         .db
-                        .get_participants(self.uid, self.aid, TransferType::DepositFromExternalAccount, false)
+                        .get_participants_by_transfer_type(self.uid, self.aid, TransferType::DepositFromExternalAccount, false)
                         .unwrap()
                         .into_iter()
                         .filter(|name| name.starts_with(input.to_ascii_uppercase().as_str()))
                         .collect();
                     let mut y: Vec<String> = self
                         .db
-                        .get_participants(self.uid, self.aid, TransferType::DepositFromInternalAccount, false)
+                        .get_participants_by_transfer_type(self.uid, self.aid, TransferType::DepositFromInternalAccount, false)
                         .unwrap()
                         .into_iter()
                         .filter(|name| name.starts_with(input.to_ascii_uppercase().as_str()))
@@ -279,28 +377,28 @@ impl Autocomplete for ParticipantAutoCompleter {
                 ParticipantType::Both => {
                     let mut w: Vec<String> = self
                         .db
-                        .get_participants(self.uid, self.aid, TransferType::WithdrawalToExternalAccount, false)
+                        .get_participants_by_transfer_type(self.uid, self.aid, TransferType::WithdrawalToExternalAccount, false)
                         .unwrap()
                         .into_iter()
                         .filter(|name| name.starts_with(input.to_ascii_uppercase().as_str()))
                         .collect();
                     let mut x: Vec<String> = self
                         .db
-                        .get_participants(self.uid, self.aid, TransferType::WithdrawalToInternalAccount, false)
+                        .get_participants_by_transfer_type(self.uid, self.aid, TransferType::WithdrawalToInternalAccount, false)
                         .unwrap()
                         .into_iter()
                         .filter(|name| name.starts_with(input.to_ascii_uppercase().as_str()))
                         .collect();
                     let mut y: Vec<String> = self
                         .db
-                        .get_participants(self.uid, self.aid, TransferType::DepositFromInternalAccount, false)
+                        .get_participants_by_transfer_type(self.uid, self.aid, TransferType::DepositFromInternalAccount, false)
                         .unwrap()
                         .into_iter()
                         .filter(|name| name.starts_with(input.to_ascii_uppercase().as_str()))
                         .collect();
                     let mut z: Vec<String> = self
                         .db
-                        .get_participants(self.uid, self.aid, TransferType::DepositFromExternalAccount, false)
+                        .get_participants_by_transfer_type(self.uid, self.aid, TransferType::DepositFromExternalAccount, false)
                         .unwrap()
                         .into_iter()
                         .filter(|name| name.starts_with(input.to_ascii_uppercase().as_str()))
