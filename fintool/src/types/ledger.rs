@@ -317,7 +317,7 @@ impl DbConn {
         start: NaiveDate,
         end: NaiveDate,
     ) -> rusqlite::Result<Vec<LedgerInfo>, rusqlite::Error> {
-        let p = rusqlite::params![aid, start.to_string(), end.to_string(), uid];
+        let p = rusqlite::params![aid, start.format("%Y-%m-%d").to_string(), end.format("%Y-%m-%d").to_string(), uid];
         let sql = "SELECT * FROM ledgers WHERE aid = (?1) and date >= (?2) and date <= (?3) and uid = (?4) ORDER by date ASC";
 
         let mut stmt = self.conn.prepare(sql)?;
@@ -376,7 +376,7 @@ impl DbConn {
         aid: u32,
         end: NaiveDate,
     ) -> rusqlite::Result<f32, rusqlite::Error> {
-        let p = rusqlite::params![aid, end.to_string(), uid];
+        let p = rusqlite::params![aid, end.format("%Y-%m-%d").to_string(), uid];
         let mut sum: f32 = 0.0;
         let sql = "SELECT COALESCE(SUM(CASE
             WHEN transfer_type == 0 or transfer_type = 2 THEN -amount    -- withdrawal

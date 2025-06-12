@@ -176,8 +176,17 @@ impl AccountOperations for BankAccount {
             .from_path(fp)
             .unwrap();
 
-        for record in rdr.deserialize::<LedgerEntry>() {
-            let rcrd = record.unwrap();
+        let mut ledger_entries = Vec::new();
+        for result in rdr.deserialize::<LedgerEntry>() {
+            ledger_entries.push(result.unwrap());
+        };
+        ledger_entries.sort_by(
+            |x,y| { 
+                (NaiveDate::parse_from_str(&x.date, "%Y-%m-%d").unwrap())
+                .cmp(&NaiveDate::parse_from_str(&y.date, "%Y-%m-%d").unwrap())
+            }
+        );
+        for rcrd in ledger_entries {
             let ptype = if rcrd.transfer_type == TransferType::WithdrawalToExternalAccount {
                 ParticipantType::Payee
             } else if rcrd.transfer_type == TransferType::WithdrawalToInternalAccount {
@@ -188,7 +197,7 @@ impl AccountOperations for BankAccount {
                 ParticipantType::Payer
             };
             let entry: LedgerInfo = LedgerInfo {
-                date: rcrd.date,
+                date: NaiveDate::parse_from_str( rcrd.date.as_str(),"%Y-%m-%d").unwrap().format("%Y-%m-%d").to_string(),
                 amount: rcrd.amount,
                 transfer_type: rcrd.transfer_type as TransferType,
                 participant: self
@@ -204,7 +213,7 @@ impl AccountOperations for BankAccount {
 
     fn modify(&mut self) {
         const MODIFY_OPTIONS: [&'static str; 4] = ["Ledger", "Categories", "People", "None"];
-        let modify_choice = Select::new("What would you like to modify:", MODIFY_OPTIONS.to_vec())
+        let modify_choice = Select::new("\nWhat would you like to modify:", MODIFY_OPTIONS.to_vec())
         .prompt()
         .unwrap();
         match modify_choice { 

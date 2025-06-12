@@ -112,7 +112,7 @@ fn access_account(uid: u32, db: &mut DbConn) {
                     }
                 }
 
-                let more = Confirm::new("More actions?").prompt().unwrap();
+                let more = Confirm::new("\nMore actions?").prompt().unwrap();
                 if !more {
                     continue;
                 }

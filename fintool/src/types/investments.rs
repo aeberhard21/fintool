@@ -1,5 +1,6 @@
 // use super::DbConn;
 use crate::database::DbConn;
+use crate::stocks::get_stock_at_close;
 use chrono::{Days, NaiveDate};
 use rusqlite::{Error, Result};
 use std::collections::VecDeque;
@@ -7,6 +8,7 @@ use std::collections::{HashMap, HashSet};
 use std::time::{Duration, UNIX_EPOCH};
 use time::OffsetDateTime;
 use yahoo_finance_api::Quote;
+use shared_lib::TransferType;
 
 use super::ledger::{LedgerInfo, LedgerRecord};
 use super::participants;
@@ -247,7 +249,26 @@ impl DbConn {
         ledger_id: u32,
     ) -> rusqlite::Result<Option<StockRecord>, rusqlite::Error> {
         let p = rusqlite::params![ledger_id, uid, aid];
-        let sql = "SELECT id, shares, costbasis, remaining, lid FROM stock_purchases WHERE id = (?1) and uid = (?2) and aid = (?3)";
+        let sql = "
+            SELECT 
+                p.id, 
+                p.shares, 
+                p.costbasis, 
+                p.remaining, 
+                p.lid, 
+                l.date, 
+                l.amount, 
+                l.transfer_type,
+                l.pid, 
+                l.cid,
+                l.desc,
+                l.ancillary_f32
+            FROM stock_purchases p 
+            INNER JOIN ledgers l ON 
+                p.aid = l.aid and  
+                p.uid = l.uid and
+                p.lid = l.id
+            WHERE p.id = (?1) and p.uid = (?2) and p.aid = (?3)";
         let mut stmt = self.conn.prepare(sql)?;
         let exists = stmt.exists(p)?;
         match exists {
@@ -263,7 +284,15 @@ impl DbConn {
                             remaining: row.get(3)?,
                             ledger_id: row.get(4)?,
                         },
-                        txn_opt: None,
+                        txn_opt: Some(LedgerInfo { 
+                            date: row.get(5)?, 
+                            amount: row.get(6)?, 
+                            transfer_type: TransferType::from(row.get::<_, u32>(7)? as u32), 
+                            participant: row.get(8)?, 
+                            category_id: row.get(9)?, 
+                            description: row.get(10)?, 
+                            ancillary_f32data: row.get(11)? 
+                        }),
                     })
                 });
                 Ok(Some(record.unwrap()))
@@ -304,6 +333,65 @@ impl DbConn {
         }
     }
 
+    pub fn check_and_get_stock_sale_record_matching_from_sale_id(
+        &mut self,
+        uid : u32, 
+        aid : u32,
+        sale_id: u32,
+    ) -> rusqlite::Result<Option<StockRecord>, rusqlite::Error> {
+        let p = rusqlite::params![sale_id, uid, aid];
+        let sql = "
+            SELECT 
+                s.id, 
+                s.shares, 
+                s.price, 
+                s.lid, 
+                l.date, 
+                l.amount, 
+                l.transfer_type,
+                l.pid, 
+                l.cid,
+                l.desc,
+                l.ancillary_f32
+            FROM stock_sales s 
+            INNER JOIN ledgers l ON 
+                s.aid = l.aid and  
+                s.uid = l.uid and
+                s.lid = l.id
+            WHERE s.id = (?1) and s.uid = (?2) and s.aid = (?3)
+        ";
+        let mut stmt = self.conn.prepare(sql)?;
+        let exists = stmt.exists(p)?;
+        match exists {
+            true => {
+                stmt = self.conn.prepare(sql)?;
+
+                let record = stmt.query_row(p, |row| {
+                    Ok(StockRecord {
+                        id: row.get(0)?,
+                        info: StockInfo {
+                            shares: row.get(1)?,
+                            costbasis: row.get(2)?,
+                            remaining: 0.0,
+                            ledger_id: row.get(3)?,
+                        },
+                        txn_opt: Some(LedgerInfo { 
+                            date: row.get(4)?, 
+                            amount: row.get(5)?, 
+                            transfer_type: TransferType::from(row.get::<_, u32>(6)? as u32), 
+                            participant: row.get(7)?, 
+                            category_id: row.get(8)?, 
+                            description: row.get(9)?, 
+                            ancillary_f32data: row.get(10)? 
+                        }),
+                    })
+                });
+                Ok(Some(record.unwrap()))
+            }
+            false => Ok(None),
+        }
+    }
+
     pub fn check_and_get_stock_split_record_matching_from_ledger_id(
         &mut self,
         uid : u32,
@@ -311,7 +399,25 @@ impl DbConn {
         ledger_id: u32,
     ) -> rusqlite::Result<Option<StockSplitRecord>, rusqlite::Error> {
         let p = rusqlite::params![ledger_id, uid, aid];
-        let sql = "SELECT id, split, lid FROM stock_splits WHERE lid = (?1) and uid = (?2) and aid = (?3)";
+        let sql = "
+        SELECT 
+                s.id, 
+                s.split, 
+                s.lid, 
+                l.date, 
+                l.amount, 
+                l.transfer_type,
+                l.pid, 
+                l.cid,
+                l.desc,
+                l.ancillary_f32
+            FROM stock_splits s 
+            INNER JOIN ledgers l ON 
+                s.aid = l.aid and  
+                s.uid = l.uid and
+                s.lid = l.id
+            WHERE s.lid = (?1) and s.uid = (?2) and s.aid = (?3)
+        ";
         let mut stmt = self.conn.prepare(sql)?;
         let exists = stmt.exists(p)?;
         match exists {
@@ -326,10 +432,52 @@ impl DbConn {
                             ledger_id : row.get(2)?
                             
                         },
-                        txn_opt : None
+                        txn_opt : Some(LedgerInfo { 
+                            date: row.get(3)?, 
+                            amount: row.get(4)?, 
+                            transfer_type: TransferType::from(row.get::<_, u32>(5)? as u32), 
+                            participant: row.get(6)?, 
+                            category_id: row.get(7)?, 
+                            description: row.get(8)?, 
+                            ancillary_f32data: row.get(9)? 
+                        }),
                     })
                 });
                 Ok(Some(record.unwrap()))
+            }
+            false => Ok(None),
+        }
+    }
+
+    pub fn check_and_get_stock_sale_allocation_record_matching_from_purchase_id(
+        &mut self,
+        uid : u32,
+        aid : u32,
+        purchase_id: u32,
+    ) -> rusqlite::Result<Option<Vec<SaleAllocationRecord>>, rusqlite::Error> {
+        let p = rusqlite::params![purchase_id, uid, aid];
+        let sql = "SELECT id, purchase_id, sale_id, quantity FROM stock_sale_allocation WHERE purchase_id = (?1) and uid = (?2) and aid = (?3)";
+        let mut stmt = self.conn.prepare(sql)?;
+        let exists = stmt.exists(p)?;
+        let mut sale_allocation_records = Vec::new();
+        match exists {
+            true => {
+                stmt = self.conn.prepare(sql)?;
+
+                let records = stmt.query_map(p, |row| {
+                    Ok(SaleAllocationRecord {
+                        id: row.get(0)?,
+                        info: SaleAllocationInfo {
+                            purchase_id: row.get(1)?,
+                            sale_id: row.get(2)?,
+                            quantity: row.get(3)?,
+                        },
+                    })
+                }).unwrap().collect::<Vec<_>>();
+                for record in records { 
+                    sale_allocation_records.push(record.unwrap());
+                }
+                Ok(Some(sale_allocation_records))
             }
             false => Ok(None),
         }
@@ -734,6 +882,28 @@ impl DbConn {
         }
     }
 
+    pub fn update_stock_shares_purchased(&mut self, uid : u32, aid :u32, id: u32, updated_shares: f32) -> Result<u32> {
+        let p = rusqlite::params![id, updated_shares, uid, aid];
+        let sql = "UPDATE stock_purchases SET shares = (?2) WHERE id = (?1) and uid = (?3) and aid = (?4)";
+        match self.conn.execute(sql, p) {
+            Ok(_) => Ok(id),
+            Err(error) => {
+                panic!("Unable to update shares: {}", error);
+            }
+        }
+    }
+
+    pub fn update_stock_shares_sold(&mut self, uid : u32, aid :u32, id: u32, updated_shares: f32) -> Result<u32> {
+        let p = rusqlite::params![id, updated_shares, uid, aid];
+        let sql = "UPDATE stock_sales SET shares = (?2) WHERE id = (?1) and uid = (?3) and aid = (?4)";
+        match self.conn.execute(sql, p) {
+            Ok(_) => Ok(id),
+            Err(error) => {
+                panic!("Unable to update shares: {}", error);
+            }
+        }
+    }
+
     pub fn add_to_stock_remaining(&mut self, uid: u32, aid : u32, id: u32, shares_to_add: f32) -> Result<u32> {
         let p = rusqlite::params![id, shares_to_add, uid, aid];
         let sql = "UPDATE stock_purchases SET remaining = remaining + (?2) WHERE id = (?1) and uid = (?3) and aid = (?4)";
@@ -748,6 +918,17 @@ impl DbConn {
     pub fn update_cost_basis(&mut self, uid : u32, aid : u32, id: u32, updated_costbasis: f32) -> Result<u32> {
         let p = rusqlite::params![id, updated_costbasis, uid, aid];
         let sql = "UPDATE stock_purchases SET costbasis = (?2) WHERE id = (?1) and uid = (?3) and aid = (?4)";
+        match self.conn.execute(sql, p) {
+            Ok(_) => Ok(id),
+            Err(error) => {
+                panic!("Unable to update shares: {}", error);
+            }
+        }
+    }
+
+    pub fn update_stock_sale_allocation_quantity(&mut self, uid : u32, aid : u32, id: u32, updated_quantity: f32) -> Result<u32> {
+        let p = rusqlite::params![id, updated_quantity, uid, aid];
+        let sql = "UPDATE stock_sale_allocation SET quantity = (?2) WHERE id = (?1) and uid = (?3) and aid = (?4)";
         match self.conn.execute(sql, p) {
             Ok(_) => Ok(id),
             Err(error) => {
@@ -1160,10 +1341,30 @@ impl DbConn {
 
     pub fn get_stock_current_value(&mut self, uid: u32, aid: u32) -> rusqlite::Result<f32, rusqlite::Error> {
         let sum: f32;
-        let p = rusqlite::params![aid,  uid];
+        let p = rusqlite::params![uid,  aid];
         let sql = "
-            SELECT SUM(get_stock_value(ticker) * remaining) as total_value
-            FROM stock_purchases WHERE aid = (?1) and uid = (?2)";
+            SELECT SUM(get_stock_value(ticker) * shares) as total_value
+            FROM (
+                SELECT 
+                    p.name as ticker,
+                    SUM(sp.remaining) as shares 
+                FROM 
+                    stock_purchases as sp
+                INNER JOIN ledgers as l ON 
+                    sp.lid = l.id and
+                    sp.aid = l.aid and 
+                    sp.uid = l.uid 
+                INNER JOIN people as p ON 
+                    l.pid = p.id and 
+                    l.aid = p.aid and 
+                    l.uid = p.uid 
+                WHERE 
+                    sp.uid = ?1 and
+                    sp.aid = ?2
+                GROUP BY
+                    ticker
+            )
+        ";
         let mut stmt = self.conn.prepare(sql)?;
         if stmt.exists(p)? {
             sum = stmt.query_row(p, |row| row.get(0))?;
@@ -1180,27 +1381,49 @@ impl DbConn {
         date: NaiveDate,
     ) -> rusqlite::Result<f32, rusqlite::Error> {
         let mut sum: f32 = 0.0;
-        let p = rusqlite::params![aid, date.to_string()];
+        let p = rusqlite::params![aid, uid, date.format("%Y-%m-%d").to_string()];
         let sql =
             "WITH 
                 -- Purchases (converting purchases into positive amounts)
                 purchases AS (
                     SELECT 
-                        p.ticker as ticker, 
-                        p.date AS transaction_date, 
-                        p.shares, 
+                        p.name as ticker, 
+                        l.date AS transaction_date, 
+                        sp.shares, 
                         'purchase' AS transaction_type
-                    FROM stock_purchases p WHERE aid = (?1) and uid = (?2)
+                    FROM stock_purchases AS sp 
+                    INNER JOIN ledgers AS l ON 
+                        sp.lid = l.id and 
+                        sp.aid = l.aid and
+                        sp.uid = l.uid 
+                    INNER JOIN people AS p ON
+                        l.pid = p.id and 
+                        l.aid = p.aid and 
+                        l.uid = p.uid 
+                    WHERE 
+                        sp.aid = (?1) and 
+                        sp.uid = (?2)
                 ),
                 
                 -- Sales (converting sales into negative amounts)
                 sales AS (
                     SELECT 
-                        s.ticker as ticker, 
-                        s.date AS transaction_date, 
-                        -s.shares AS shares, 
+                        p.name as ticker, 
+                        l.date AS transaction_date, 
+                        -ss.shares AS shares, 
                         'sale' AS transaction_type
-                    FROM stock_sales s WHERE aid = (?1) and uid = (?2)
+                    FROM stock_sales AS ss
+                    INNER JOIN ledgers AS l ON 
+                        ss.lid = l.id and 
+                        ss.aid = l.aid and
+                        ss.uid = l.uid 
+                    INNER JOIN people AS p ON
+                        l.pid = p.id and 
+                        l.aid = p.aid and 
+                        l.uid = p.uid 
+                    WHERE 
+                        ss.aid = (?1) and 
+                        ss.uid = (?2)
                 ),
                 
                 -- Combining Purchases and Sales for all tickers
@@ -1221,7 +1444,7 @@ impl DbConn {
                         SUM(t.shares) OVER (PARTITION BY t.ticker ORDER BY t.transaction_date) AS cumulative_shares_owned
                     FROM transactions t
                     -- Only include transactions up to the specific date
-                    WHERE t.transaction_date <= (?2)
+                    WHERE t.transaction_date <= (?3)
                 ),
 
                 -- returns last recorded amount of stocks owned
@@ -1236,7 +1459,7 @@ impl DbConn {
 
             -- Final query to get the cumulative shares owned for each ticker by the target date
             SELECT
-                SUM(get_stock_value_on_day(ticker, (?2)) * final_shares_owned)
+                SUM(get_stock_value_on_day(ticker, (?3)) * final_shares_owned)
             FROM residual";
 
         let mut stmt = self.conn.prepare(sql)?;
@@ -1246,5 +1469,47 @@ impl DbConn {
             panic!("Not found!");
         }
         Ok(sum)
+    }
+
+    pub fn get_positions(&mut self, uid : u32, aid : u32) -> rusqlite::Result<Option<Vec<(String, f32)>>, rusqlite::Error> {
+        let p = rusqlite::params![uid, aid];
+        let sql = "
+            SELECT 
+                p.name, SUM(sp.remaining) 
+            FROM 
+                stock_purchases as sp
+            INNER JOIN ledgers as l ON 
+                sp.lid = l.id and 
+                sp.aid = l.aid and 
+                sp.uid = l.uid 
+            INNER JOIN people as p ON 
+                l.pid = p.id and 
+                l.aid = p.aid and 
+                l.uid = p.uid
+            WHERE 
+                sp.uid = (?1) and 
+                sp.aid = (?2)
+            GROUP BY p.name;
+        ";
+
+        let mut stmt = self.conn.prepare(sql)?;
+        let exists = stmt.exists(p)?;
+        let mut positions : Vec<(String, f32)> = Vec::new();
+        match exists {
+            true => {
+                stmt = self.conn.prepare(sql)?;
+                let rows = stmt.query_map(p, |row| {
+                    Ok((row.get(0)?, row.get(1)?))
+                }).unwrap().collect::<Vec<_>>();
+
+                for row in rows {
+                    positions.push(row.unwrap());
+                }
+                return Ok(Some(positions));
+            }
+            false => { 
+                return Ok(None);
+            }
+        }
     }
 }

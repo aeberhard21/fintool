@@ -796,7 +796,7 @@ impl DbConn {
         }
 
         let p = rusqlite::params![uid];
-        let sql = "UPDATE account_ids SET next_account_transaction_id = next_account_transaction_id -1 WHERE uid = (?1)";
+        let sql = "UPDATE account_ids SET next_account_id = next_account_id -1 WHERE uid = (?1)";
         let rs = self.conn.execute(sql, p);
         match rs {
             Ok(_usize) => {}

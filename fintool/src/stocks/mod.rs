@@ -38,7 +38,7 @@ pub fn get_stock_history(
     )
     .unwrap();
 
-    let rs = tokio_test::block_on(provider.get_quote_history(&ticker, start, end)).unwrap();
+    let rs = tokio_test::block_on(provider.get_quote_history(&ticker, start, end))?;
     return rs.quotes();
 }
 

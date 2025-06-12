@@ -58,7 +58,7 @@ where
         type Value = TransferType;
 
         fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("an integer representing a transfer type (0, 1, 2, 3)")
+            formatter.write_str("an integer representing a transfer type (0, 1, 2, 3, 4)")
         }
 
         fn visit_i64<E>(self, value: i64) -> Result<TransferType, E>
@@ -70,9 +70,10 @@ where
                 1 => Ok(TransferType::DepositFromExternalAccount),
                 2 => Ok(TransferType::WithdrawalToInternalAccount),
                 3 => Ok(TransferType::DepositFromInternalAccount),
+                4 => Ok(TransferType::ZeroSumChange),
                 _ => Err(E::unknown_variant(
                     &value.to_string(),
-                    &["0", "1", "2", "3"],
+                    &["0", "1", "2", "3", "4"],
                 )),
             }
         }

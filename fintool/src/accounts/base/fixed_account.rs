@@ -47,11 +47,13 @@ impl FixedAccount {
             .with_default(NaiveDate::parse_from_str(&initial.info.date, "%Y-%m-%d").unwrap())
             .prompt()
             .unwrap()
+            .format("%Y-%m-%d")
             .to_string()
         } else { 
             DateSelect::new(date_prompt)
             .prompt()
             .unwrap()
+            .format("%Y-%m-%d")
             .to_string()
         };
 
@@ -225,11 +227,13 @@ impl FixedAccount {
             .with_default(NaiveDate::parse_from_str(&initial.info.date, "%Y-%m-%d").unwrap())
             .prompt()
             .unwrap()
+            .format("%Y-%m-%d")
             .to_string()
         } else { 
             DateSelect::new(date_prompt)
             .prompt()
             .unwrap()
+            .format("%Y-%m-%d")
             .to_string()
         };
 
@@ -421,14 +425,14 @@ impl FixedAccount {
                     if account_transaction_opt.is_some() { 
                         let account_transaction = account_transaction_opt.unwrap();
                         self.db.remove_account_transaction(self.uid, account_transaction.id).unwrap();
-                        self.db.remove_ledger_item(self.uid, account_transaction.info.from_account, account_transaction.info.from_ledger);
+                        self.db.remove_ledger_item(self.uid, account_transaction.info.from_account, account_transaction.info.from_ledger).unwrap();
                     }
                     self.deposit(Some(selected_record.clone()), true);
                 } else { 
                     account_transaction_opt = self.db.check_and_get_account_transaction_record_matching_from_ledger_id(self.uid, self.id, selected_record.id).unwrap();
                     if account_transaction_opt.is_some() { 
                         let account_transaction = account_transaction_opt.unwrap();
-                        self.db.remove_ledger_item(self.uid, account_transaction.info.to_account, account_transaction.info.to_ledger);
+                        self.db.remove_ledger_item(self.uid, account_transaction.info.to_account, account_transaction.info.to_ledger).unwrap();
                     }                    
                     self.withdrawal(Some(selected_record.clone()), true);
                 }
@@ -440,17 +444,17 @@ impl FixedAccount {
                     if account_transaction_opt.is_some() { 
                         let account_transaction = account_transaction_opt.unwrap();
                         self.db.remove_account_transaction(self.uid, account_transaction.id).unwrap();
-                        self.db.remove_ledger_item(self.uid, account_transaction.info.from_account, account_transaction.info.from_ledger);
+                        self.db.remove_ledger_item(self.uid, account_transaction.info.from_account, account_transaction.info.from_ledger).unwrap();
                     }
                 } else { 
                     account_transaction_opt = self.db.check_and_get_account_transaction_record_matching_from_ledger_id(self.uid, self.id, selected_record.id).unwrap();
                     if account_transaction_opt.is_some() { 
                         let account_transaction = account_transaction_opt.unwrap();
                         self.db.remove_account_transaction(self.uid, account_transaction.id).unwrap();
-                        self.db.remove_ledger_item(self.uid, account_transaction.info.to_account, account_transaction.info.to_ledger);
+                        self.db.remove_ledger_item(self.uid, account_transaction.info.to_account, account_transaction.info.to_ledger).unwrap();
                     }                    
                 }
-                self.db.remove_ledger_item(self.uid, self.id, selected_record.id.clone());
+                self.db.remove_ledger_item(self.uid, self.id, selected_record.id.clone()).unwrap();
             }
             "None" => { 
                 return selected_record.clone();

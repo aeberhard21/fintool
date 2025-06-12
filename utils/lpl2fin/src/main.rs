@@ -124,6 +124,15 @@ fn main() {
                 ttype = TransferType::WithdrawalToInternalAccount;
                 peer = txn.symbol.clone();
                 description = txn.description.clone();
+
+                stock_txn = StockInfo {
+                    shares: quantity,
+                    costbasis: price,
+                    remaining: quantity,
+                    is_buy: true,
+                    is_split: false,
+                };
+                has_stock = true;
             }
             "long term cap gain" => {
                 ttype = TransferType::DepositFromInternalAccount;
@@ -134,6 +143,15 @@ fn main() {
                 ttype = TransferType::WithdrawalToInternalAccount;
                 peer = txn.symbol;
                 description = txn.description.clone();
+
+                stock_txn = StockInfo {
+                    shares: quantity,
+                    costbasis: price,
+                    remaining: quantity,
+                    is_buy: true,
+                    is_split: false,
+                };
+                has_stock = true;
             }
             "short term cap gain" => {
                 ttype = TransferType::DepositFromInternalAccount;
@@ -144,6 +162,15 @@ fn main() {
                 ttype = TransferType::WithdrawalToInternalAccount;
                 peer = txn.symbol;
                 description = txn.description.clone();
+
+                stock_txn = StockInfo { 
+                    shares: quantity,
+                    costbasis: price,
+                    remaining: quantity,
+                    is_buy: true,
+                    is_split: false,
+                };
+                has_stock = true;
             }
             "buy" => {
                 ttype = TransferType::WithdrawalToInternalAccount;
@@ -165,9 +192,9 @@ fn main() {
                 description = txn.description.clone();
 
                 stock_txn = StockInfo {
-                    shares: quantity,
+                    shares: quantity.abs(),
                     costbasis: price,
-                    remaining: quantity,
+                    remaining: 0.0,
                     is_buy: false,
                     is_split: false,
                 };
@@ -233,13 +260,14 @@ fn main() {
             };
 
             println!(
-                "{},{},{},{},{},{},{},{},{},{},{}",
+                "{},{},{},{},{},{},{},{},{},{},{},{}",
                 ledger_entry.date,
                 ledger_entry.amount,
                 ledger_entry.transfer_type as u32,
                 ledger_entry.participant,
                 ledger_entry.category,
                 ledger_entry.description,
+                ledger_entry.ancillary_f32,
                 ledger_entry.stock_info.clone().unwrap().shares,
                 ledger_entry.stock_info.clone().unwrap().costbasis,
                 ledger_entry.stock_info.clone().unwrap().remaining,
@@ -264,20 +292,19 @@ fn main() {
             };
 
             println!(
-                "{},{},{},{},{},{},{},{},{},{},{},{},{}",
+                "{},{},{},{},{},{},{},{},{},{},{},{}",
                 ledger_entry.date,
                 ledger_entry.amount,
                 ledger_entry.transfer_type as u32,
                 ledger_entry.participant,
                 ledger_entry.category,
                 ledger_entry.description,
+                ledger_entry.ancillary_f32,
                 "",
                 "",
                 "",
                 "",
                 "",
-                "",
-                ""
             );
         };
     }

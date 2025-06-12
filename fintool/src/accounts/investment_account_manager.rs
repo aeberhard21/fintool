@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use chrono::NaiveDate;
 use inquire::Confirm;
 use inquire::Select;
 use inquire::Text;
@@ -23,6 +24,7 @@ use crate::types::accounts::AccountInfo;
 use crate::types::accounts::AccountTransaction;
 use crate::types::accounts::AccountType;
 use crate::types::investments::StockInfo;
+use crate::types::investments::StockRecord;
 use crate::types::investments::StockSplitInfo;
 use crate::types::investments::StockSplitRecord;
 use crate::types::ledger::LedgerInfo;
@@ -193,9 +195,18 @@ impl AccountOperations for InvestmentAccountManager {
             .from_path(fp)
             .unwrap();
 
+        let mut ledger_entries = Vec::new();
         for result in rdr.deserialize::<LedgerEntry>() {
-            // println!("{}", result.unwrap().amount);
-            let entry = result.unwrap();
+            ledger_entries.push(result.unwrap());
+        }
+        ledger_entries.sort_by(
+            |x,y| { 
+                (NaiveDate::parse_from_str(&x.date, "%Y-%m-%d").unwrap())
+                .cmp(&NaiveDate::parse_from_str(&y.date, "%Y-%m-%d").unwrap())
+            }
+        );
+
+        for entry in ledger_entries {
 
             let ptype = if entry.transfer_type
                 == shared_lib::TransferType::WithdrawalToExternalAccount
@@ -241,8 +252,10 @@ impl AccountOperations for InvestmentAccountManager {
                         // get total shares for ticker and divide by split
                         let stocks_owned =
                             self.db.get_stocks(self.uid, self.id, entry.participant.clone()).unwrap();
-                        let all_shares: f32 = stocks_owned.iter().map(|x| x.info.shares).sum();
-                        let split_factor = s.shares / all_shares;
+                        let all_shares: f32 = stocks_owned.iter().map(|x| x.info.remaining).sum();
+                        // lpl takes the split and adds the difference to your account
+                        // i.e., if the split is 3:1, it will take your 1 part and add 2 parts
+                        let split_factor = (s.shares + all_shares)/ all_shares;
                         let stock_split_id = self.db
                             .add_stock_split(self.uid, self.id, split_factor.clone(), lid)
                             .unwrap();
@@ -265,7 +278,7 @@ impl AccountOperations for InvestmentAccountManager {
                         }
 
                         txn = LedgerInfo {
-                            date: entry.date,
+                            date: NaiveDate::parse_from_str(entry.date.as_str(), "%Y-%m-%d").unwrap().format("%Y-%m-%d").to_string(),
                             amount: entry.amount,
                             transfer_type: entry.transfer_type as TransferType,
                             participant: self
@@ -288,7 +301,7 @@ impl AccountOperations for InvestmentAccountManager {
                         self.db.add_stock_purchase(self.uid, self.id, my_s).unwrap();
                     }
                 } else {
-                    // if split, check that we own this symbol
+                    // if sale, check that we own this symbol
                     let symbols_owned = self.db.get_stock_tickers(self.uid, self.id).unwrap();
                     let symbol_found = symbols_owned.iter().any(|i| *i == entry.participant.clone());
                     if !symbol_found {
@@ -307,7 +320,7 @@ impl AccountOperations for InvestmentAccountManager {
                         ancillary_f32data : entry.ancillary_f32
                     };
 
-                    lid = self.db.add_ledger_entry(self.uid, self.id, txn).unwrap();
+                    lid = self.db.add_ledger_entry(self.uid, self.id, txn.clone()).unwrap();
 
                     let my_s: crate::types::investments::StockInfo = StockInfo {
                         shares: s.shares,
@@ -315,12 +328,13 @@ impl AccountOperations for InvestmentAccountManager {
                         remaining: s.remaining,
                         ledger_id: lid,
                     };
-                    self.db.add_stock_sale(self.uid,self.id, my_s).unwrap();
+                    let sale_id = self.db.add_stock_sale(self.uid,self.id, my_s.clone()).unwrap();
+                    self.variable.allocate_sale_stock(StockRecord { id : sale_id, info : my_s, txn_opt : Some(txn) }, "LIFO".to_string());
                 }
             } else {
                 // this is just a normal ledger transaction
                 let txn: LedgerInfo = LedgerInfo {
-                    date: entry.date,
+                    date: NaiveDate::parse_from_str(entry.date.as_str(), "%Y-%m-%d").unwrap().format("%Y-%m-%d").to_string(),
                     amount: entry.amount,
                     transfer_type: entry.transfer_type as TransferType,
                     participant: self
@@ -338,7 +352,7 @@ impl AccountOperations for InvestmentAccountManager {
 
     fn modify(&mut self) {
         const MODIFY_OPTIONS: [&'static str; 4] = ["Ledger", "Categories", "Participant", "None"];
-        let modify_choice = Select::new("What would you like to modify:", MODIFY_OPTIONS.to_vec())
+        let modify_choice = Select::new("\nWhat would you like to modify:", MODIFY_OPTIONS.to_vec())
         .prompt()
         .unwrap();
         match modify_choice { 
@@ -348,7 +362,7 @@ impl AccountOperations for InvestmentAccountManager {
                     return;
                 }
                 let selected_record = record_or_none.unwrap();
-                self.variable.fixed.modify(selected_record);
+                self.variable.modify(selected_record);
             }
             "Categories" => {
                 let records = self.db.get_categories(self.uid, self.id).unwrap();
@@ -503,13 +517,25 @@ impl AccountOperations for InvestmentAccountManager {
     fn export(&mut self) {}
 
     fn report(&mut self) {
-        const REPORT_OPTIONS: [&'static str; 3] =
-            ["Total Value", "Time-Weighted Rate of Return", "None"];
+        const REPORT_OPTIONS: [&'static str; 4] =
+            ["Positions", "Total Value", "Time-Weighted Rate of Return", "None"];
         let choice = Select::new("What would you like to report: ", REPORT_OPTIONS.to_vec())
             .prompt()
             .unwrap()
             .to_string();
         match choice.as_str() {
+            "Positions" => { 
+                let positions_wrapped = self.variable.get_positions();
+                if positions_wrapped.is_some() {
+                    let positions = positions_wrapped.unwrap();
+                    println!("\nPositions:");
+                    for position in positions { 
+                        println!("\t{} | {}", position.0, position.1);
+                    }
+                } else { 
+                    println!("\nNo positions found!");
+                }
+            }
             "Total Value" => {
                 let value = self.variable.get_current_value();
                 println!("\tTotal Account Value: {}", value);

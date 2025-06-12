@@ -1,9 +1,12 @@
 use core::alloc;
+use std::backtrace;
 use std::io::Read;
 use std::sync::Arc;
 
 use chrono::{Date, Days, NaiveDate};
+use csv::DeserializeError;
 use inquire::*;
+use yahoo_finance_api::YahooError;
 
 use crate::database::DbConn;
 use crate::stocks;
@@ -75,9 +78,15 @@ impl VariableAccount {
             DateSelect::new(date_msg)
                 .with_default(NaiveDate::parse_from_str(&initial_date, "%Y-%m-%d").unwrap())
                 .prompt()
-                .unwrap().to_string()
+                .unwrap()
+                .format("%Y-%m-%d")
+                .to_string()
         } else { 
-            DateSelect::new(date_msg).prompt().unwrap().to_string()
+            DateSelect::new(date_msg)
+                .prompt()
+                .unwrap()
+                .format("%Y-%m-%d")
+                .to_string()
         };
 
         let shares_msg = "Enter number of shares purchased:";
@@ -119,7 +128,7 @@ impl VariableAccount {
                 .check_and_add_participant(self.uid, self.id, ticker.clone(), ParticipantType::Payee, false);
         let cid = self
             .db
-            .check_and_add_category(self.uid,  self.id, "buy".to_string());
+            .check_and_add_category(self.uid,  self.id, "buy".to_ascii_uppercase());
 
         purchase = LedgerInfo {
             date: date_input.clone(),
@@ -169,7 +178,10 @@ impl VariableAccount {
 
         let ticker : String;
         let ticker_msg = "Select which stock you would like to record a sale of:";
-        let tickers = self.db.get_stock_tickers(self.uid, self.id).unwrap();
+        let mut tickers_undup = self.db.get_stock_tickers(self.uid, self.id).unwrap();
+        tickers_undup.sort();
+        tickers_undup.dedup();
+        let tickers = tickers_undup;
         ticker = if defaults_to_use {  
             let pid = initial.clone().txn_opt.expect("Ledger information not populated!").participant;
             let initial_ticker = self.db.get_participant(self.uid, self.id, pid).unwrap();
@@ -198,10 +210,13 @@ impl VariableAccount {
                 .with_default(NaiveDate::parse_from_str(&initial_date, "%Y-%m-%d").unwrap())
                 .prompt()
                 .unwrap()
+                .format("%Y-%m-%d")
+
         } else { 
             DateSelect::new(date_msg)
                 .prompt()
                 .unwrap()
+                .format("%Y-%m-%d")
         };
 
         let price_msg = "Enter sale price (per share):";
@@ -241,7 +256,7 @@ impl VariableAccount {
         let value_received = number_of_shares_sale * sale_price;
         let stock_cid = self
             .db
-            .check_and_add_category(self.uid, self.id, "sale".to_string());
+            .check_and_add_category(self.uid, self.id, "sale".to_ascii_uppercase());
 
         let sale = LedgerInfo {
             date: sale_date.to_string(),
@@ -304,7 +319,10 @@ impl VariableAccount {
             defaults_to_use = false;
         }
 
-        let tickers = self.db.get_stock_tickers(self.uid, self.id).unwrap();
+        let mut tickers_undup = self.db.get_stock_tickers(self.uid, self.id).unwrap();
+        tickers_undup.sort();
+        tickers_undup.dedup();
+        let tickers = tickers_undup;
         let ticker_msg = "Select which stock you would like to report a split of:";
         let ticker = if defaults_to_use {
                 let pid = initial.clone().txn_opt.expect("Ledger information not populated!").participant;
@@ -343,13 +361,18 @@ impl VariableAccount {
             .with_starting_date(NaiveDate::parse_from_str(initial_date.as_str(), "%Y-%m-%d").expect("Unable to convert date to NaiveDate"))
             .prompt()
             .unwrap()
+            .format("%Y-%m-%d")
             .to_string()
         } else {
-            DateSelect::new(date_msg).prompt().unwrap().to_string()
+            DateSelect::new(date_msg)
+                .prompt()
+                .unwrap()
+                .format("%Y-%m-%d")
+                .to_string()
         };
 
         let pid = self.db.check_and_add_participant(self.uid, self.id, ticker.clone(), ParticipantType::Both, false);
-        let cid = self.db.check_and_add_category(self.uid, self.id, "stock dividend/split".to_string());
+        let cid = self.db.check_and_add_category(self.uid, self.id, "stock dividend/split".to_ascii_uppercase());
 
         let ledger_entry = LedgerInfo { 
             date : split_date.clone(), 
@@ -433,17 +456,13 @@ impl VariableAccount {
             }
             "Remove" => {
                 if is_stock_purchase { 
-                    // TODO: check if part of any splits or sales before removing
-                    // self.db.remove_stock_purchase(self.uid, self.id, stock_record.info.ledger_id);
-                    self.db.remove_ledger_item(self.uid, self.id, stock_record.info.ledger_id);
+                    self.db.remove_ledger_item(self.uid, self.id, stock_record.info.ledger_id).unwrap();
                 } else if is_stock_sale { 
                     self.deallocate_sale_stock(stock_record.clone().id);
-                    // self.db.remove_stock_sale(self.uid, self.id, stock_record.info.ledger_id);
-                    self.db.remove_ledger_item(self.uid, self.id, stock_record.info.ledger_id);
+                    self.db.remove_ledger_item(self.uid, self.id, stock_record.info.ledger_id).unwrap();
                 } else {
                     self.deallocate_stock_split(split_record.clone());
-                    // self.db.remove_stock_split(self.uid, self.id, split_record.info.ledger_id);
-                    self.db.remove_ledger_item(self.uid, self.id, split_record.info.ledger_id);
+                    self.db.remove_ledger_item(self.uid, self.id, split_record.info.ledger_id).unwrap();
                 }
                 return record;
             }
@@ -457,7 +476,7 @@ impl VariableAccount {
         
     }
 
-    fn allocate_sale_stock(&mut self, record: StockRecord, method: String) {
+    pub fn allocate_sale_stock(&mut self, record: StockRecord, method: String) {
         let stocks: Vec<StockRecord>;
         let ticker = self.db.get_participant(self.uid, self.id, record.txn_opt.expect("Transaction required but not found!").participant).unwrap();
         match method.as_str() {
@@ -524,36 +543,126 @@ impl VariableAccount {
                 .add_to_stock_remaining(self.uid, self.id, record.info.purchase_id, record.info.quantity).unwrap();
             self.db.remove_stock_sale_allocation(self.uid, self.id,record.id);
         }
-        // self.db.remove_stock_sale(sale_record.info.ledger_id);
     }
 
     pub fn allocate_stock_split(&mut self, record : StockSplitRecord) { 
-        let ticker = self.db.get_participant(self.uid, self.id, record.txn_opt.expect("Corresponding ledger transaction not provided!").participant).unwrap();
-        let stock_records = self.db.get_stocks(self.uid,self.id, ticker).unwrap();
-        for stock in stock_records {
+        
+        if record.txn_opt.is_none() {
+            panic!("Expected ledger data matching stock split id: {}", record.id);
+        }
+        let split_txn = record.txn_opt.unwrap();
+
+        let ticker = self.db.get_participant(self.uid, self.id, split_txn.participant).unwrap();
+        let stock_purchase_records = self.db.get_stocks(self.uid,self.id, ticker).unwrap();
+
+        let mut sales_to_update: Vec<(u32, f32)> = Vec::new();
+        for stock in stock_purchase_records {
+            // update shares so it looks like we have always purchased those
+            self.db.update_stock_shares_purchased(self.uid, self.id, stock.id, stock.info.shares * record.info.split)
+                .unwrap();
             self.db.update_stock_remaining(self.uid, self.id, stock.id, stock.info.remaining * record.info.split)
                 .unwrap();
             self.db.update_cost_basis(self.uid, self.id, stock.id, stock.info.costbasis / record.info.split)
                 .unwrap();
             self.db.add_stock_split_allocation(self.uid, self.id, StockSplitAllocationInfo { stock_split_id : record.id, stock_purchase_id : stock.id }).unwrap();
+
+            // if stock was part of sale, we need to increase number of stocks sold by factor 
+            let sale_allocations_opt = self.db.check_and_get_stock_sale_allocation_record_matching_from_purchase_id(self.uid, self.id, stock.id).unwrap();
+            if sale_allocations_opt.is_none() { 
+                // no sale allocations founds
+                continue;
+            }
+            let sale_allocations = sale_allocations_opt.unwrap();
+            for sale_allocation in sale_allocations {
+                let sale_txn_opt = self.db.check_and_get_stock_sale_record_matching_from_sale_id(self.uid, self.id, sale_allocation.info.sale_id).unwrap();
+                if sale_txn_opt.is_none() { 
+                    panic!("Stock stale record not found for sale id: {}", sale_allocation.info.sale_id);
+                }
+                let stock_sale = sale_txn_opt.unwrap();
+                if stock_sale.txn_opt.is_none() { 
+                    panic!("Transaction is missing with sale transaction matching id: {}", stock_sale.id);
+                }
+                let sale_txn: LedgerInfo = stock_sale.txn_opt.unwrap();
+                // if the sale occured after the split, ignore it.
+                if sale_txn.date > split_txn.date {
+                    continue;
+                }
+                self.db.update_stock_sale_allocation_quantity(self.uid, self.id, sale_allocation.id, sale_allocation.info.quantity * record.info.split).unwrap();
+                sales_to_update.push((stock_sale.id, stock_sale.info.shares));
+            }
+        }
+
+        if !sales_to_update.is_empty() {
+            sales_to_update.sort_by(|a,b| (a.0).cmp(&b.0));
+            sales_to_update.dedup_by(|a, b| a.0 == b.0 );
+            for sale in sales_to_update { 
+                self.db.update_stock_shares_sold(self.uid, self.id, sale.0, sale.1 * record.info.split).unwrap();
+            }
         }
     }
 
     fn deallocate_stock_split(&mut self, record : StockSplitRecord ) { 
-        let stock_split_alloc_records = self
+        let mut stock_split_alloc_records = self
             .db
             .get_stock_split_allocation_for_stock_split_id(self.uid,self.id, record.id)
             .unwrap();
+        // remove the highest ids first
+        stock_split_alloc_records.sort_by(|a,b| (b.id).cmp(&a.id));
+
+        if record.txn_opt.is_none() {
+            panic!("Expected ledger data matching stock split id: {}", record.id);
+        }
+        let split_txn = record.txn_opt.unwrap();
+        
+        let mut sales_to_update = Vec::new();
+
         for alloc_record in stock_split_alloc_records {
             // add shares back to ledger
-            let stock_purchase = self.db.check_and_get_stock_purchase_record_matching_from_purchase_id(self.uid, self.id, alloc_record.info.stock_purchase_id).unwrap().expect("Stock record not returned");
+            let stock_purchase = self.db.check_and_get_stock_purchase_record_matching_from_purchase_id(self.uid, self.id, alloc_record.info.stock_purchase_id)
+                .unwrap()
+                .expect("Stock record not returned");
+            
             let updated_shares = stock_purchase.info.remaining / record.info.split;
-            let _ = self.db.update_stock_remaining(stock_purchase.id, self.id, alloc_record.info.stock_purchase_id, updated_shares);
             let updated_costbasis = stock_purchase.info.costbasis * record.info.split;
+            
+            let _ = self.db.update_stock_remaining(stock_purchase.id, self.id, alloc_record.info.stock_purchase_id, updated_shares);
+            let _ = self.db.update_stock_shares_purchased(self.uid, self.id, stock_purchase.id, updated_shares); 
             let _ = self.db.update_cost_basis(self.uid, self.id, alloc_record.info.stock_purchase_id, updated_costbasis);
-            self.db.remove_stock_split_allocation(self.uid, self.id, alloc_record.id);
+
+            // check if there have been any sales affected by this stock that would be affected by this split
+            let sale_allocations_opt = self.db.check_and_get_stock_sale_allocation_record_matching_from_purchase_id(self.uid, self.id, alloc_record.info.stock_purchase_id).unwrap();
+            if sale_allocations_opt.is_some() {
+                let sale_allocations = sale_allocations_opt.unwrap();
+                for sale_allocation in sale_allocations {
+                    let stock_sale_opt = self.db.check_and_get_stock_sale_record_matching_from_sale_id(self.uid, self.id, sale_allocation.info.sale_id).unwrap();
+                    if stock_sale_opt.is_none() { 
+                        panic!("Stock stale record not found for sale id: {}", sale_allocation.info.sale_id);
+                    }
+                    let stock_sale = stock_sale_opt.unwrap();
+                    if stock_sale.txn_opt.is_none() { 
+                        panic!("Transaction is missing with sale transaction matching id: {}", stock_sale.id);
+                    }
+                    let sale_txn: LedgerInfo = stock_sale.txn_opt.unwrap();
+
+                    // if the sale occured after the split, ignore it.
+                    if sale_txn.date > split_txn.date {
+                        continue;
+                    }
+                    self.db.update_stock_sale_allocation_quantity(self.uid, self.id, sale_allocation.id, sale_allocation.info.quantity / record.info.split).unwrap();
+                    sales_to_update.push((stock_sale.id, stock_sale.info.shares));
+                }
+            }
+            self.db.remove_stock_split_allocation(self.uid, self.id, alloc_record.id).unwrap();
         }
-        self.db.remove_stock_split(self.uid, self.id, record.info.ledger_id);
+        if !sales_to_update.is_empty() { 
+            sales_to_update.sort_by(|a,b| (a.0).cmp(&b.0));
+            sales_to_update.dedup_by(|a, b| a.0 == b.0 );
+            for sale in sales_to_update { 
+                self.db.update_stock_shares_sold(self.uid, self.id, sale.0, sale.1 / record.info.split).unwrap();
+
+            }
+        }
+        self.db.remove_stock_split(self.uid, self.id, record.info.ledger_id).unwrap();
     }
 
     pub fn confirm_valid_ticker(&mut self, ticker : String) -> bool { 
@@ -564,7 +673,6 @@ impl VariableAccount {
                 panic!("Fetch failed for ticker '{}': {}!", ticker.clone(), error);
             }
         }
-
     }
 
     pub fn get_current_value(&mut self) -> f32 {
@@ -600,6 +708,7 @@ impl VariableAccount {
             .get_portfolio_value_before_date(self.uid, self.id, period_start)
             .unwrap();
         let mut vi = fixed_value + variable_value;
+        let mut vf_variable : f32 = 0.0;
         let mut vf: f32;
 
         let final_fixed_value = self
@@ -654,10 +763,18 @@ impl VariableAccount {
                     .db
                     .get_cumulative_total_of_ledger_before_date(self.uid, self.id, end_of_period)
                     .unwrap();
-                let vf_variable = self
+                let vf_variable_wrap = self
                     .db
-                    .get_portfolio_value_before_date(self.uid, self.id, end_of_period)
-                    .unwrap();
+                    .get_portfolio_value_before_date(self.uid, self.id, end_of_period);
+                vf_variable = match vf_variable_wrap {
+                    Ok(amt) => {
+                        amt
+                    }
+                    Err(error ) => {
+                        // if an error was returned we will just skip this day and move on
+                        vf_variable
+                    }
+                };
                 vf = vf_fixed + vf_variable;
 
                 hp = (vf - (cf + vi)) / (cf + vi);
@@ -671,5 +788,9 @@ impl VariableAccount {
         let hp1 = hps.pop().expect("No valid cash flow periods!");
         let twr = hps.iter().fold(1.0 + hp1, |acc, hp| acc * (1.0 + hp)) - 1.0;
         return twr * 100.0;
+    }
+
+    pub fn get_positions(&mut self) -> Option<Vec<(String, f32)>> {
+        return self.db.get_positions(self.uid, self.id).unwrap();
     }
 }
