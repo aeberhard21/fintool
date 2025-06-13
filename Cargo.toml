@@ -3,7 +3,8 @@ members = [
     "shared_lib", 
     "fintool", 
     "./utils/vfcu2fin",
-    "./utils/lpl2fin"
+    "./utils/lpl2fin",
+    "./utils/discover2fin"
 ]
 
 workspace.resolver = "2"
