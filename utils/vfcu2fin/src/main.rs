@@ -97,16 +97,16 @@ fn main() {
 
                     if x.is_some() {
                         let x = x.unwrap();
-                        //     if x.get(1).unwrap().as_str() == "to" {
-                        //         ttype = TransferType::WithdrawalToExternalAccount;
-                        //         cat = "Withdrawal".to_string();
-                        //     } else if x.get(1).unwrap().as_str() == "from" {
-                        //         ttype = TransferType::DepositFromExternalAccount;
-                        //         cat = "Deposit".to_string();
-                        //     } else {
-                        //         eprintln!("Unrecognized transfer type: {}", x.get(1).unwrap().as_str());
-                        //         std::process::exit(1);
-                        //     }
+                            if x.get(1).unwrap().as_str() == "to" {
+                                ttype = TransferType::WithdrawalToExternalAccount;
+                                cat = "Withdrawal".to_string();
+                            } else if x.get(1).unwrap().as_str() == "from" {
+                                ttype = TransferType::DepositFromExternalAccount;
+                                cat = "Deposit".to_string();
+                            } else {
+                                eprintln!("Unrecognized transfer type: {}", x.get(1).unwrap().as_str());
+                                std::process::exit(1);
+                            }
 
                         peer = x.get(2).unwrap().as_str().to_string();
                     } else {
@@ -231,7 +231,7 @@ fn main() {
                 }
             };
         } else {
-            let re = Regex::new(r"(Deposit|Withdrawal|Check)").unwrap();
+            let re = Regex::new(r"^(Deposit|Withdrawal|Check)").unwrap();
             let x = re.captures(txn.description.as_str()).unwrap();
             if x.get(1).unwrap().as_str() == "Deposit" {
                 let re = Regex::new(r"Deposit\s+Dividend").unwrap();
@@ -241,12 +241,12 @@ fn main() {
                     ttype = TransferType::DepositFromExternalAccount;
                 }
                 peer = "Misc".to_string();
-                cat = "Misc".to_string();
+                cat = "Deposit".to_string();
             }
             if x.get(1).unwrap().as_str() == "Withdrawal" {
                 ttype = TransferType::WithdrawalToExternalAccount;
                 peer = "Misc".to_string();
-                cat = "Misc".to_string();
+                cat = "Withdrawal".to_string();
             }
             if x.get(1).unwrap().as_str() == "Check" {
                 ttype = TransferType::WithdrawalToExternalAccount;
@@ -272,13 +272,14 @@ fn main() {
         };
 
         println!(
-            "{},{:.2},{},{},{},{},,",
+            "{},{:.2},{},{},{},{},{},,,,,",
             ledger_entry.date,
             ledger_entry.amount,
             ledger_entry.transfer_type as u32,
             ledger_entry.participant,
             ledger_entry.category,
-            ledger_entry.description
+            ledger_entry.description,
+            ledger_entry.ancillary_f32
         );
     }
 }

@@ -26,6 +26,7 @@ use std::rc;
 use crate::database::DbConn;
 use crate::tui::query_user_for_analysis_period;
 use crate::types::accounts::AccountInfo;
+use crate::types::accounts::AccountRecord;
 use crate::types::accounts::AccountTransaction;
 use crate::types::accounts::AccountType;
 use crate::types::ledger::LedgerInfo;
@@ -73,7 +74,7 @@ impl BankAccount {
 }
 
 impl AccountCreation for BankAccount {
-    fn create(name: String) -> AccountInfo {
+    fn create(uid : u32, name: String, _db : &mut DbConn) -> AccountRecord {
 
         let has_bank = true;
         let has_stocks = false;
@@ -89,17 +90,19 @@ impl AccountCreation for BankAccount {
             has_budget: has_budget,
         };
 
-        return account;
+        let aid = _db.add_account(uid, &account).unwrap();
+
+        return AccountRecord { id : aid, info : account };
     }
 }
 
 impl AccountOperations for BankAccount {
     fn record(&mut self) {
-        const REPORT_OPTIONS: [&'static str; 3] = ["Deposit", "Withdrawal", "None"];
+        const RECORD_OPTIONS: [&'static str; 3] = ["Deposit", "Withdrawal", "None"];
         loop {
             let action = Select::new(
                 "\nWhat transaction would you like to record?",
-                REPORT_OPTIONS.to_vec(),
+                RECORD_OPTIONS.to_vec(),
             )
             .prompt()
             .unwrap()
@@ -378,7 +381,7 @@ impl AccountOperations for BankAccount {
     fn export(&mut self) {}
 
     fn report(&mut self) {
-        const REPORT_OPTIONS: [&'static str; 2] = ["Total Value", "Simple Growth Rate"];
+        const REPORT_OPTIONS: [&'static str; 3] = ["Total Value", "Simple Growth Rate", "None"];
         let choice: String =
             Select::new("What would you like to report: ", REPORT_OPTIONS.to_vec())
                 .prompt()
@@ -393,6 +396,9 @@ impl AccountOperations for BankAccount {
                 let (period_start, period_end) = query_user_for_analysis_period();
                 let rate = self.fixed.simple_rate_of_return(period_start, period_end);
                 println!("\tRate of return: {}%", rate);
+            }
+            "None" => { 
+                return;
             }
             _ => {
                 panic!("Unrecognized input!");

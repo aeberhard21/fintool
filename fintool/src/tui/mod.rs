@@ -10,6 +10,7 @@ use crate::accounts::base::Account;
 use crate::accounts::base::AccountCreation;
 use crate::accounts::base::AccountOperations;
 use crate::accounts::investment_account_manager::InvestmentAccountManager;
+use crate::accounts::credit_card_account::CreditCardAccount;
 use crate::database::DbConn;
 use crate::tui::tui_user::*;
 use crate::types::accounts::*;
@@ -112,7 +113,7 @@ fn access_account(uid: u32, db: &mut DbConn) {
                     }
                 }
 
-                let more = Confirm::new("\nMore actions?").prompt().unwrap();
+                let more = Confirm::new("More actions?").prompt().unwrap();
                 if !more {
                     continue;
                 }
@@ -242,6 +243,7 @@ pub fn decode_and_create_account_type(
     match account.info.atype {
         AccountType::Bank => Box::new(BankAccount::new(uid, account.id, db)),
         AccountType::Investment => Box::new(InvestmentAccountManager::new(uid, account.id, db)),
+        AccountType::CreditCard => Box::new(CreditCardAccount::new(uid, account.id, db)),
         _ => {
             panic!("Invalid account type!");
         }
@@ -313,7 +315,7 @@ pub fn create_new_account(
     uid: u32,
     db: &mut DbConn,
 ) -> (Option<(Box<dyn Account>, AccountRecord)>) {
-    const ACCOUNT_TYPES: [&'static str; 3] = ["Bank Account", "Investment Account", "None"];
+    const ACCOUNT_TYPES: [&'static str; 4] = ["Bank Account", "Credit Card", "Investment Account", "None"];
     let selected_account_type = Select::new(
         "What account type would you like to create:",
         ACCOUNT_TYPES.to_vec(),
@@ -322,8 +324,7 @@ pub fn create_new_account(
     .unwrap()
     .to_string();
 
-    let id;
-    let new_account;
+    let new_account: AccountRecord;
     let acct: Box<dyn Account>;
 
     if selected_account_type == "None" {
@@ -334,27 +335,25 @@ pub fn create_new_account(
 
     match selected_account_type.as_str() {
         "Bank Account" => {
-            new_account = BankAccount::create(name);
-            id = db.add_account(uid, &new_account).unwrap();
-            acct = Box::new(BankAccount::new(uid, id, db));
+            new_account = BankAccount::create(uid, name, db);
         }
         "Investment Account" => {
-            new_account = InvestmentAccountManager::create(name);
-            id = db.add_account(uid, &new_account).unwrap();
-            acct = Box::new(InvestmentAccountManager::new(uid, id, db));
+            new_account = InvestmentAccountManager::create(uid, name,db);
+        }
+        "Credit Card" => {
+            new_account = CreditCardAccount::create(uid, name, db);
         }
         _ => {
             panic!("Unrecognized input!");
         }
     }
+    
+    acct = decode_and_create_account_type(uid, db, &new_account);
 
     return Some((
         acct,
-        AccountRecord {
-            id: id,
-            info: new_account,
-        },)
-    );
+        new_account
+    ));
 }
 
 pub fn name_account(uid : u32, db: &mut DbConn) -> String {

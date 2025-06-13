@@ -49,7 +49,7 @@ impl DbConn {
 
     pub fn update_category_name(&mut self, uid : u32, aid: u32, old : String, new : String) -> Result<String> {
         let p = rusqlite::params!(uid, aid, old, new);
-        let sql = "UPDATE categories SET name = ?(4) WHERE uid = (?1) and aid = (?2) and name = (?3)";
+        let sql = "UPDATE categories SET name = (?4) WHERE uid = (?1) and aid = (?2) and name = (?3)";
         match self.conn.execute(sql, p) {
             Ok(_) => Ok(new),
             Err(error) => {

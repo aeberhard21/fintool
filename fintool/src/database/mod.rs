@@ -54,6 +54,7 @@ impl DbConn {
         Self::create_account_transaction_table(self);
         Self::create_stock_split_table(self);
         Self::create_stock_split_allocation_table(self);
+        Self::create_credit_card_accounts_table(self);
         Self::set_schema_version(&self.conn, CURRENT_DATABASE_SCHEMA_VERSION);
 
         // register custom functions

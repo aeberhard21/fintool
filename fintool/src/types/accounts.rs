@@ -8,6 +8,7 @@ pub enum AccountType {
     Ledger,
     Investment,
     Bank,
+    CreditCard,
     CD,
     Retirement,
     Health,
@@ -28,9 +29,10 @@ impl From<u32> for AccountType {
             1 => AccountType::Investment,
             2 => AccountType::Bank,
             3 => AccountType::CD,
-            4 => AccountType::Retirement,
-            5 => AccountType::Health,
-            6 => AccountType::Custom,
+            4 => AccountType::CreditCard,
+            5 => AccountType::Retirement,
+            6 => AccountType::Health,
+            7 => AccountType::Custom,
             _ => panic!("Invalid numberic value for AccountType!"),
         }
     }
@@ -579,6 +581,7 @@ impl DbConn {
             bid     INTEGER NOT NULL, 
             lid     INTEGER NOT NULL, 
             splid   INTEGER NOT NULL,
+            ccid    INTEGER NOT NULL,
             stock_split_allocation_id INTEGER NOT NULL,
             PRIMARY KEY(uid, aid)
             FOREIGN KEY(uid) REFERENCES users(id)
@@ -596,12 +599,12 @@ impl DbConn {
     }
 
     pub fn initialize_user_account_info_table(&mut self, uid : u32, aid : u32) -> rusqlite::Result<()> {
-        let p = rusqlite:: params![uid, aid, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let p = rusqlite:: params![uid, aid, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
         let sql: &str = "
             INSERT INTO user_account_info 
-                (uid, aid, spid, ssid, said, cid, pid, bid, lid, splid, stock_split_allocation_id) 
+                (uid, aid, spid, ssid, said, cid, pid, bid, lid, splid, ccid, stock_split_allocation_id) 
             VALUES 
-                ( ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+                ( ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
         ";
         let rs = self.conn.execute(sql, p);
         match rs { 
@@ -772,6 +775,24 @@ impl DbConn {
             }
             false => {
                 panic!("The next stock split ID within table 'user_account_info' does not exist.");
+            }
+        }
+    }
+
+    pub fn get_next_credit_card_id(&mut self, uid : u32, aid :u32) -> rusqlite::Result<u32> {
+        let sql = "SELECT ccid FROM user_account_info WHERE uid = (?1) and aid = (?2)";
+        let p = rusqlite::params![uid, aid];
+        let mut stmt = self.conn.prepare(sql)?;
+        let exists = stmt.exists(p)?;
+        match exists {
+            true => {
+                let id = stmt.query_row(p, |row| row.get::<_, u32>(0))?;
+                let sql = "UPDATE user_account_info SET ccid = ccid + 1 WHERE uid = (?1) and aid = (?2)";
+                self.conn.execute(sql, p)?;
+                Ok(id)
+            }
+            false => {
+                panic!("The next credit card ID within table 'user_account_info' does not exist.");
             }
         }
     }
