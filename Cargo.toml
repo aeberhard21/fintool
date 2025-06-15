@@ -3,6 +3,8 @@ members = [
     "shared_lib", 
     "fintool", 
     "./utils/vfcu2fin",
+    "./utils/vfcucc2fin",
+    "./utils/vfcucd2fin",
     "./utils/lpl2fin",
     "./utils/discover2fin"
 ]

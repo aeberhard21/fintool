@@ -9,6 +9,7 @@ use crate::accounts::bank_account::BankAccount;
 use crate::accounts::base::Account;
 use crate::accounts::base::AccountCreation;
 use crate::accounts::base::AccountOperations;
+use crate::accounts::certificate_of_deposit::CertificateOfDepositAccount;
 use crate::accounts::investment_account_manager::InvestmentAccountManager;
 use crate::accounts::credit_card_account::CreditCardAccount;
 use crate::database::DbConn;
@@ -86,7 +87,9 @@ fn access_account(uid: u32, db: &mut DbConn) {
         match choice.as_str() {
             "Create Account" => {
                 let user_input = create_new_account(uid, db);
-                if user_input.is_none() { 
+                if user_input.is_none() && accounts_is_empty {
+                    break;
+                } else if user_input.is_none() {
                     continue;
                 }
                 (acct, new_account) = user_input.unwrap();
@@ -244,6 +247,7 @@ pub fn decode_and_create_account_type(
         AccountType::Bank => Box::new(BankAccount::new(uid, account.id, db)),
         AccountType::Investment => Box::new(InvestmentAccountManager::new(uid, account.id, db)),
         AccountType::CreditCard => Box::new(CreditCardAccount::new(uid, account.id, db)),
+        AccountType::CD => Box::new(CertificateOfDepositAccount::new(uid, account.id, db)),
         _ => {
             panic!("Invalid account type!");
         }
@@ -315,7 +319,7 @@ pub fn create_new_account(
     uid: u32,
     db: &mut DbConn,
 ) -> (Option<(Box<dyn Account>, AccountRecord)>) {
-    const ACCOUNT_TYPES: [&'static str; 4] = ["Bank Account", "Credit Card", "Investment Account", "None"];
+    const ACCOUNT_TYPES: [&'static str; 5] = ["Bank Account", "Certificate of Deposit", "Credit Card", "Investment Account", "None"];
     let selected_account_type = Select::new(
         "What account type would you like to create:",
         ACCOUNT_TYPES.to_vec(),
@@ -327,7 +331,7 @@ pub fn create_new_account(
     let new_account: AccountRecord;
     let acct: Box<dyn Account>;
 
-    if selected_account_type == "None" {
+    if selected_account_type == "None".to_string() {
         return None;
     }
 
@@ -342,6 +346,9 @@ pub fn create_new_account(
         }
         "Credit Card" => {
             new_account = CreditCardAccount::create(uid, name, db);
+        }
+        "Certificate of Deposit" => { 
+            new_account = CertificateOfDepositAccount::create(uid, name, db);
         }
         _ => {
             panic!("Unrecognized input!");

@@ -30,7 +30,7 @@ impl FixedAccount {
         acct
     }
 
-    pub fn withdrawal(&mut self, initial_opt : Option<LedgerRecord>, overwrite : bool) {
+    pub fn withdrawal(&mut self, initial_opt : Option<LedgerRecord>, overwrite : bool) -> LedgerRecord {
         let default_to_use : bool;
         let mut initial = LedgerRecord { id : 0, info : LedgerInfo { date: "1970-01-01".to_string(), amount: 0.0, transfer_type: TransferType::WithdrawalToExternalAccount, participant: 0, category_id: 0, description: "".to_string(), ancillary_f32data: 0.0 }};
 
@@ -166,6 +166,8 @@ impl FixedAccount {
             } else { 
                 self.db.add_ledger_entry(self.uid, self.id, withdrawal.clone()).unwrap()
             };
+
+            return LedgerRecord { id : id, info : withdrawal };
         } else {
             
             let initial_account_opt = if default_to_use {
@@ -176,7 +178,7 @@ impl FixedAccount {
 
             let user_input = self.link_transaction(initial_account_opt);
             if user_input.is_none() { 
-                return;
+                return initial;
             }
             (acct, selected_payee) = user_input.unwrap();
             pid = self.db
@@ -204,12 +206,14 @@ impl FixedAccount {
             };
     
             if link {
-                acct.link(self.id, entry);
+                acct.link(self.id, entry.clone());
             }
+
+            return entry;
         }
     }
 
-    pub fn deposit(&mut self, initial_opt : Option<LedgerRecord>, overwrite : bool) {
+    pub fn deposit(&mut self, initial_opt : Option<LedgerRecord>, overwrite : bool) -> LedgerRecord {
 
         let default_to_use : bool;
         let mut initial = LedgerRecord { id : 0, info : LedgerInfo { date: "1970-01-01".to_string(), amount: 0.0, transfer_type: TransferType::DepositFromExternalAccount, participant: 0, category_id: 0, description: "".to_string(), ancillary_f32data: 0.0 }};
@@ -363,6 +367,8 @@ impl FixedAccount {
             } else {  
                 self.db.add_ledger_entry(self.uid, self.id, deposit.clone()).unwrap()
             };
+
+            return LedgerRecord { id : id, info : deposit } ;
         } else {
             
             let initial_account_opt = if default_to_use {
@@ -373,7 +379,7 @@ impl FixedAccount {
 
             let user_input = self.link_transaction(initial_account_opt);
             if user_input.is_none() { 
-                return;
+                return initial;
             }
             (acct, selected_payer) = user_input.unwrap();
             pid = self.db
@@ -401,8 +407,10 @@ impl FixedAccount {
             };
     
             if link {
-                acct.link(self.id, entry);
+                acct.link(self.id, entry.clone());
             }
+
+            return entry ;
         }
 
     }
@@ -420,22 +428,23 @@ impl FixedAccount {
         match modify_choice { 
             "Update" => {
                 let account_transaction_opt: Option<crate::types::accounts::AccountTransactionRecord>;
-                if was_deposit { 
+                let updated_record = if was_deposit { 
                     account_transaction_opt = self.db.check_and_get_account_transaction_record_matching_to_ledger_id(self.uid, self.id, selected_record.id).unwrap();
                     if account_transaction_opt.is_some() { 
                         let account_transaction = account_transaction_opt.unwrap();
                         self.db.remove_account_transaction(self.uid, account_transaction.id).unwrap();
                         self.db.remove_ledger_item(self.uid, account_transaction.info.from_account, account_transaction.info.from_ledger).unwrap();
                     }
-                    self.deposit(Some(selected_record.clone()), true);
+                    self.deposit(Some(selected_record.clone()), true)
                 } else { 
                     account_transaction_opt = self.db.check_and_get_account_transaction_record_matching_from_ledger_id(self.uid, self.id, selected_record.id).unwrap();
                     if account_transaction_opt.is_some() { 
                         let account_transaction = account_transaction_opt.unwrap();
                         self.db.remove_ledger_item(self.uid, account_transaction.info.to_account, account_transaction.info.to_ledger).unwrap();
                     }                    
-                    self.withdrawal(Some(selected_record.clone()), true);
-                }
+                    self.withdrawal(Some(selected_record.clone()), true)
+                };
+                return updated_record;
             }
             "Remove" => { 
                 let account_transaction_opt: Option<crate::types::accounts::AccountTransactionRecord>;
