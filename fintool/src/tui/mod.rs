@@ -12,6 +12,7 @@ use crate::accounts::base::AccountOperations;
 use crate::accounts::certificate_of_deposit::CertificateOfDepositAccount;
 use crate::accounts::investment_account_manager::InvestmentAccountManager;
 use crate::accounts::credit_card_account::CreditCardAccount;
+use crate::accounts::wallet::Wallet;
 use crate::database::DbConn;
 use crate::tui::tui_user::*;
 use crate::types::accounts::*;
@@ -248,6 +249,7 @@ pub fn decode_and_create_account_type(
         AccountType::Investment => Box::new(InvestmentAccountManager::new(uid, account.id, db)),
         AccountType::CreditCard => Box::new(CreditCardAccount::new(uid, account.id, db)),
         AccountType::CD => Box::new(CertificateOfDepositAccount::new(uid, account.id, db)),
+        AccountType::Wallet => Box::new(Wallet::new(uid, account.id, db)),
         _ => {
             panic!("Invalid account type!");
         }
@@ -319,7 +321,7 @@ pub fn create_new_account(
     uid: u32,
     db: &mut DbConn,
 ) -> (Option<(Box<dyn Account>, AccountRecord)>) {
-    const ACCOUNT_TYPES: [&'static str; 5] = ["Bank Account", "Certificate of Deposit", "Credit Card", "Investment Account", "None"];
+    const ACCOUNT_TYPES: [&'static str; 6] = ["Bank Account", "Certificate of Deposit", "Credit Card", "Investment Account", "Wallet", "None"];
     let selected_account_type = Select::new(
         "What account type would you like to create:",
         ACCOUNT_TYPES.to_vec(),
@@ -349,6 +351,9 @@ pub fn create_new_account(
         }
         "Certificate of Deposit" => { 
             new_account = CertificateOfDepositAccount::create(uid, name, db);
+        }
+        "Wallet" => { 
+            new_account = Wallet::create(uid, name, db);
         }
         _ => {
             panic!("Unrecognized input!");

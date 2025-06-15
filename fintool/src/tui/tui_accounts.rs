@@ -11,7 +11,7 @@ pub fn select_account_by_type(_uid: u32, _db: &mut DbConn, atype: AccountType) -
         &AccountType::Bank => msg = "Select bank account: ",
         &AccountType::CD => msg = "Select CD account: ",
         &AccountType::Health => msg = "Select health account: ",
-        &AccountType::Ledger => msg = "Select ledger: ",
+        &AccountType::Wallet => msg = "Select wallet: ",
         &AccountType::Investment => msg = "Select investment account: ",
         &AccountType::Retirement => msg = "Select retirement account: ",
         _ => panic!("Unrecognized account type!"),
@@ -27,7 +27,7 @@ pub fn select_account_by_filter(_uid: u32, _db: &mut DbConn, filter: AccountFilt
     match &filter {
         &AccountFilter::Bank => msg = "Select bank account: ",
         &AccountFilter::Stocks => msg = "Select investment account: ",
-        &AccountFilter::Ledger => msg = "Select ledger account: ",
+        &AccountFilter::Wallet => msg = "Select wallet account: ",
         &AccountFilter::Budget => msg = "Select budget account: ",
         _ => panic!("Unrecognized account type!"),
     }

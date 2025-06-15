@@ -5,7 +5,7 @@ use super::ledger;
 
 #[derive(Clone, Copy)]
 pub enum AccountType {
-    Ledger,
+    Wallet,
     Investment,
     Bank,
     CD,
@@ -18,14 +18,14 @@ pub enum AccountType {
 pub enum AccountFilter {
     Stocks,
     Bank,
-    Ledger,
+    Wallet,
     Budget,
 }
 
 impl From<u32> for AccountType {
     fn from(value: u32) -> Self {
         match value {
-            0 => AccountType::Ledger,
+            0 => AccountType::Wallet,
             1 => AccountType::Investment,
             2 => AccountType::Bank,
             3 => AccountType::CD,
@@ -40,7 +40,7 @@ impl From<u32> for AccountType {
 impl From<String> for AccountType {
     fn from(value: String) -> Self {
         match value.as_str() {
-            "Ledger" => AccountType::Ledger,
+            "Wallet" => AccountType::Wallet,
             "Investment" => AccountType::Investment,
             "Bank" => AccountType::Bank,
             "CD" => AccountType::CD,
@@ -466,11 +466,12 @@ impl DbConn {
             AccountFilter::Budget => {
                 sql = "SELECT name FROM accounts WHERE uid = (?1) and budget = TRUE";
             }
-            AccountFilter::Ledger => {
-                sql = "SELECT name FROM accounts WHERE uid = (?1) and ledger = TRUE";
-            }
             AccountFilter::Stocks => {
                 sql = "SELECT name FROM accounts WHERE uid = (?1) and stocks = TRUE";
+            }
+            _ => { 
+                sql = "SELECT name FROM accounts WHERE uid = (?1) and ledger = TRUE";
+
             }
         }
 
