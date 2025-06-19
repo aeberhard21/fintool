@@ -1,18 +1,61 @@
-use crate::database::DbConn;
 use rusqlite::{Error, Result};
+#[cfg(feature = "ratatui_support")]
+use ratatui::{
+    text::Line,
+    widgets::{Block, Tabs}, 
+    Frame,
+    layout::Rect, 
+    style::Color
+};
+use strum::{Display, EnumIter, FromRepr, IntoEnumIterator};
+
+use crate::database::DbConn;
+#[cfg(feature = "ratatui_support")]
+use crate::app::screen::TabMenu;
 
 use super::ledger;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Display, EnumIter, FromRepr)]
 pub enum AccountType {
+    #[strum(to_string = "Wallet")]
     Wallet,
+    #[strum(to_string = "Investment Account")]
     Investment,
+    #[strum(to_string = "Bank Account")]
     Bank,
+    #[strum(to_string = "Certificate of Deposit")]
     CD,
     CreditCard,
     Retirement,
     Health,
     Custom,
+}
+
+#[cfg(feature = "ratatui_support")]
+impl TabMenu for AccountType { 
+    fn previous(self) -> Self { 
+        let current = self as usize;
+        let prev = current.saturating_sub(1);
+        Self::from_repr(prev).unwrap_or(self)
+    }
+    fn next(self) -> Self { 
+        let current = self as usize;
+        let next = current.saturating_add(1);
+        Self::from_repr(next).unwrap_or(self)
+    }
+    fn to_tab_title(value: Self) -> Line<'static> {
+        let text = format!("  {value}  ");
+        text.into()
+    }
+    fn render(frame: &mut Frame, area : Rect, selected_tab : usize, title : String) { 
+        let atype_tabs = Tabs::new(AccountType::iter().map(AccountType::to_tab_title))
+            .highlight_style(Color::Red)
+            .select(selected_tab)
+            .block(Block::bordered().title(title))
+            .padding("", "")
+            .divider(" ");
+        frame.render_widget(atype_tabs, area);
+    }
 }
 
 pub enum AccountFilter {

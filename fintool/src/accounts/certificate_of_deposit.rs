@@ -7,6 +7,15 @@ use inquire::CustomType;
 use inquire::DateSelect;
 use inquire::Select;
 use inquire::Text;
+#[cfg(feature = "ratatui_support")]
+use ratatui::{
+    buffer::Buffer, 
+    layout::{self, Constraint, Direction, Layout, Rect}, 
+    style::{palette, Color, Style, Stylize}, 
+    text::{Line, Span, Text as ratatuiText}, 
+    widgets::{Bar, BarChart, BarGroup, Block, Borders, Clear, List, ListItem, Paragraph, Tabs, Widget, Wrap}, 
+    Frame
+};
 use rustyline::completion::FilenameCompleter;
 use rustyline::highlight::MatchingBracketHighlighter;
 use rustyline::hint::HistoryHinter;
@@ -23,6 +32,8 @@ use rustyline::Validator;
 use shared_lib::LedgerEntry;
 use std::path::Path;
 
+#[cfg(feature = "ratatui_support")]
+use crate::app::app::App;
 use crate::database::DbConn;
 use crate::tui::query_user_for_analysis_period;
 use crate::types::accounts::AccountInfo;
@@ -40,6 +51,8 @@ use super::base::fixed_account::FixedAccount;
 use super::base::AccountCreation;
 use super::base::AccountOperations;
 use super::base::AccountData;
+#[cfg(feature = "ratatui_support")]
+use super::base::AccountUI;
 use super::base::Account;
 
 pub struct CertificateOfDepositAccount {
@@ -620,6 +633,23 @@ impl AccountData for CertificateOfDepositAccount {
     fn get_id(&mut self) -> u32 {
         return self.id
     } 
+}
+
+#[cfg(feature = "ratatui_support")]
+impl AccountUI for CertificateOfDepositAccount { 
+    fn render(&self, frame : &mut Frame, area : Rect, app: &App) {
+        let title_block = Block::default()
+            .borders(Borders::ALL)
+            .style(Style::default());
+
+        let title = Paragraph::new(ratatui::text::Text::styled(
+            "This is a Certificate of Deposit account!",
+            Style::default().fg(Color::Green),
+        ))
+        .block(title_block);
+
+        frame.render_widget(title, area);
+    }
 }
 
 impl Account for CertificateOfDepositAccount {

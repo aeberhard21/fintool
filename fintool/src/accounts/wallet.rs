@@ -4,6 +4,11 @@ use csv::ReaderBuilder;
 use inquire::Confirm;
 use inquire::Select;
 use inquire::Text;
+#[cfg(feature = "ratatui_support")]
+use ratatui::{
+    Frame, 
+    layout::Rect, 
+};
 use rustyline::completion::FilenameCompleter;
 use rustyline::highlight::MatchingBracketHighlighter;
 use rustyline::hint::HistoryHinter;
@@ -23,6 +28,8 @@ use std::hash::Hash;
 use std::path::Path;
 use std::rc;
 
+#[cfg(feature = "ratatui_support")]
+use crate::app::app::App;
 use crate::database::DbConn;
 use crate::tui::query_user_for_analysis_period;
 use crate::types::accounts::AccountInfo;
@@ -39,6 +46,8 @@ use super::base::fixed_account::FixedAccount;
 use super::base::AccountCreation;
 use super::base::AccountOperations;
 use super::base::AccountData;
+#[cfg(feature = "ratatui_support")]
+use super::base::AccountUI;
 use super::base::Account;
 
 pub struct Wallet {
@@ -480,6 +489,13 @@ impl AccountData for Wallet {
     fn get_id(&mut self) -> u32 {
         return self.id
     } 
+}
+
+#[cfg(feature = "ratatui_support")]
+impl AccountUI for Wallet { 
+    fn render(&self, frame : &mut Frame, area : Rect, app: &App) {
+
+    }
 }
 
 impl Account for Wallet {

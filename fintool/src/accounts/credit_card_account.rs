@@ -5,6 +5,11 @@ use inquire::Confirm;
 use inquire::CustomType;
 use inquire::Select;
 use inquire::Text;
+#[cfg(feature = "ratatui_support")]
+use ratatui::{
+    Frame, 
+    layout::Rect, 
+};
 use rustyline::completion::FilenameCompleter;
 use rustyline::highlight::MatchingBracketHighlighter;
 use rustyline::hint::HistoryHinter;
@@ -25,6 +30,8 @@ use std::hash::Hash;
 use std::path::Path;
 use std::rc;
 
+#[cfg(feature = "ratatui_support")]
+use crate::app::app::App;
 use crate::database::DbConn;
 use crate::tui::query_user_for_analysis_period;
 use crate::types::accounts::AccountInfo;
@@ -42,6 +49,8 @@ use super::base::charge_account::ChargeAccount;
 use super::base::AccountCreation;
 use super::base::AccountOperations;
 use super::base::AccountData;
+#[cfg(feature = "ratatui_support")]
+use super::base::AccountUI;
 use super::base::Account;
 
 pub struct CreditCardAccount {
@@ -517,6 +526,13 @@ impl AccountData for CreditCardAccount {
     fn get_id(&mut self) -> u32 {
         return self.id
     } 
+}
+
+#[cfg(feature = "ratatui_support")]
+impl AccountUI for CreditCardAccount { 
+    fn render(&self, frame : &mut Frame, area : Rect, app: &App) {
+
+    }
 }
 
 impl Account for CreditCardAccount {

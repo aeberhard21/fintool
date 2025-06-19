@@ -1,5 +1,11 @@
 use rusqlite::config::DbConfig;
+#[cfg(feature = "ratatui_support")]
+use ratatui::{
+    layout::Rect,
+    Frame
+};
 
+use crate::app::app::App;
 use crate::database::DbConn;
 use crate::types::accounts::AccountRecord;
 use crate::types::ledger::LedgerRecord;
@@ -26,4 +32,12 @@ pub trait AccountData {
     fn get_id(&mut self) -> u32;
 }
 
+pub trait AccountUI { 
+    fn render(&self, frame: &mut Frame, area : Rect, app: &App);
+}
+
+#[cfg(not(feature = "ratatui_support"))]
 pub trait Account: AccountData + AccountOperations {}
+
+#[cfg(feature = "ratatui_support")]
+pub trait Account: AccountData + AccountOperations + AccountUI {}

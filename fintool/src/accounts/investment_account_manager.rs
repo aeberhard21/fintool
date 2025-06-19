@@ -4,6 +4,11 @@ use chrono::NaiveDate;
 use inquire::Confirm;
 use inquire::Select;
 use inquire::Text;
+#[cfg(feature = "ratatui_support")]
+use ratatui::{
+    Frame, 
+    layout::Rect, 
+};
 use rustyline::completion::FilenameCompleter;
 use rustyline::highlight::MatchingBracketHighlighter;
 use rustyline::hint::HistoryHinter;
@@ -18,6 +23,8 @@ use rustyline::Hinter;
 use rustyline::Validator;
 use shared_lib::LedgerEntry;
 
+#[cfg(feature = "ratatui_support")]
+use crate::app::app::App;
 use crate::database::DbConn;
 use crate::tui::query_user_for_analysis_period;
 use crate::types::accounts::AccountInfo;
@@ -39,6 +46,8 @@ use super::base::variable_account::VariableAccount;
 use super::base::AccountCreation;
 use super::base::AccountData;
 use super::base::AccountOperations;
+#[cfg(feature = "ratatui_support")]
+use super::base::AccountUI;
 use super::base::Account;
 
 pub struct InvestmentAccountManager {
@@ -642,6 +651,13 @@ impl AccountData for InvestmentAccountManager {
     fn get_id(&mut self) -> u32 {
         return self.id
     } 
+}
+
+#[cfg(feature = "ratatui_support")]
+impl AccountUI for InvestmentAccountManager { 
+    fn render(&self, frame : &mut Frame, area : Rect, app: &App) {
+
+    }
 }
 
 impl Account for InvestmentAccountManager {}
