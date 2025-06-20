@@ -648,7 +648,7 @@ impl AccountOperations for InvestmentAccountManager {
 }
 
 impl AccountData for InvestmentAccountManager {
-    fn get_id(&mut self) -> u32 {
+    fn get_id(&self) -> u32 {
         return self.id
     } 
 }

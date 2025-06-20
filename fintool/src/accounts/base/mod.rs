@@ -4,7 +4,7 @@ use ratatui::{
     layout::Rect,
     Frame
 };
-
+#[cfg(feature = "ratatui_support")]
 use crate::app::app::App;
 use crate::database::DbConn;
 use crate::types::accounts::AccountRecord;
@@ -29,9 +29,9 @@ pub trait AccountOperations {
 }
 
 pub trait AccountData {
-    fn get_id(&mut self) -> u32;
+    fn get_id(&self) -> u32;
 }
-
+#[cfg(feature = "ratatui_support")]
 pub trait AccountUI { 
     fn render(&self, frame: &mut Frame, area : Rect, app: &App);
 }

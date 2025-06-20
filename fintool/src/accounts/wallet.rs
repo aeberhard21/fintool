@@ -486,9 +486,9 @@ impl AccountOperations for Wallet {
 }
 
 impl AccountData for Wallet {
-    fn get_id(&mut self) -> u32 {
+    fn get_id(&self) -> u32 {
         return self.id
-    } 
+    }
 }
 
 #[cfg(feature = "ratatui_support")]

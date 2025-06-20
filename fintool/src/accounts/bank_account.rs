@@ -490,9 +490,9 @@ impl AccountOperations for BankAccount {
 }
 
 impl AccountData for BankAccount {
-    fn get_id(&mut self) -> u32 {
+    fn get_id(&self) -> u32 {
         return self.id
-    } 
+    }
 }
 
 #[cfg(feature = "ratatui_support")]
@@ -503,7 +503,7 @@ impl AccountUI for BankAccount {
             .style(Style::default());
 
         let title = Paragraph::new(ratatuiText::styled(
-            "This is a bank account!",
+            format!("This is a bank account! My id is: {}", self.get_id()),
             Style::default().fg(Color::Green),
         ))
         .block(title_block);

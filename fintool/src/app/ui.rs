@@ -13,8 +13,8 @@ use super::screen::{CurrentScreen, TabMenu};
 use crate::types::accounts::AccountType;
 
 pub fn ui(frame :&mut Frame, app: &App) {
+
     // Create the layout sections.
-    
     let chunks = match app.current_screen { 
         CurrentScreen::Accounts => { 
             Layout::default()
@@ -69,12 +69,18 @@ pub fn ui(frame :&mut Frame, app: &App) {
 
     let current_keys_hint = {
         match app.current_screen {
-            CurrentScreen::Login|CurrentScreen::Accounts => Span::styled (
-                "(q, Ctrl-c, Ctrl-C) to quit / (<) Move Left Tab / (>) Move to right tab / (Enter) Select Account Type / (Shift Enter) Select Account",
+            CurrentScreen::Login => Span::styled (
+                "(q) to quit / (:) Create User / (⏎) Login",
+                Style::default().fg(Color::LightBlue),
+            ),
+            CurrentScreen::Accounts => Span::styled (
+                "(q) to quit / (◀︎) Move Tab Left / (▶︎) Move Tab Right / (⏎) Select Account Type / (⌫) Deselect Account Type",
                 Style::default().fg(Color::LightBlue),
             ),
             CurrentScreen::Main => Span::styled("(q, Ctrl-c) to quit", Style::default().fg(Color::LightBlue))
         }
+
+
     };
 
     let key_notes_footer =
@@ -95,6 +101,7 @@ pub fn ui(frame :&mut Frame, app: &App) {
             .borders(Borders::NONE)
             .style(Style::default().bg(Color::DarkGray));
 
+        // prompt for user name
         let mut content = "Username: ".to_string();
         content.push_str(&app.key_input.as_str());
         let username_text = Text::styled(
@@ -102,29 +109,58 @@ pub fn ui(frame :&mut Frame, app: &App) {
             Style::default().fg(Color::Red),
         );
 
+        let login_paragraph = Paragraph::new(username_text)
+            .block(popup_block)
+            .wrap(Wrap {trim : false});
+        let area = centered_rect(60, 25, frame.area());
+        frame.render_widget(login_paragraph, area);
+
+        // display error message when user does not exist
         if app.invalid_input {
             let error_footer = Paragraph::new(Line::from("Unrecognized user id!"))
                 .block(Block::default().borders(Borders::ALL)
                 .style(Color::Red));
             frame.render_widget(error_footer, footer_chunks[0]);
         }
-
-        let login_paragraph = Paragraph::new(username_text)
-            .block(popup_block)
-            .wrap(Wrap {trim : false});
-        let area = centered_rect(60, 25, frame.area());
-        frame.render_widget(login_paragraph, area);
     }
 
     if let CurrentScreen::Accounts = app.current_screen {
         AccountType::render(frame, chunks[1], app.selected_atype_tab as usize, "Account Types".to_string());
-        if app.accounts_for_type.is_some() {
-            render_account_tabs(frame, chunks[2], app.accounts_for_type.clone().unwrap(), app.selected_account_tab);
-        } else {  
-            render_account_tabs(frame, chunks[2], Vec::new(), 0);
-        }
-        if let Some(acct) = &app.account {
-            acct.render(frame, chunks[3], app);
+        if app.accounts_for_type.is_none() {
+                let mut content = "No Accounts found!".to_string();
+                let display_text = Text::styled(
+                    content,
+                    Style::default().fg(Color::Red),
+                );
+
+                let login_paragraph = Paragraph::new(display_text)
+                    .wrap(Wrap {trim : false});
+                let area = centered_rect(60, 25, frame.area());
+                frame.render_widget(login_paragraph, area);
+        } else { 
+            let accts = app.accounts_for_type.clone().unwrap();
+            if !accts.is_empty() { 
+                render_account_tabs(frame, chunks[2], app.accounts_for_type.clone().unwrap(), app.selected_account_tab);
+                if let Some(acct) = &app.account {
+                    acct.render(frame, chunks[3], app);
+                } else { 
+                    let error_footer = Paragraph::new(Line::from("ERROR: Unable to retrieve account information!"))
+                        .block(Block::default().borders(Borders::ALL)
+                        .style(Color::Red));
+                    frame.render_widget(error_footer, footer_chunks[0]);
+                }
+            } else { 
+                let mut content = "No Accounts found!".to_string();
+                let display_text = Text::styled(
+                    content,
+                    Style::default().fg(Color::Red),
+                );
+
+                let login_paragraph = Paragraph::new(display_text)
+                    .wrap(Wrap {trim : false});
+                let area = centered_rect(60, 25, frame.area());
+                frame.render_widget(login_paragraph, area);
+            }
         }
     }
 }

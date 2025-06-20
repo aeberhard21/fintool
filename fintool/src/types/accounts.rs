@@ -472,7 +472,7 @@ impl DbConn {
         &mut self,
         uid: u32,
         atype: AccountType,
-    ) -> rusqlite::Result<Vec<String>, Error> {
+    ) -> rusqlite::Result<Option<Vec<String>>, Error> {
         let sql: &str = "SELECT name FROM accounts WHERE uid = (?1) AND type = (?2)";
         let p = rusqlite::params![uid, atype as u32];
         let mut stmt = self.conn.prepare(sql)?;
@@ -488,10 +488,10 @@ impl DbConn {
                 for name in names {
                     accounts.push(name.unwrap())
                 }
-                return Ok(accounts);
+                return Ok(Some(accounts));
             }
             false => {
-                panic!("Account not found!");
+                return Ok(None)
             }
         }
     }

@@ -630,7 +630,7 @@ impl AccountOperations for CertificateOfDepositAccount {
 }
 
 impl AccountData for CertificateOfDepositAccount {
-    fn get_id(&mut self) -> u32 {
+    fn get_id(&self) -> u32 {
         return self.id
     } 
 }
