@@ -7,7 +7,7 @@
 // }
 
 // impl DbConn {
-//     pub fn record_hsa_account(&mut self, aid: u32, record: HsaRecord) -> Result<(), Error> {
+//     pub fn record_hsa_account(&self, aid: u32, record: HsaRecord) -> Result<(), Error> {
 //         let sql: &str = "INSERT INTO banks (date, fixed, aid) VALUES (?1, ?2, ?3)";
 //         let fmsg = format!("Unable to record HSA bank record for account: {}", aid);
 //         self.conn
@@ -24,7 +24,7 @@
 //         Ok(())
 //     }
 
-//     pub fn get_hsa_value(&mut self, aid: u32) -> Result<HsaRecord, rusqlite::Error> {
+//     pub fn get_hsa_value(&self, aid: u32) -> Result<HsaRecord, rusqlite::Error> {
 //         let bank = self
 //             .get_bank_value(aid)
 //             .expect("Unable to retrieve HSA account record!");

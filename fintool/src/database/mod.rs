@@ -2,7 +2,7 @@ use chrono::NaiveDate;
 use rusqlite::functions::FunctionFlags;
 use rusqlite::Connection;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 pub mod budget;
 pub mod db_cd;
@@ -14,7 +14,7 @@ pub const SQLITE_WILDCARD: &str = "%";
 
 #[derive(Clone)]
 pub struct DbConn {
-    pub conn: Arc<Connection>,
+    pub conn: Arc<Mutex<Connection>>,
 }
 
 impl DbConn {
@@ -25,7 +25,7 @@ impl DbConn {
         match rs {
             Ok(rs_conn) => {
                 conn = Self {
-                    conn: Arc::new(rs_conn),
+                    conn: Arc::new(Mutex::new(rs_conn)),
                 };
                 conn.initialize_database();
             }
@@ -36,8 +36,8 @@ impl DbConn {
         Ok(conn)
     }
 
-    fn initialize_database(&mut self) -> Result<(), rusqlite::Error> {
-        Self::allow_foreign_keys(&self.conn);
+    fn initialize_database(&self) -> Result<(), rusqlite::Error> {
+        Self::allow_foreign_keys(&self.conn.lock().unwrap());
         Self::create_user_account_info_table(self);
         Self::create_accounts_id_table(self);
         Self::create_users_id_table(self);
@@ -56,11 +56,13 @@ impl DbConn {
         Self::create_stock_split_allocation_table(self);
         Self::create_credit_card_accounts_table(self);
         Self::create_certificate_of_deposits_table(self);
-        Self::set_schema_version(&self.conn, CURRENT_DATABASE_SCHEMA_VERSION);
+
+        let conn_lock = &self.conn.lock().unwrap();
+
+        Self::set_schema_version(conn_lock, CURRENT_DATABASE_SCHEMA_VERSION);
 
         // register custom functions
-        let result = self
-            .conn
+        let result = conn_lock
             .create_scalar_function(
                 "get_stock_value",
                 1,
@@ -75,8 +77,7 @@ impl DbConn {
             )
             .unwrap();
 
-        let result = self
-            .conn
+        let result = conn_lock
             .create_scalar_function(
                 "get_stock_value_on_day",
                 2,

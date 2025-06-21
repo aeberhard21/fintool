@@ -1,4 +1,4 @@
-use crate::tui::decode_and_create_account_type;
+use crate::tui::decode_and_init_account_type;
 use crate::{accounts::base::Account, app::screen::TabMenu};
 use crate::database::DbConn;
 use crate::types::accounts::AccountType;
@@ -70,6 +70,7 @@ impl App {
     }
 
     pub fn validate_user(&mut self, username : String) -> Option<u32> {
+        println!("ATTEMPTING TO VALDIATE user!");
         let users = self.db.get_users().unwrap();
         if users.contains(&username) { 
             return Some(self.db.get_user_id(username).unwrap());
@@ -81,7 +82,7 @@ impl App {
     pub fn get_account(&mut self) {
         let account_id = self.db.get_account_id(self.user_id.unwrap(), self.accounts_for_type.clone().unwrap()[self.selected_account_tab].clone()).unwrap();
         let acct = self.db.get_account(self.user_id.unwrap(), account_id).unwrap();
-        self.account = Some(decode_and_create_account_type(self.user_id.unwrap(), &mut self.db, &acct));
+        self.account = Some(decode_and_init_account_type(self.user_id.unwrap(), &mut self.db, &acct));
     }
 
 }

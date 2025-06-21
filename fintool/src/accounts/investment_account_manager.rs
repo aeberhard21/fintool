@@ -71,7 +71,7 @@ struct FilePathHelper {
 }
 
 impl AccountCreation for InvestmentAccountManager {
-    fn create(uid : u32, name: String, _db : &mut DbConn) -> AccountRecord {
+    fn create(uid : u32, name: String, _db : &DbConn) -> AccountRecord {
         
         let has_bank = true;
         let has_stocks = true;
@@ -94,7 +94,7 @@ impl AccountCreation for InvestmentAccountManager {
 }
 
 impl InvestmentAccountManager {
-    pub fn new(uid: u32, id: u32, db: &mut DbConn) -> Self {
+    pub fn new(uid: u32, id: u32, db: &DbConn) -> Self {
         let acct = Self {
             uid: uid,
             id: id,
@@ -107,7 +107,7 @@ impl InvestmentAccountManager {
 }
 
 impl AccountOperations for InvestmentAccountManager {
-    fn record(&mut self) {
+    fn record(&self) {
         const RECORD_OPTIONS: [&'static str; 6] = [
             "Deposit",
             "Withdrawal",
@@ -157,7 +157,7 @@ impl AccountOperations for InvestmentAccountManager {
         }
     }
 
-    fn import(&mut self) {
+    fn import(&self) {
         let g = FilePathHelper {
             completer: FilenameCompleter::new(),
             highlighter: MatchingBracketHighlighter::new(),
@@ -362,7 +362,7 @@ impl AccountOperations for InvestmentAccountManager {
         }
     }
 
-    fn modify(&mut self) {
+    fn modify(&self) {
         const MODIFY_OPTIONS: [&'static str; 4] = ["Ledger", "Categories", "Participant", "None"];
         let modify_choice = Select::new("\nWhat would you like to modify:", MODIFY_OPTIONS.to_vec())
         .prompt()
@@ -526,9 +526,9 @@ impl AccountOperations for InvestmentAccountManager {
         }
     }
 
-    fn export(&mut self) {}
+    fn export(&self) {}
 
-    fn report(&mut self) {
+    fn report(&self) {
         const REPORT_OPTIONS: [&'static str; 4] =
             ["Positions", "Total Value", "Time-Weighted Rate of Return", "None"];
         let choice = Select::new("What would you like to report: ", REPORT_OPTIONS.to_vec())
@@ -577,7 +577,7 @@ impl AccountOperations for InvestmentAccountManager {
         }
     }
 
-    fn link(&mut self, transacting_account: u32, entry: LedgerRecord) -> Option<u32> {
+    fn link(&self, transacting_account: u32, entry: LedgerRecord) -> Option<u32> {
         let from_account;
         let to_account;
 
@@ -650,7 +650,10 @@ impl AccountOperations for InvestmentAccountManager {
 impl AccountData for InvestmentAccountManager {
     fn get_id(&self) -> u32 {
         return self.id
-    } 
+    }
+    fn get_name(&self) -> String { 
+        return self.db.get_account_name(self.uid, self.id).unwrap();
+    }
 }
 
 #[cfg(feature = "ratatui_support")]

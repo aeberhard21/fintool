@@ -45,7 +45,7 @@ impl From<u32> for ParticipantType {
 }
 
 impl DbConn {
-    pub fn create_people_table(&mut self) -> Result<()> {
+    pub fn create_people_table(&self) -> Result<()> {
         let sql: &str = "CREATE TABLE IF NOT EXISTS people ( 
                 id          INTEGER NOT NULL,
                 aid         INTEGER NOT NULL,
@@ -58,14 +58,14 @@ impl DbConn {
                 FOREIGN KEY(uid) REFERENCES users(id)
             )";
 
-        self.conn
+        self.conn.lock().unwrap()   
             .execute(sql, ())
             .expect("Unable to initialize people table!");
         Ok(())
     }
 
     pub fn add_participant(
-        &mut self,
+        &self,
         uid: u32,
         aid: u32,
         ptype: ParticipantType,
@@ -75,7 +75,8 @@ impl DbConn {
         let id = self.get_next_people_id(uid, aid).unwrap();
         let p = rusqlite::params!(id, aid, ptype as u32, name, uid, is_account);
         let sql = "INSERT INTO people (id, aid, type, name, uid, is_account) VALUES (?1, ?2, ?3, ?4, ?5, ?6)";
-        match self.conn.execute(sql, p) {
+        let conn_lock = self.conn.lock().unwrap();
+        match conn_lock.execute(sql, p) {
             Ok(_) => Ok(id),
             Err(error) => {
                 panic!(
@@ -90,7 +91,7 @@ impl DbConn {
     }
 
     pub fn get_participant_id(
-        &mut self,
+        &self,
         uid : u32,
         aid: u32,
         name: String,
@@ -98,8 +99,8 @@ impl DbConn {
     ) -> Option<u32> {
         let sql = "SELECT id FROM people WHERE aid = (?1) and name = (?2) and type = (?3) and uid = (?4)";
         let p = rusqlite::params![aid, name, ptype as u32, uid];
-        let conn = self.conn.clone();
-        let prepared_stmt = conn.prepare(sql);
+        let conn_lock = self.conn.lock().unwrap();
+        let prepared_stmt = conn_lock.prepare(sql);
         match prepared_stmt {
             Ok(mut stmt) => {
                 if let Ok(entry_found) = stmt.exists(p) {
@@ -125,10 +126,10 @@ impl DbConn {
         }
     }
 
-    pub fn get_participant(&mut self, uid : u32, aid: u32, pid: u32) -> Option<String> {
+    pub fn get_participant(&self, uid : u32, aid: u32, pid: u32) -> Option<String> {
         let sql = "SELECT name FROM people WHERE aid = (?1) and id = (?2) and uid = (?3)";
         let p = rusqlite::params![aid, pid, uid];
-        let conn = self.conn.clone();
+        let conn = self.conn.lock().unwrap();
         let prepared_stmt = conn.prepare(sql);
         match prepared_stmt {
             Ok(mut stmt) => {
@@ -156,7 +157,7 @@ impl DbConn {
     }
 
     pub fn check_and_add_participant(
-        &mut self,
+        &self,
         uid: u32, 
         aid: u32,
         name: String,
@@ -165,34 +166,39 @@ impl DbConn {
     ) -> u32 {
         let sql = "SELECT id FROM people WHERE aid = (?1) and name = (?2) and (type = (?3) or type = (?4)) and uid = (?5)";
         let p = rusqlite::params![aid, name, ptype as u32, ParticipantType::Both as u32, uid];
-        let conn = self.conn.clone();
-        let prepared_stmt = conn.prepare(sql);
-        match prepared_stmt {
-            Ok(mut stmt) => {
-                if let Ok(entry_found) = stmt.exists(p) {
-                    if entry_found {
-                        let id = stmt
-                            .query_row(p, |row: &rusqlite::Row<'_>| row.get::<_, u32>(0))
-                            .unwrap();
-                        return id;
+        let cloned_conn = self.conn.clone();
+        let conn_lock = cloned_conn.lock().unwrap();
+        {
+            let prepared_stmt = conn_lock.prepare(sql);
+            match prepared_stmt {
+                Ok(mut stmt) => {
+                    if let Ok(entry_found) = stmt.exists(p) {
+                        if entry_found {
+                            let id = stmt
+                                .query_row(p, |row: &rusqlite::Row<'_>| row.get::<_, u32>(0))
+                                .unwrap();
+                            return id;
+                        } else {
+                            // self.add_participant(uid, aid, ptype, name, is_account).unwrap()
+                        }
                     } else {
-                        self.add_participant(uid, aid, ptype, name, is_account).unwrap()
+                        panic!("Unable to determine if exists!");
                     }
-                } else {
-                    panic!("Unable to determine if exists!");
+                }
+                Err(e) => {
+                    panic!(
+                        "SQLITE error {} while executing searching for person {}.",
+                        e.to_string(),
+                        name
+                    );
                 }
             }
-            Err(e) => {
-                panic!(
-                    "SQLITE error {} while executing searching for person {}.",
-                    e.to_string(),
-                    name
-                );
-            }
         }
+        std::mem::drop(conn_lock);
+        self.add_participant(uid, aid, ptype, name, is_account).unwrap()
     }
 
-    pub fn get_participants(&mut self, uid: u32, aid: u32, ptype: ParticipantType) -> Result<Vec<ParticipantRecord>, rusqlite::Error> {
+    pub fn get_participants(&self, uid: u32, aid: u32, ptype: ParticipantType) -> Result<Vec<ParticipantRecord>, rusqlite::Error> {
         let (sql, p) = if ptype as u32 == ParticipantType::Both as u32 {
             ("SELECT id, name, type FROM people WHERE uid = (?1) and aid = (?2)",
             rusqlite::params![uid, aid])
@@ -200,12 +206,13 @@ impl DbConn {
             ("SELECT id, name, type FROM people WHERE uid = (?1) and aid = (?2) and type = (?3)",
             rusqlite::params![uid, aid, ptype as u32])
         };
-        let mut stmt = self.conn.prepare(sql)?;
+        let conn_lock = self.conn.lock().unwrap();
+        let mut stmt = conn_lock.prepare(sql)?;
         let exists = stmt.exists(p)?;
         let mut participants: Vec<ParticipantRecord> = Vec::new();
         match exists {
             true => {
-                stmt = self.conn.prepare(sql)?;
+                stmt = conn_lock.prepare(sql)?;
                 let party = stmt
                     .query_map(p, |row| Ok(
                         ParticipantRecord { 
@@ -227,7 +234,7 @@ impl DbConn {
     }
 
     pub fn get_participants_by_transfer_type(
-        &mut self,
+        &self,
         uid: u32, 
         aid: u32,
         transfer_type: TransferType,
@@ -241,12 +248,13 @@ impl DbConn {
             "SELECT p.name FROM people p JOIN ledgers l ON p.id = l.cid WHERE l.aid = (?1) and l.transfer_type = (?2) and l.uid = (?3) and l.uid = (?4) and p.is_account = false"
         };
 
-        let mut stmt = self.conn.prepare(sql)?;
+        let conn_lock = self.conn.lock().unwrap();
+        let mut stmt = conn_lock.prepare(sql)?;
         let exists = stmt.exists(p)?;
         let mut participants: Vec<String> = Vec::new();
         match exists {
             true => {
-                stmt = self.conn.prepare(sql)?;
+                stmt = conn_lock.prepare(sql)?;
                 let party = stmt
                     .query_map(p, |row| Ok(row.get(0)?))
                     .unwrap()
@@ -260,7 +268,7 @@ impl DbConn {
         Ok(participants)
     }
 
-    pub fn update_participant_name(&mut self, uid : u32, aid: u32, ptype : ParticipantType, old : String, new : String) -> Result<String> {
+    pub fn update_participant_name(&self, uid : u32, aid: u32, ptype : ParticipantType, old : String, new : String) -> Result<String> {
         let (p, sql) = match ptype { 
             ParticipantType::Both => {
                 (
@@ -275,7 +283,8 @@ impl DbConn {
                 )
             }
         };
-        match self.conn.execute(sql, p) {
+        let conn_lock = self.conn.lock().unwrap();
+        match conn_lock.execute(sql, p) {
             Ok(_) => Ok(new),
             Err(error) => {
                 panic!("Unable to update participant {} in account {}: {}!", old, aid, error);
@@ -283,7 +292,7 @@ impl DbConn {
         }
     }
 
-    pub fn remove_participant(&mut self, uid : u32, aid : u32, ptype: ParticipantType, name : String) -> rusqlite::Result<Option<u32>, rusqlite::Error> {
+    pub fn remove_participant(&self, uid : u32, aid : u32, ptype: ParticipantType, name : String) -> rusqlite::Result<Option<u32>, rusqlite::Error> {
         let id_opt = self.get_participant_id(uid, aid, name.clone(), ptype);
         if id_opt.is_none() {
             return Ok(None);
@@ -291,7 +300,8 @@ impl DbConn {
         let id = id_opt.unwrap();
         let p = rusqlite::params![uid, aid, name, ptype as u32];
         let sql =  "DELETE FROM people WHERE uid = (?1) and aid = (?2) and name = (?3) and type = (?4)";
-        let rs = self.conn.execute(sql, p);
+        let conn_lock = self.conn.lock().unwrap();
+        let rs = conn_lock.execute(sql, p);
         match rs {
             Ok(_usize) => {}
             Err(error) => {
@@ -300,7 +310,7 @@ impl DbConn {
         }
         let p = rusqlite::params![id, uid, aid];
         let sql = "UPDATE people SET id = id-1 WHERE id > ?1 and uid = ?2 and aid = ?3";
-        let rs = self.conn.execute(sql, p);
+        let rs = conn_lock.execute(sql, p);
         match rs {
             Ok(_usize) => {}
             Err(error) => {
@@ -310,7 +320,7 @@ impl DbConn {
 
         let p = rusqlite::params![uid, aid];
         let sql = "UPDATE user_account_info SET pid = pid - 1 WHERE uid = ?1 and aid = ?2";
-        let rs = self.conn.execute(sql, p);
+        let rs = conn_lock.execute(sql, p);
         match rs {
             Ok(_usize) => {}
             Err(error) => {

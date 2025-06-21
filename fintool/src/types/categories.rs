@@ -18,7 +18,7 @@ pub struct CategoryRecord {
 }
 
 impl DbConn {
-    pub fn create_budget_categories_table(&mut self) -> Result<()> {
+    pub fn create_budget_categories_table(&self) -> Result<()> {
         let sql: &str = "CREATE TABLE IF NOT EXISTS categories ( 
                 id          INTEGER NOT NULL,
                 aid         INTEGER NOT NULL,
@@ -28,18 +28,18 @@ impl DbConn {
                 FOREIGN KEY(uid,aid) REFERENCES accounts(uid,id) ON DELETE CASCADE ON UPDATE CASCADE,
                 FOREIGN KEY(uid) REFERENCES users(id)
             )";
-
-        self.conn
-            .execute(sql, ())
+        let conn_lock = self.conn.lock().unwrap();
+        conn_lock.execute(sql, ())
             .expect("Unable to initialize categories table!");
         Ok(())
     }
 
-    pub fn add_category(&mut self, uid : u32, aid: u32, category: String) -> Result<u32> {
+    pub fn add_category(&self, uid : u32, aid: u32, category: String) -> Result<u32> {
         let id = self.get_next_category_id(uid, aid).unwrap();
         let p = rusqlite::params!(id, aid, category, uid);
         let sql = "INSERT INTO categories (id, aid, category, uid) VALUES (?1, ?2, ?3, ?4)";
-        match self.conn.execute(sql, p) {
+        let conn_lock = self.conn.lock().unwrap();
+        match conn_lock.execute(sql, p) {
             Ok(_) => Ok(id),
             Err(error) => {
                 panic!("Unable to add {} for account {}: {}", category, aid, error);
@@ -47,10 +47,11 @@ impl DbConn {
         }
     }
 
-    pub fn update_category_name(&mut self, uid : u32, aid: u32, old : String, new : String) -> Result<String> {
+    pub fn update_category_name(&self, uid : u32, aid: u32, old : String, new : String) -> Result<String> {
         let p = rusqlite::params!(uid, aid, old, new);
         let sql = "UPDATE categories SET name = (?4) WHERE uid = (?1) and aid = (?2) and name = (?3)";
-        match self.conn.execute(sql, p) {
+        let conn_lock = self.conn.lock().unwrap();
+        match conn_lock.execute(sql, p) {
             Ok(_) => Ok(new),
             Err(error) => {
                 panic!("Unable to update category {} in account {}: {}!", old, aid, error);
@@ -58,15 +59,16 @@ impl DbConn {
         }
     }
 
-    pub fn get_categories(&mut self, uid : u32, aid: u32) -> Result<Vec<CategoryRecord>, rusqlite::Error> {
+    pub fn get_categories(&self, uid : u32, aid: u32) -> Result<Vec<CategoryRecord>, rusqlite::Error> {
         let p = rusqlite::params![aid, uid];
         let sql = "SELECT id, category FROM categories WHERE aid = (?1) and uid = (?2)";
-        let mut stmt = self.conn.prepare(sql)?;
+        let conn_lock = self.conn.lock().unwrap();
+        let mut stmt = conn_lock.prepare(sql)?;
         let exists = stmt.exists(p)?;
         let mut categories: Vec<CategoryRecord> = Vec::new();
         match exists {
             true => {
-                stmt = self.conn.prepare(sql)?;
+                stmt = conn_lock.prepare(sql)?;
                 let cats = stmt
                     .query_map(p, |row| {
                         Ok(CategoryRecord {
@@ -86,18 +88,19 @@ impl DbConn {
     }
 
     pub fn get_category_name(
-        &mut self,
+        &self,
         uid: u32,
         aid: u32,
         cid: u32,
     ) -> rusqlite::Result<String, rusqlite::Error> {
         let sql: &str = "SELECT category FROM categories WHERE aid = (?1) AND id = (?2) and uid = (?3)";
         let p = rusqlite::params![aid, cid, uid];
-        let mut stmt = self.conn.prepare(sql)?;
+        let conn_lock = self.conn.lock().unwrap();
+        let mut stmt = conn_lock.prepare(sql)?;
         let exists = stmt.exists(p)?;
         match exists {
             true => {
-                stmt = self.conn.prepare(sql)?;
+                stmt = conn_lock.prepare(sql)?;
                 let name = stmt.query_row(p, |row| row.get::<_, String>(0));
                 match name {
                     Ok(name) => {
@@ -115,18 +118,19 @@ impl DbConn {
     }
 
     pub fn get_category_id(
-        &mut self,
+        &self,
         aid: u32,
         category: String,
         uid: u32,
     ) -> rusqlite::Result<u32, rusqlite::Error> {
         let sql: &str = "SELECT id FROM categories WHERE aid = (?1) AND category = (?2) and uid = (?3)";
         let p = rusqlite::params![aid, category, uid];
-        let mut stmt = self.conn.prepare(sql)?;
+        let conn_lock = self.conn.lock().unwrap();
+        let mut stmt = conn_lock.prepare(sql)?;
         let exists = stmt.exists(p)?;
         match exists {
             true => {
-                stmt = self.conn.prepare(sql)?;
+                stmt = conn_lock.prepare(sql)?;
                 let id = stmt.query_row(p, |row| row.get::<_, u32>(0));
                 match id {
                     Ok(id) => {
@@ -143,44 +147,51 @@ impl DbConn {
         }
     }
 
-    pub fn check_and_add_category(&mut self, uid: u32, aid: u32, name: String) -> u32 {
+    pub fn check_and_add_category(&self, uid: u32, aid: u32, name: String) -> u32 {
         let sql = "SELECT id FROM categories WHERE aid = (?1) and category = (?2) and uid = (?3)";
-        let conn = self.conn.clone();
+        let cloned_conn = self.conn.clone();
+        let conn_lock = cloned_conn.lock().unwrap();
         let p = rusqlite::params![aid, name, uid];
-        let prepared_stmt = conn.prepare(sql);
-        match prepared_stmt {
-            Ok(mut stmt) => {
-                if let Ok(entry_found) = stmt.exists(p) {
-                    if entry_found {
-                        if let id =
-                            stmt.query_row(p, |row: &rusqlite::Row<'_>| row.get::<_, u32>(0))
-                        {
-                            return id.unwrap();
+        {
+            let prepared_stmt = conn_lock.prepare(sql);
+            match prepared_stmt {
+                Ok(mut stmt) => {
+                    if let Ok(entry_found) = stmt.exists(p) {
+                        if entry_found {
+                            if let id =
+                                stmt.query_row(p, |row: &rusqlite::Row<'_>| row.get::<_, u32>(0))
+                            {
+                                return id.unwrap();
+                            } else {
+                                panic!("Unable to query row!");
+                            }
                         } else {
-                            panic!("Unable to query row!");
+                            //
+                            // self.add_category(uid, aid, name).unwrap()
                         }
                     } else {
-                        self.add_category(uid, aid, name).unwrap()
+                        panic!("Unable to determine if exists!");
                     }
-                } else {
-                    panic!("Unable to determine if exists!");
+                }
+                Err(e) => {
+                    panic!(
+                        "SQLITE error {} while executing searching for category {}.",
+                        e.to_string(),
+                        name
+                    );
                 }
             }
-            Err(e) => {
-                panic!(
-                    "SQLITE error {} while executing searching for category {}.",
-                    e.to_string(),
-                    name
-                );
-            }
         }
+        std::mem::drop(conn_lock);
+        self.add_category(uid, aid, name).unwrap()
     }
 
-    pub fn remove_category(&mut self, uid: u32, aid : u32, name : String) -> rusqlite::Result<u32, rusqlite::Error> {
+    pub fn remove_category(&self, uid: u32, aid : u32, name : String) -> rusqlite::Result<u32, rusqlite::Error> {
         let id = self.get_category_id(aid, name.clone(), uid).unwrap();
         let p = rusqlite::params![uid, aid, name];
         let sql = "DELETE FROM categories WHERE uid = (?1) and aid = (?2) and category = (?3)";
-        let rs = self.conn.execute(sql, p);
+        let conn_lock = self.conn.lock().unwrap();
+        let rs = conn_lock.execute(sql, p);
         match rs { 
             Ok(_usize) => {}
             Err(error) => { 
@@ -189,7 +200,7 @@ impl DbConn {
         }
         let p = rusqlite::params![id, uid, aid];
         let sql = "UPDATE categories SET id = id-1 WHERE id > ?1 and uid = ?2 and aid = ?3";
-        let rs = self.conn.execute(sql, p);
+        let rs = conn_lock.execute(sql, p);
         match rs {
             Ok(_usize) => {}
             Err(error) => {
@@ -199,7 +210,7 @@ impl DbConn {
 
         let p = rusqlite::params![uid, aid];
         let sql = "UPDATE user_account_info SET cid = cid - 1 WHERE uid = ?1 and aid = ?2";
-        let rs = self.conn.execute(sql, p);
+        let rs = conn_lock.execute(sql, p);
         match rs {
             Ok(_usize) => {}
             Err(error) => {

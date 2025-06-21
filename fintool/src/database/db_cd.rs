@@ -9,7 +9,7 @@ pub struct CdRecord {
 }
 
 impl DbConn {
-    pub fn create_cd_table(&mut self) -> rusqlite::Result<()> {
+    pub fn create_cd_table(&self) -> rusqlite::Result<()> {
         let sql: &str = "CREATE TABLE IF NOT EXISTS cds (
             principal   REAL NOT NULL, 
             apy         REAL NOT NULL, 
@@ -20,7 +20,8 @@ impl DbConn {
             PRIMARY KEY (uid, aid)
             FOREIGN     KEY (uid, aid) REFERENCES accounts(uid, id) ON DELETE CASCADE ON UPDATE CASCADE
         )";
-        match self.conn.execute(sql, ()) {
+        let conn_lock = self.conn.lock().unwrap();
+        match conn_lock.execute(sql, ()) {
             Ok(_) => {}
             Err(error) => {
                 panic!("Unable to create table 'CDs' because {}", error);
@@ -29,7 +30,7 @@ impl DbConn {
         Ok(())
     }
 
-    pub fn add_cd(&mut self, aid: u32, record: CdRecord) -> Result<(), rusqlite::Error> {
+    pub fn add_cd(&self, aid: u32, record: CdRecord) -> Result<(), rusqlite::Error> {
         let p = rusqlite::params!(
             record.principal,
             record.apy,
@@ -39,18 +40,20 @@ impl DbConn {
         );
         let sql =
             "INSERT INTO cds (principal, apy, open_date, length, aid) VALUES (?1, ?2, ?3, ?4, ?5)";
-        self.conn.execute(sql, p)?;
+        let conn_lock = self.conn.lock().unwrap();
+        conn_lock.execute(sql, p)?;
         return Ok(());
     }
 
-    pub fn get_cds(&mut self, aid: u32) -> Result<CdRecord, rusqlite::Error> {
+    pub fn get_cds(&self, aid: u32) -> Result<CdRecord, rusqlite::Error> {
         let p = rusqlite::params![aid];
         let sql = "SELECT * FROM cds WHERE aid = (?1)";
-        let mut stmt = self.conn.prepare(sql)?;
+        let conn_lock = self.conn.lock().unwrap();
+        let mut stmt = conn_lock.prepare(sql)?;
         let exists = stmt.exists(p)?;
         match exists {
             true => {
-                stmt = self.conn.prepare(sql)?;
+                stmt = conn_lock.prepare(sql)?;
                 let account = stmt.query_row(p, |row| {
                     Ok(CdRecord {
                         principal: row.get(0)?,

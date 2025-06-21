@@ -24,7 +24,7 @@ pub struct LedgerRecord {
 }
 
 impl DbConn {
-    pub fn create_ledger_table(&mut self) -> Result<()> {
+    pub fn create_ledger_table(&self) -> Result<()> {
         let sql: &str;
         sql = "CREATE TABLE IF NOT EXISTS ledgers (
                 id          INTEGER NOT NULL,
@@ -43,8 +43,8 @@ impl DbConn {
                 FOREIGN KEY(uid, aid, pid) REFERENCES people(uid, aid, id) ON DELETE CASCADE ON UPDATE CASCADE,
                 FOREIGN KEY(uid) REFERENCES users(id)
             )";
-
-        let rs = self.conn.execute(sql, ());
+        let conn_lock = self.conn.lock().unwrap();
+        let rs = conn_lock.execute(sql, ());
         match rs {
             Ok(_) => {}
             Err(error) => {
@@ -55,7 +55,7 @@ impl DbConn {
     }
 
     pub fn add_ledger_entry(
-        &mut self,
+        &self,
         uid: u32,
         aid: u32,
         entry: LedgerInfo,
@@ -63,7 +63,8 @@ impl DbConn {
         let sql: &str;
         let id = self.get_next_ledger_id(uid, aid).unwrap();
         sql = "INSERT INTO ledgers ( id, date, amount, transfer_type, pid, cid, desc, ancillary_f32, aid, uid) VALUES ( ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)";
-        let rs = self.conn.execute(
+        let conn_lock = self.conn.lock().unwrap();
+        let rs = conn_lock.execute(
             sql,
             (
                 id,
@@ -90,7 +91,7 @@ impl DbConn {
     }
 
     pub fn update_ledger_item(
-        &mut self,
+        &self,
         uid : u32,
         aid : u32,
         update: LedgerRecord,
@@ -108,7 +109,8 @@ impl DbConn {
             aid
         ];
         let sql = "UPDATE ledgers SET date = ?2, amount = ?3, transfer_type = ?4, pid = ?5, cid = ?6, desc = ?7, ancillary_f32 = ?8 WHERE id = ?1 and uid = ?9 and aid = ?10";
-        let rs = self.conn.execute(sql, p);
+        let conn_lock = self.conn.lock().unwrap();
+        let rs = conn_lock.execute(sql, p);
         match rs {
             Ok(_usize) => {}
             Err(error) => {
@@ -118,10 +120,11 @@ impl DbConn {
         Ok(update.id)
     }
 
-    pub fn remove_ledger_item(&mut self, uid: u32, aid :u32, id: u32) -> rusqlite::Result<u32, rusqlite::Error> {
+    pub fn remove_ledger_item(&self, uid: u32, aid :u32, id: u32) -> rusqlite::Result<u32, rusqlite::Error> {
         let p = rusqlite::params![id, uid, aid];
         let sql = "DELETE FROM ledgers WHERE id = ?1 and uid = ?2 and aid = ?3";
-        let rs = self.conn.execute(sql, p);
+        let conn_lock = self.conn.lock().unwrap();
+        let rs = conn_lock.execute(sql, p);
         match rs {
             Ok(_usize) => {}
             Err(error) => {
@@ -130,7 +133,7 @@ impl DbConn {
         }
 
         let sql = "UPDATE ledgers SET id = id-1 WHERE id > ?1 and uid = ?2 and aid = ?3";
-        let rs = self.conn.execute(sql, p);
+        let rs = conn_lock.execute(sql, p);
         match rs {
             Ok(_usize) => {}
             Err(error) => {
@@ -140,7 +143,7 @@ impl DbConn {
         
         let p = rusqlite::params![uid, aid];
         let sql = "UPDATE user_account_info SET lid = lid - 1 WHERE uid = ?1 and aid = ?2";
-        let rs = self.conn.execute(sql, p);
+        let rs = conn_lock.execute(sql, p);
         match rs {
             Ok(_usize) => {}
             Err(error) => {
@@ -150,10 +153,11 @@ impl DbConn {
         Ok(id)
     }
 
-    pub fn get_ledger(&mut self, uid: u32, aid: u32) -> rusqlite::Result<Vec<LedgerRecord>, rusqlite::Error> {
+    pub fn get_ledger(&self, uid: u32, aid: u32) -> rusqlite::Result<Vec<LedgerRecord>, rusqlite::Error> {
         let p = rusqlite::params![aid, uid];
         let sql = "SELECT id, date, amount, transfer_type, pid, cid, desc, ancillary_f32 FROM ledgers WHERE aid = (?1) and uid = (?2) order by date DESC";
-        let mut stmt = self.conn.prepare(sql)?;
+        let conn_lock = self.conn.lock().unwrap();
+        let mut stmt = conn_lock.prepare(sql)?;
         let exists = stmt.exists(p)?;
         let mut entries: Vec<LedgerRecord> = Vec::new();
         match exists {
@@ -187,7 +191,7 @@ impl DbConn {
         }
     }
 
-    pub fn check_if_ledger_references_category(&mut self, uid: u32, aid: u32, category: String) -> rusqlite::Result<Option<Vec<LedgerRecord>>, rusqlite::Error> {
+    pub fn check_if_ledger_references_category(&self, uid: u32, aid: u32, category: String) -> rusqlite::Result<Option<Vec<LedgerRecord>>, rusqlite::Error> {
         let p = rusqlite::params![uid, aid, category];
         let sql = "
             SELECT 
@@ -203,7 +207,8 @@ impl DbConn {
                 categories.category = (?3)
         ";
 
-        let mut stmt = self.conn.prepare(sql)?;
+        let conn_lock = self.conn.lock().unwrap();
+        let mut stmt = conn_lock.prepare(sql)?;
         let exists = stmt.exists(p)?;
         if exists {
             let matched_record_wrap = stmt.query_map(
@@ -235,7 +240,7 @@ impl DbConn {
         return Ok(None);
     }
 
-    pub fn check_if_ledger_references_participant(&mut self, uid: u32, aid: u32, ptype: ParticipantType, name : String) -> rusqlite::Result<Option<Vec<LedgerRecord>>, rusqlite::Error> {
+    pub fn check_if_ledger_references_participant(&self, uid: u32, aid: u32, ptype: ParticipantType, name : String) -> rusqlite::Result<Option<Vec<LedgerRecord>>, rusqlite::Error> {
         
         let (p, sql) = match ptype {
             ParticipantType::Both => {
@@ -277,7 +282,8 @@ impl DbConn {
             }
         };
 
-        let mut stmt = self.conn.prepare(sql)?;
+        let conn_lock = self.conn.lock().unwrap();
+        let mut stmt = conn_lock.prepare(sql)?;
         let exists = stmt.exists(p)?;
         if exists {
             let matched_record_wrap = stmt.query_map(
@@ -311,7 +317,7 @@ impl DbConn {
 
 
     pub fn get_ledger_entries_within_timestamps(
-        &mut self,
+        &self,
         uid: u32,
         aid: u32,
         start: NaiveDate,
@@ -320,7 +326,8 @@ impl DbConn {
         let p = rusqlite::params![aid, start.format("%Y-%m-%d").to_string(), end.format("%Y-%m-%d").to_string(), uid];
         let sql = "SELECT * FROM ledgers WHERE aid = (?1) and date >= (?2) and date <= (?3) and uid = (?4) ORDER by date ASC";
 
-        let mut stmt = self.conn.prepare(sql)?;
+        let conn_lock = self.conn.lock().unwrap();
+        let mut stmt = conn_lock.prepare(sql)?;
         let exists = stmt.exists(p)?;
         let mut entries: Vec<LedgerInfo> = Vec::new();
         match exists {
@@ -351,7 +358,7 @@ impl DbConn {
         }
     }
 
-    pub fn get_current_value(&mut self, uid: u32, aid: u32) -> rusqlite::Result<f32, rusqlite::Error> {
+    pub fn get_current_value(&self, uid: u32, aid: u32) -> rusqlite::Result<f32, rusqlite::Error> {
         let p = rusqlite::params![aid, uid];
         let mut sum: f32 = 0.0;
         let sql: &str ="SELECT COALESCE(SUM(CASE
@@ -360,7 +367,8 @@ impl DbConn {
                 ELSE 0 
             END), 0) as total_balance FROM ledgers WHERE aid = (?1) and uid = (?2);";
 
-        let mut stmt = self.conn.prepare(sql)?;
+        let conn_lock = self.conn.lock().unwrap();
+        let mut stmt = conn_lock.prepare(sql)?;
         if stmt.exists(p)? {
             sum = stmt.query_row(p, |row| row.get(0))?;
         } else {
@@ -371,7 +379,7 @@ impl DbConn {
     }
 
     pub fn get_cumulative_total_of_ledger_before_date(
-        &mut self,
+        &self,
         uid : u32,
         aid: u32,
         end: NaiveDate,
@@ -384,7 +392,8 @@ impl DbConn {
             ELSE 0 
         END), 0) as total_balance FROM ledgers WHERE aid = (?1) and date <= (?2) and uid = (?3);";
 
-        let mut stmt = self.conn.prepare(sql)?;
+        let conn_lock = self.conn.lock().unwrap();
+        let mut stmt = conn_lock.prepare(sql)?;
         if stmt.exists(p)? {
             sum = stmt.query_row(p, |row| row.get(0))?;
         } else {

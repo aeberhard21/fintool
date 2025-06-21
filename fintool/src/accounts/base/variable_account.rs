@@ -25,7 +25,7 @@ pub struct VariableAccount {
 }
 
 impl VariableAccount {
-    pub fn new(uid: u32, id: u32, db: &mut DbConn) -> Self {
+    pub fn new(uid: u32, id: u32, db: &DbConn) -> Self {
         let acct: VariableAccount = Self {
             id: id,
             uid: uid,
@@ -35,7 +35,7 @@ impl VariableAccount {
         acct
     }
 
-    pub fn purchase_stock(&mut self, initial_opt : Option<StockRecord>, overwrite_entry : bool) -> LedgerRecord {
+    pub fn purchase_stock(&self, initial_opt : Option<StockRecord>, overwrite_entry : bool) -> LedgerRecord {
         let purchase: LedgerInfo;
         let defaults_to_use : bool;
         let mut initial: StockRecord = StockRecord { id: 0, info: StockInfo { shares: 0.0, costbasis: 0.0, remaining: 0.0, ledger_id: 0 }, txn_opt: None };
@@ -164,7 +164,7 @@ impl VariableAccount {
         return LedgerRecord { id:  ledger_id, info: purchase.clone() };
     }
 
-    pub fn sell_stock(&mut self, initial_opt : Option<StockRecord>, overwrite_entry : bool) -> LedgerRecord {
+    pub fn sell_stock(&self, initial_opt : Option<StockRecord>, overwrite_entry : bool) -> LedgerRecord {
 
         let defaults_to_use : bool;
         let mut initial: StockRecord = StockRecord { id: 0, info: StockInfo { shares: 0.0, costbasis: 0.0, remaining: 0.0, ledger_id: 0 }, txn_opt: None };
@@ -307,7 +307,7 @@ impl VariableAccount {
         return LedgerRecord { id: ledger_id, info: sale.clone() }
     }
 
-    pub fn split_stock(&mut self, initial_opt : Option<StockSplitRecord>, overwrite_entry : bool) -> LedgerRecord {
+    pub fn split_stock(&self, initial_opt : Option<StockSplitRecord>, overwrite_entry : bool) -> LedgerRecord {
 
         let defaults_to_use : bool;
         let mut initial: StockSplitRecord = StockSplitRecord { id: 0, info: StockSplitInfo { split: 0.0, ledger_id: 0 }, txn_opt: None };
@@ -408,7 +408,7 @@ impl VariableAccount {
         return LedgerRecord{ id : lid, info : ledger_entry};
     }
 
-    pub fn modify(&mut self, record : LedgerRecord) -> LedgerRecord {
+    pub fn modify(&self, record : LedgerRecord) -> LedgerRecord {
 
         let was_stock_purchase_opt = self.db.check_and_get_stock_purchase_record_matching_from_ledger_id(self.uid, self.id, record.id).unwrap();
         let was_stock_sale_opt = self.db.check_and_get_stock_sale_record_matching_from_ledger_id(self.uid, self.id, record.id).unwrap();
@@ -476,7 +476,7 @@ impl VariableAccount {
         
     }
 
-    pub fn allocate_sale_stock(&mut self, record: StockRecord, method: String) {
+    pub fn allocate_sale_stock(&self, record: StockRecord, method: String) {
         let stocks: Vec<StockRecord>;
         let ticker = self.db.get_participant(self.uid, self.id, record.txn_opt.expect("Transaction required but not found!").participant).unwrap();
         match method.as_str() {
@@ -532,7 +532,7 @@ impl VariableAccount {
         }
     }
 
-    fn deallocate_sale_stock(&mut self, sale_id: u32) {
+    fn deallocate_sale_stock(&self, sale_id: u32) {
         let stock_allocation_records = self
             .db
             .get_stock_sale_allocation_for_sale_id(self.uid, self.id, sale_id)
@@ -545,7 +545,7 @@ impl VariableAccount {
         }
     }
 
-    pub fn allocate_stock_split(&mut self, record : StockSplitRecord) { 
+    pub fn allocate_stock_split(&self, record : StockSplitRecord) { 
         
         if record.txn_opt.is_none() {
             panic!("Expected ledger data matching stock split id: {}", record.id);
@@ -601,7 +601,7 @@ impl VariableAccount {
         }
     }
 
-    fn deallocate_stock_split(&mut self, record : StockSplitRecord ) { 
+    fn deallocate_stock_split(&self, record : StockSplitRecord ) { 
         let mut stock_split_alloc_records = self
             .db
             .get_stock_split_allocation_for_stock_split_id(self.uid,self.id, record.id)
@@ -665,7 +665,7 @@ impl VariableAccount {
         self.db.remove_stock_split(self.uid, self.id, record.info.ledger_id).unwrap();
     }
 
-    pub fn confirm_valid_ticker(&mut self, ticker : String) -> bool { 
+    pub fn confirm_valid_ticker(&self, ticker : String) -> bool { 
         let rs = stocks::get_stock_at_close(ticker.clone());
         match rs {
             Ok(price) => {true}
@@ -675,13 +675,13 @@ impl VariableAccount {
         }
     }
 
-    pub fn get_current_value(&mut self) -> f32 {
+    pub fn get_current_value(&self) -> f32 {
         let fixed_value = self.fixed.get_current_value();
         let variable_value = self.db.get_stock_current_value(self.uid, self.id).unwrap();
         return fixed_value + variable_value;
     }
 
-    pub fn time_weighted_return(&mut self, period_start: NaiveDate, period_end: NaiveDate) -> f32 {
+    pub fn time_weighted_return(&self, period_start: NaiveDate, period_end: NaiveDate) -> f32 {
         let mut cf: f32 = 0.0;
         let mut hps: Vec<f32> = Vec::new();
         let mut hp: f32;
@@ -790,7 +790,7 @@ impl VariableAccount {
         return twr * 100.0;
     }
 
-    pub fn get_positions(&mut self) -> Option<Vec<(String, f32)>> {
+    pub fn get_positions(&self) -> Option<Vec<(String, f32)>> {
         return self.db.get_positions(self.uid, self.id).unwrap();
     }
 }

@@ -144,7 +144,7 @@ fn access_account(uid: u32, db: &mut DbConn) {
                 let acctx = account_map
                     .get(&selected_account)
                     .expect("Account not found!");
-                acct = decode_and_create_account_type(uid, db, acctx);
+                acct = decode_and_init_account_type(uid, db, acctx);
                 // acct.info();
             }
             "Modify Account" => {    
@@ -169,7 +169,7 @@ fn access_account(uid: u32, db: &mut DbConn) {
                 let acctx = account_map
                     .get(&selected_account)
                     .expect("Account not found!");
-                acct = decode_and_create_account_type(uid, db, acctx);
+                acct = decode_and_init_account_type(uid, db, acctx);
 
                 let selected_action = Select::new("What would you like to do:", MODIFY_ACCT_ACTIONS.to_vec())
                     .prompt()
@@ -239,9 +239,9 @@ fn access_account(uid: u32, db: &mut DbConn) {
     }
 }
 
-pub fn decode_and_create_account_type(
+pub fn decode_and_init_account_type(
     uid: u32,
-    db: &mut DbConn,
+    db: &DbConn,
     account: &AccountRecord,
 ) -> Box<dyn Account> {
     match account.info.atype {
@@ -319,7 +319,7 @@ pub fn query_user_for_analysis_period() -> (NaiveDate, NaiveDate) {
 
 pub fn create_new_account(
     uid: u32,
-    db: &mut DbConn,
+    db: &DbConn,
 ) -> (Option<(Box<dyn Account>, AccountRecord)>) {
     const ACCOUNT_TYPES: [&'static str; 6] = ["Bank Account", "Certificate of Deposit", "Credit Card", "Investment Account", "Wallet", "None"];
     let selected_account_type = Select::new(
@@ -360,7 +360,7 @@ pub fn create_new_account(
         }
     }
     
-    acct = decode_and_create_account_type(uid, db, &new_account);
+    acct = decode_and_init_account_type(uid, db, &new_account);
 
     return Some((
         acct,
@@ -368,7 +368,7 @@ pub fn create_new_account(
     ));
 }
 
-pub fn name_account(uid : u32, db: &mut DbConn) -> String {
+pub fn name_account(uid : u32, db: &DbConn) -> String {
     let mut name;
     loop {
         name = Text::new("Enter account name:")
@@ -389,7 +389,7 @@ pub fn name_account(uid : u32, db: &mut DbConn) -> String {
     return name;
 }
 
-pub fn rename_account(db : &mut DbConn, uid : u32, id : u32) {
+pub fn rename_account(db : &DbConn, uid : u32, id : u32) {
     let new_name = name_account(uid, db);
     db.rename_account(uid, id, new_name).unwrap();
 }

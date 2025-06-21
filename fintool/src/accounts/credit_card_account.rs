@@ -74,7 +74,7 @@ struct FilePathHelper {
 }
 
 impl CreditCardAccount {
-    pub fn new(uid: u32, id: u32, db: &mut DbConn) -> Self {
+    pub fn new(uid: u32, id: u32, db: &DbConn) -> Self {
         let acct: CreditCardAccount = Self {
             uid: uid,
             id: id,
@@ -86,7 +86,7 @@ impl CreditCardAccount {
 }
 
 impl AccountCreation for CreditCardAccount {
-    fn create(uid : u32, name: String, _db : &mut DbConn) -> AccountRecord {
+    fn create(uid : u32, name: String, _db : &DbConn) -> AccountRecord {
 
         let has_bank = false;
         let has_stocks = false;
@@ -125,7 +125,7 @@ impl AccountCreation for CreditCardAccount {
 }
 
 impl AccountOperations for CreditCardAccount {
-    fn record(&mut self) {
+    fn record(&self) {
         const RECORD_OPTIONS: [&'static str; 3] = ["Charge", "Payment", "None"];
         loop {
             let action = Select::new(
@@ -158,7 +158,7 @@ impl AccountOperations for CreditCardAccount {
         }
     }
 
-    fn import(&mut self) {
+    fn import(&self) {
         let g = FilePathHelper {
             completer: FilenameCompleter::new(),
             highlighter: MatchingBracketHighlighter::new(),
@@ -242,7 +242,7 @@ impl AccountOperations for CreditCardAccount {
         }
     }
 
-    fn modify(&mut self) {
+    fn modify(&self) {
         const MODIFY_OPTIONS: [&'static str; 6] = ["Ledger", "Credit Line", "Statement Due Date", "Categories", "People", "None"];
         let modify_choice = Select::new("\nWhat would you like to modify:", MODIFY_OPTIONS.to_vec())
         .prompt()
@@ -426,9 +426,9 @@ impl AccountOperations for CreditCardAccount {
         }
     }
 
-    fn export(&mut self) {}
+    fn export(&self) {}
 
-    fn report(&mut self) {
+    fn report(&self) {
         const REPORT_OPTIONS: [&'static str; 3] = ["Current Balance", "Credit Line", "None"];
         let choice: String =
             Select::new("What would you like to report: ", REPORT_OPTIONS.to_vec())
@@ -452,7 +452,7 @@ impl AccountOperations for CreditCardAccount {
         }
     }
 
-    fn link(&mut self, transacting_account: u32, entry: LedgerRecord) -> Option<u32> {
+    fn link(&self, transacting_account: u32, entry: LedgerRecord) -> Option<u32> {
         let from_account;
         let to_account;
 
@@ -525,7 +525,10 @@ impl AccountOperations for CreditCardAccount {
 impl AccountData for CreditCardAccount {
     fn get_id(&self) -> u32 {
         return self.id
-    } 
+    }
+    fn get_name(&self) -> String { 
+        return self.db.get_account_name(self.uid, self.id).unwrap();
+    }
 }
 
 #[cfg(feature = "ratatui_support")]

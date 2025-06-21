@@ -76,7 +76,7 @@ struct FilePathHelper {
 }
 
 impl CertificateOfDepositAccount {
-    pub fn new(uid: u32, id: u32, db: &mut DbConn) -> Self {
+    pub fn new(uid: u32, id: u32, db: &DbConn) -> Self {
         let acct: CertificateOfDepositAccount = Self {
             uid: uid,
             id: id,
@@ -88,7 +88,7 @@ impl CertificateOfDepositAccount {
 }
 
 impl AccountCreation for CertificateOfDepositAccount {
-    fn create(uid : u32, name: String, _db : &mut DbConn) -> AccountRecord {
+    fn create(uid : u32, name: String, _db : &DbConn) -> AccountRecord {
 
         let has_bank = true;
         let has_stocks = false;
@@ -187,7 +187,7 @@ impl AccountCreation for CertificateOfDepositAccount {
 }
 
 impl AccountOperations for CertificateOfDepositAccount {
-    fn record(&mut self) {
+    fn record(&self) {
         const RECORD_OPTIONS: [&'static str; 3] = ["Deposit", "Withdrawal", "None"];
         loop {
             let action = Select::new(
@@ -220,7 +220,7 @@ impl AccountOperations for CertificateOfDepositAccount {
         }
     }
 
-    fn import(&mut self) {
+    fn import(&self) {
         let g = FilePathHelper {
             completer: FilenameCompleter::new(),
             highlighter: MatchingBracketHighlighter::new(),
@@ -304,7 +304,7 @@ impl AccountOperations for CertificateOfDepositAccount {
         }
     }
 
-    fn modify(&mut self) {
+    fn modify(&self) {
         const MODIFY_OPTIONS: [&'static str; 7] = ["APY", "Ledger", "Length", "Categories", "People", "Principal", "None"];
         let modify_choice = Select::new("\nWhat would you like to modify:", MODIFY_OPTIONS.to_vec())
         .prompt()
@@ -531,9 +531,9 @@ impl AccountOperations for CertificateOfDepositAccount {
         }
     }
 
-    fn export(&mut self) {}
+    fn export(&self) {}
 
-    fn report(&mut self) {
+    fn report(&self) {
         const REPORT_OPTIONS: [&'static str; 3] = ["Total Value", "Simple Growth Rate", "None"];
         let choice: String =
             Select::new("What would you like to report: ", REPORT_OPTIONS.to_vec())
@@ -559,7 +559,7 @@ impl AccountOperations for CertificateOfDepositAccount {
         }
     }
 
-    fn link(&mut self, transacting_account: u32, entry: LedgerRecord) -> Option<u32> {
+    fn link(&self, transacting_account: u32, entry: LedgerRecord) -> Option<u32> {
         let from_account;
         let to_account;
 
@@ -633,6 +633,9 @@ impl AccountData for CertificateOfDepositAccount {
     fn get_id(&self) -> u32 {
         return self.id
     } 
+    fn get_name(&self) -> String { 
+        return self.db.get_account_name(self.uid, self.id).unwrap();
+    }
 }
 
 #[cfg(feature = "ratatui_support")]

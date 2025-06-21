@@ -1,5 +1,5 @@
 use crate::database::DbConn;
-use crate::tui::{create_new_account, decode_and_create_account_type};
+use crate::tui::{create_new_account, decode_and_init_account_type};
 use crate::types::accounts::AccountRecord;
 use crate::types::categories::CategoryAutoCompleter;
 use crate::types::ledger::{LedgerInfo, LedgerRecord};
@@ -30,7 +30,7 @@ impl ChargeAccount {
         acct
     }
 
-    pub fn charge(&mut self, initial_opt : Option<LedgerRecord>, overwrite : bool) {
+    pub fn charge(&self, initial_opt : Option<LedgerRecord>, overwrite : bool) {
         let default_to_use : bool;
         let mut initial = LedgerRecord { id : 0, info : LedgerInfo { date: "1970-01-01".to_string(), amount: 0.0, transfer_type: TransferType::WithdrawalToExternalAccount, participant: 0, category_id: 0, description: "".to_string(), ancillary_f32data: 0.0 }};
 
@@ -163,7 +163,7 @@ impl ChargeAccount {
         };
     }
 
-    pub fn pay(&mut self, initial_opt : Option<LedgerRecord>, overwrite : bool) {
+    pub fn pay(&self, initial_opt : Option<LedgerRecord>, overwrite : bool) {
 
         let default_to_use : bool;
         let mut initial = LedgerRecord { id : 0, info : LedgerInfo { date: "1970-01-01".to_string(), amount: 0.0, transfer_type: TransferType::DepositFromExternalAccount, participant: 0, category_id: 0, description: "".to_string(), ancillary_f32data: 0.0 }};
@@ -361,7 +361,7 @@ impl ChargeAccount {
 
     }
 
-    pub fn modify(&mut self, selected_record: LedgerRecord) -> LedgerRecord {
+    pub fn modify(&self, selected_record: LedgerRecord) -> LedgerRecord {
 
         let was_payment = match selected_record.info.transfer_type.clone() { 
             TransferType::DepositFromExternalAccount|TransferType::DepositFromInternalAccount => { true }
@@ -422,7 +422,7 @@ impl ChargeAccount {
     }
 
     // returns uid of selected ledger entry
-    pub fn select_ledger_entry(&mut self) -> Option<LedgerRecord> {
+    pub fn select_ledger_entry(&self) -> Option<LedgerRecord> {
         let records = self.db.get_ledger(self.uid, self.id).unwrap();
         let mut entries: HashMap<String, u32> = HashMap::new();
         let mut strings: Vec<String> = Vec::new();
@@ -467,7 +467,7 @@ impl ChargeAccount {
         Some(selected_record)
     }
 
-    pub fn link_transaction(&mut self, initial_opt : Option<String>) -> Option<(Box<dyn Account>, String)> {
+    pub fn link_transaction(&self, initial_opt : Option<String>) -> Option<(Box<dyn Account>, String)> {
 
         let default_to_use;
         let mut initial_account = String::new();
@@ -519,7 +519,7 @@ impl ChargeAccount {
         let acct: Box<dyn Account>;
         let record: AccountRecord;
         if selected_account.clone() == "New Account".to_ascii_uppercase().to_string() {
-            let user_input = create_new_account(self.uid, &mut self.db);
+            let user_input = create_new_account(self.uid, &self.db);
             if user_input.is_none() { 
                 return None;
             }
@@ -529,13 +529,13 @@ impl ChargeAccount {
             let acctx = account_map
                 .get(&selected_account)
                 .expect("Account not found!");
-            acct = decode_and_create_account_type(self.uid, &mut self.db, acctx);
+            acct = decode_and_init_account_type(self.uid, &self.db, acctx);
         }
 
         return Some((acct, selected_account.clone()));
     }
 
-    pub fn get_current_balance(&mut self) -> f32 {
+    pub fn get_current_balance(&self) -> f32 {
         // because a credit card is debt, return it as a positive balance. 
         return -self.db.get_current_value(self.uid, self.id).unwrap();
     }
