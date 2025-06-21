@@ -1,5 +1,5 @@
 use crate::database::DbConn;
-use crate::tui::{create_new_account, decode_and_init_account_type};
+use crate::tui::{prompt_and_create_new_account, decode_and_init_account_type};
 use crate::types::accounts::AccountRecord;
 use crate::types::categories::CategoryAutoCompleter;
 use crate::types::ledger::{LedgerInfo, LedgerRecord};
@@ -574,7 +574,7 @@ impl FixedAccount {
         let acct: Box<dyn Account>;
         let record: AccountRecord;
         if selected_account.clone() == "New Account".to_ascii_uppercase().to_string() {
-            let user_input = create_new_account(self.uid, &self.db);
+            let user_input = prompt_and_create_new_account(self.uid, &self.db);
             if user_input.is_none() { 
                 return None;
             }

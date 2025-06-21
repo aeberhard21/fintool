@@ -7,7 +7,7 @@ use ratatui::{
     layout::Rect, 
     style::Color
 };
-use strum::{Display, EnumIter, FromRepr, IntoEnumIterator};
+use strum::{Display, EnumIter, EnumString, FromRepr, IntoEnumIterator};
 
 use crate::database::DbConn;
 #[cfg(feature = "ratatui_support")]
@@ -15,20 +15,25 @@ use crate::app::screen::TabMenu;
 
 use super::ledger;
 
-#[derive(Clone, Copy, Display, EnumIter, FromRepr)]
+#[derive(Clone, Copy, Display, EnumIter, EnumString, FromRepr, Default)]
 pub enum AccountType {
-    #[strum(to_string = "Wallet")]
-    Wallet,
-    #[strum(to_string = "Investment Account")]
-    Investment,
+    #[default]
     #[strum(to_string = "Bank Account")]
     Bank,
+    #[strum(to_string = "Investment Account")]
+    Investment,
+    #[strum(to_string = "Credit Card")]
+    CreditCard,
+    #[strum(to_string = "Wallet")]
+    Wallet,
     #[strum(to_string = "Certificate of Deposit")]
     CD,
-    CreditCard,
-    Retirement,
-    Health,
-    Custom,
+}
+
+impl AccountType { 
+    pub fn to_menu_selection(value : Self) ->  String { 
+        format!("{value}")
+    }
 }
 
 #[cfg(feature = "ratatui_support")]
@@ -65,35 +70,35 @@ pub enum AccountFilter {
     Budget,
 }
 
-impl From<u32> for AccountType {
-    fn from(value: u32) -> Self {
-        match value {
-            0 => AccountType::Wallet,
-            1 => AccountType::Investment,
-            2 => AccountType::Bank,
-            3 => AccountType::CD,
-            4 => AccountType::CreditCard,
-            5 => AccountType::Retirement,
-            6 => AccountType::Health,
-            7 => AccountType::Custom,
-            _ => panic!("Invalid numberic value for AccountType!"),
-        }
-    }
-}
-impl From<String> for AccountType {
-    fn from(value: String) -> Self {
-        match value.as_str() {
-            "Wallet" => AccountType::Wallet,
-            "Investment" => AccountType::Investment,
-            "Bank" => AccountType::Bank,
-            "CD" => AccountType::CD,
-            "Retirement" => AccountType::Retirement,
-            "Health" => AccountType::Health,
-            "Custom" => AccountType::Custom,
-            _ => panic!("Invalid string type for AccountType!"),
-        }
-    }
-}
+// impl From<u32> for AccountType {
+//     fn from(value: u32) -> Self {
+//         match value {
+//             0 => AccountType::Wallet,
+//             1 => AccountType::Investment,
+//             2 => AccountType::Bank,
+//             3 => AccountType::CD,
+//             4 => AccountType::CreditCard,
+//             5 => AccountType::Retirement,
+//             6 => AccountType::Health,
+//             7 => AccountType::Custom,
+//             _ => panic!("Invalid numberic value for AccountType!"),
+//         }
+//     }
+// }
+// impl From<String> for AccountType {
+//     fn from(value: String) -> Self {
+//         match value.as_str() {
+//             "Wallet" => AccountType::Wallet,
+//             "Investment" => AccountType::Investment,
+//             "Bank" => AccountType::Bank,
+//             "CD" => AccountType::CD,
+//             "Retirement" => AccountType::Retirement,
+//             "Health" => AccountType::Health,
+//             "Custom" => AccountType::Custom,
+//             _ => panic!("Invalid string type for AccountType!"),
+//         }
+//     }
+// }
 
 #[derive(Clone)]
 pub struct AccountInfo {
@@ -460,7 +465,7 @@ impl DbConn {
                         Ok(AccountRecord {
                             id: row.get(0)?,
                             info: AccountInfo {
-                                atype: AccountType::from(row.get::<_, u32>(1)? as u32),
+                                atype: AccountType::from_repr(row.get::<_, u32>(1)? as usize).unwrap(),
                                 name: row.get(2)?,
                                 has_stocks: row.get(3)?,
                                 has_bank: row.get(4)?,
@@ -615,7 +620,7 @@ impl DbConn {
                     Ok(AccountRecord {
                         id: row.get(0)?,
                         info: AccountInfo {
-                            atype: AccountType::from(row.get::<_, u32>(1)?),
+                            atype: AccountType::from_repr(row.get::<_, u32>(1)? as usize).unwrap(),
                             name: row.get(2)?,
                             has_stocks: row.get(3)?,
                             has_bank: row.get(4)?,

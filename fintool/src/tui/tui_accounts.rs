@@ -10,10 +10,8 @@ pub fn select_account_by_type(_uid: u32, _db: &mut DbConn, atype: AccountType) -
     match &atype {
         &AccountType::Bank => msg = "Select bank account: ",
         &AccountType::CD => msg = "Select CD account: ",
-        &AccountType::Health => msg = "Select health account: ",
         &AccountType::Wallet => msg = "Select wallet: ",
         &AccountType::Investment => msg = "Select investment account: ",
-        &AccountType::Retirement => msg = "Select retirement account: ",
         _ => panic!("Unrecognized account type!"),
     }
     let accounts: Option<Vec<String>> = _db.get_user_accounts_by_type(_uid, atype).unwrap();

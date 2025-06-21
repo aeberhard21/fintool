@@ -4,6 +4,7 @@ use chrono::Local;
 use chrono::Months;
 use std::collections::HashMap;
 use std::vec;
+use strum::IntoEnumIterator;
 
 use crate::accounts::bank_account::BankAccount;
 use crate::accounts::base::Account;
@@ -16,6 +17,7 @@ use crate::accounts::wallet::Wallet;
 use crate::database::DbConn;
 use crate::tui::tui_user::*;
 use crate::types::accounts::*;
+use crate::types::accounts::AccountType;
 use chrono::NaiveDate;
 use inquire::*;
 
@@ -66,7 +68,7 @@ pub fn menu(_db: &mut DbConn) {
 }
 
 fn access_account(uid: u32, db: &mut DbConn) {
-    const ACCOUNT_OPTIONS: [&'static str; 4] = ["Create Account", "Select Account", "Modify Account", "Exit"];
+    const ACCOUNT_OPTIONS: [&'static str; 4] = ["Create Account", "Select Account", "Edit Account", "Exit"];
     let mut accounts: Vec<AccountRecord> = db.get_user_accounts(uid).unwrap();
     let mut acct: Box<dyn Account>;
     let mut choice;
@@ -87,7 +89,7 @@ fn access_account(uid: u32, db: &mut DbConn) {
 
         match choice.as_str() {
             "Create Account" => {
-                let user_input = create_new_account(uid, db);
+                let user_input = prompt_and_create_new_account(uid, db);
                 if user_input.is_none() && accounts_is_empty {
                     break;
                 } else if user_input.is_none() {
@@ -147,7 +149,7 @@ fn access_account(uid: u32, db: &mut DbConn) {
                 acct = decode_and_init_account_type(uid, db, acctx);
                 // acct.info();
             }
-            "Modify Account" => {    
+            "Edit Account" => {    
                 const MODIFY_ACCT_ACTIONS: [&'static str; 3] = ["Rename", "Remove", "None"];
                 let mut account_map: HashMap<String, AccountRecord> = HashMap::new();
                 let mut account_names: Vec<String> = Vec::new();
@@ -317,42 +319,47 @@ pub fn query_user_for_analysis_period() -> (NaiveDate, NaiveDate) {
     return (period_start, period_end);
 }
 
-pub fn create_new_account(
+pub fn prompt_and_create_new_account(
     uid: u32,
     db: &DbConn,
 ) -> (Option<(Box<dyn Account>, AccountRecord)>) {
-    const ACCOUNT_TYPES: [&'static str; 6] = ["Bank Account", "Certificate of Deposit", "Credit Card", "Investment Account", "Wallet", "None"];
+    let mut account_types = AccountType::iter().map(AccountType::to_menu_selection).collect::<Vec<String>>();
+    account_types.push("None".to_string());
     let selected_account_type = Select::new(
         "What account type would you like to create:",
-        ACCOUNT_TYPES.to_vec(),
+        account_types.to_vec(),
     )
     .prompt()
     .unwrap()
     .to_string();
 
-    let new_account: AccountRecord;
-    let acct: Box<dyn Account>;
-
     if selected_account_type == "None".to_string() {
         return None;
     }
 
-    let name: String = name_account(uid, db);
+    let account_type : AccountType = selected_account_type.parse().expect("Unrecognized account type! Must match the Account Type enumeration!");
+    return create_account(uid, account_type, db);
+}
 
-    match selected_account_type.as_str() {
-        "Bank Account" => {
+pub fn create_account(uid : u32, atype : AccountType, db : &DbConn ) -> (Option<(Box<dyn Account>, AccountRecord)>) { 
+    let name: String = name_account(uid, db);
+    let new_account: AccountRecord;
+    let acct: Box<dyn Account>;
+
+    match atype {
+        AccountType::Bank => {
             new_account = BankAccount::create(uid, name, db);
         }
-        "Investment Account" => {
+        AccountType::Investment => {
             new_account = InvestmentAccountManager::create(uid, name,db);
         }
-        "Credit Card" => {
+        AccountType::CreditCard => {
             new_account = CreditCardAccount::create(uid, name, db);
         }
-        "Certificate of Deposit" => { 
+        AccountType::CD => { 
             new_account = CertificateOfDepositAccount::create(uid, name, db);
         }
-        "Wallet" => { 
+        AccountType::Wallet => { 
             new_account = Wallet::create(uid, name, db);
         }
         _ => {

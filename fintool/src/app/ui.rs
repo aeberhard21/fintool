@@ -7,7 +7,7 @@ use ratatui::{
     Frame
 };
 
-use crate::accounts::base::Account;
+use crate::{accounts::base::Account, app::screen::CurrentlySelecting};
 use super::app::App;
 use super::screen::{CurrentScreen, TabMenu};
 use crate::types::accounts::AccountType;
@@ -73,10 +73,22 @@ pub fn ui(frame :&mut Frame, app: &App) {
                 "(q) to quit / (:) Create User / (⏎) Login",
                 Style::default().fg(Color::LightBlue),
             ),
-            CurrentScreen::Accounts => Span::styled (
-                "(q) to quit / (◀︎) Move Tab Left / (▶︎) Move Tab Right / (⏎) Select Account Type / (⌫) Deselect Account Type",
-                Style::default().fg(Color::LightBlue),
-            ),
+            CurrentScreen::Accounts => {
+                match app.currently_selected.unwrap() { 
+                    CurrentlySelecting::AccountTypeTabs|CurrentlySelecting::AccountTabs => {
+                        Span::styled (
+                        "(q) to quit / (◀︎) Move Tab Left / (▶︎) Move Tab Right / (⏎) Select / (⌫) Deselect / (c) Create Account",
+                        Style::default().fg(Color::LightBlue),
+                        )
+                    }
+                    CurrentlySelecting::Account => { 
+                        Span::styled (
+                        "(q) to quit / (⌫) Deselect / (e) Edit Account / (r) Record Entry / (m) Modify Ledger / (i) Import ",
+                        Style::default().fg(Color::LightBlue),
+                        )
+                    }
+                }
+            },
             CurrentScreen::Main => Span::styled("(q, Ctrl-c) to quit", Style::default().fg(Color::LightBlue))
         }
 
@@ -88,7 +100,7 @@ pub fn ui(frame :&mut Frame, app: &App) {
 
     let footer_chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .constraints([Constraint::Percentage(20), Constraint::Percentage(80)])
         .split(chunks[chunks.len()-1]);
 
     frame.render_widget(mode_footer, footer_chunks[0]);
@@ -140,7 +152,19 @@ pub fn ui(frame :&mut Frame, app: &App) {
         } else { 
             let accts = app.accounts_for_type.clone().unwrap();
             if !accts.is_empty() { 
-                render_account_tabs(frame, chunks[2], app.accounts_for_type.clone().unwrap(), app.selected_account_tab);
+                if let Some(current_selection) = app.currently_selected { 
+                    match current_selection { 
+                        CurrentlySelecting::AccountTypeTabs => {
+                            render_account_tabs(frame, chunks[2], app.accounts_for_type.clone().unwrap(), app.selected_account_tab, Color::Reset);
+                        },
+                        CurrentlySelecting::AccountTabs => {
+                            render_account_tabs(frame, chunks[2], app.accounts_for_type.clone().unwrap(), app.selected_account_tab, Color::Red)
+                        },
+                        CurrentlySelecting::Account => {
+                            render_account_tabs(frame, chunks[2], app.accounts_for_type.clone().unwrap(), app.selected_account_tab, Color::Green)
+                        }
+                    }
+                }
                 if let Some(acct) = &app.account {
                     acct.render(frame, chunks[3], app);
                 } else { 
@@ -161,6 +185,19 @@ pub fn ui(frame :&mut Frame, app: &App) {
                 let area = centered_rect(60, 25, frame.area());
                 frame.render_widget(login_paragraph, area);
             }
+        }
+
+        if app.invalid_input { 
+            let mut content = "Account operation invalid!".to_string();
+            let display_text = Text::styled(
+                content,
+                Style::default().fg(Color::Red),
+            );
+
+            let login_paragraph = Paragraph::new(display_text)
+                .wrap(Wrap {trim : false});
+            let area = centered_rect(60, 25, frame.area());
+            frame.render_widget(login_paragraph, area);
         }
     }
 }
@@ -188,10 +225,10 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
         .split(popup_layout[1])[1] // Return the middle chunk
 }
 
-fn render_account_tabs(frame: &mut Frame, area : Rect, tab_names : Vec<String>, selected_tab : usize) {
+fn render_account_tabs(frame: &mut Frame, area : Rect, tab_names : Vec<String>, selected_tab : usize, highlight_color : Color) {
 
     let atype_tabs = Tabs::new(tab_names.into_iter())
-            .highlight_style(Color::Red)
+            .highlight_style(highlight_color)
             .select(selected_tab)
             .block(Block::bordered().title("Account Types"))
             .padding("", "")

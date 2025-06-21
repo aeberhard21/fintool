@@ -20,8 +20,9 @@ use crate::app::app::App;
 #[cfg(feature = "ratatui_support")]
 use crate::app::ui;
 #[cfg(feature = "ratatui_support")]
-use crate::app::screen::{CurrentScreen, TabBankSelected};
+use crate::app::screen::{CurrentScreen, CurrentlySelecting};
 use crate::database::DbConn;
+use crate::tui::*;
 use crate::tui::tui_user::create_user;
 
 mod accounts;
@@ -101,6 +102,7 @@ fn init_and_run_app(_db: &mut DbConn) -> io::Result<bool> {
 #[cfg(feature = "ratatui_support")]
 fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<bool> {
     loop {
+        app.invalid_input = false;
         terminal.draw(|f| ui::ui(f, app))?;
 
         if let Event::Key(key) = event::read()? {
@@ -128,7 +130,9 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                     (_, KeyCode::Char(':')) => {
                         disable_raw_mode()?;
                         execute!(io::stdout(), Clear(ratatui::crossterm::terminal::ClearType::All), MoveTo(0,0)).unwrap();
+                        
                         create_user(&mut app.db);
+                        
                         enable_raw_mode()?;
                         terminal.clear().unwrap();
                     }
@@ -145,14 +149,14 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                         return Ok(true)
                     }
                     (_, KeyCode::Right) => { 
-                        match app.tab_bank_selected { 
-                            Some(TabBankSelected::AccountTabs) => {
+                        match app.currently_selected { 
+                            Some(CurrentlySelecting::AccountTabs) => {
                                 app.advance_account();
                                 if app.accounts_for_type.is_some() {
                                     app.get_account();
                                 }
                             }
-                            Some(TabBankSelected::AccountTypeTabs) => {
+                            Some(CurrentlySelecting::AccountTypeTabs) => {
                                 // get accounts for filter
                                 app.advance_account_type();
                                 app.accounts_for_type = app.db.get_user_accounts_by_type(app.user_id.unwrap(), app.selected_atype_tab).unwrap();
@@ -165,14 +169,14 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
 
                     }
                     (_, KeyCode::Left) => { 
-                        match app.tab_bank_selected { 
-                            Some(TabBankSelected::AccountTabs) => {
+                        match app.currently_selected { 
+                            Some(CurrentlySelecting::AccountTabs) => {
                                 app.retreat_account();
                                 if app.accounts_for_type.is_some() {
                                     app.get_account();
                                 }
                             }
-                            Some(TabBankSelected::AccountTypeTabs) => {
+                            Some(CurrentlySelecting::AccountTypeTabs) => {
                                 app.retreat_account_type();
                                 app.accounts_for_type = app.db.get_user_accounts_by_type(app.user_id.unwrap(), app.selected_atype_tab).unwrap();
                                 if app.accounts_for_type.is_some() {
@@ -183,16 +187,19 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                         }
                     }
                     (_, KeyCode::Backspace) => { 
-                        if let Some(select_mode) = &app.tab_bank_selected { 
+                        if let Some(select_mode) = &app.currently_selected { 
                             match select_mode { 
-                                TabBankSelected::AccountTabs => {
-                                    app.toggle_selecting();
+                                CurrentlySelecting::AccountTabs => {
+                                    app.retreat_currently_selecting();
                                     app.accounts_for_type = app.db.get_user_accounts_by_type(app.user_id.unwrap(), app.selected_atype_tab).unwrap();
                                     if app.accounts_for_type.is_some() {
                                         app.get_account();
                                     }
                                     // upon move out of account type, reset default tab to the first one
                                     app.selected_account_tab = 0;
+                                }
+                                CurrentlySelecting::Account => { 
+                                    app.retreat_currently_selecting();
                                 }
                                 _ => {}
                             } 
@@ -201,11 +208,117 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                     (_, KeyCode::Enter) => { 
                         if app.accounts_for_type.is_none() {} 
                         else {
-                            if let Some(select_mode) = &app.tab_bank_selected { 
+                            if let Some(select_mode) = &app.currently_selected { 
                                 match select_mode { 
-                                    TabBankSelected::AccountTypeTabs => app.toggle_selecting(),
+                                    CurrentlySelecting::AccountTypeTabs => app.advance_currently_selecting(),
+                                    CurrentlySelecting::AccountTabs => app.advance_currently_selecting(),
                                     _ => {}
                                 }
+                            }
+                        }
+                    }
+                    (_, KeyCode::Char('c')) => { 
+                        if let Some(select_mode) = &app.currently_selected { 
+                            match select_mode { 
+                                CurrentlySelecting::AccountTypeTabs|CurrentlySelecting::AccountTabs => {
+                                    disable_raw_mode()?;
+                                    execute!(io::stdout(), Clear(ratatui::crossterm::terminal::ClearType::All), MoveTo(0,0)).unwrap();
+                                    
+                                    create_account(app.user_id.unwrap(), app.selected_atype_tab, &app.db);
+                                    
+                                    enable_raw_mode()?;
+                                    terminal.clear().unwrap();
+
+                                    // update accounts for type
+                                    app.accounts_for_type = app.db.get_user_accounts_by_type(app.user_id.unwrap(), app.selected_atype_tab).unwrap();
+                                    app.skip_to_last_account();
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    (_, KeyCode::Char('e')) => { 
+                        // edit account
+                        if let Some(select_mode) = &app.currently_selected { 
+                            match select_mode { 
+                                CurrentlySelecting::Account => {
+                                    disable_raw_mode()?;
+                                    execute!(io::stdout(), Clear(ratatui::crossterm::terminal::ClearType::All), MoveTo(0,0)).unwrap();
+                                    
+                                    if let Some(acct) = &app.account { 
+                                        rename_account(&app.db, app.user_id.unwrap(), acct.get_id());
+                                    }
+
+                                    // update accounts for type
+                                    app.accounts_for_type = app.db.get_user_accounts_by_type(app.user_id.unwrap(), app.selected_atype_tab).unwrap();
+                                     
+                                    enable_raw_mode()?;
+                                    terminal.clear().unwrap();
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    (_, KeyCode::Char('m')) => { 
+                        // modify ledger
+                        if let Some(select_mode) = &app.currently_selected { 
+                            match select_mode { 
+                                CurrentlySelecting::Account => {
+                                    disable_raw_mode()?;
+                                    execute!(io::stdout(), Clear(ratatui::crossterm::terminal::ClearType::All), MoveTo(0,0)).unwrap();
+                                    
+                                    if let Some(acct) = &app.account { 
+                                        acct.modify();
+                                    } else { 
+                                        app.invalid_input = true;
+                                    }                             
+                                    enable_raw_mode()?;
+                                    terminal.clear().unwrap();
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    (_, KeyCode::Char('r')) => { 
+                        // record transaction
+                        if let Some(select_mode) = &app.currently_selected { 
+                            match select_mode { 
+                                CurrentlySelecting::Account => {
+                                    disable_raw_mode()?;
+                                    execute!(io::stdout(), Clear(ratatui::crossterm::terminal::ClearType::All), MoveTo(0,0)).unwrap();
+                                    
+                                    if let Some(acct) = &app.account { 
+                                        acct.record();
+                                    } else {
+                                        app.invalid_input = true;
+                                    }
+
+                                    enable_raw_mode()?;
+                                    terminal.clear().unwrap();
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+
+                    (_, KeyCode::Char('i')) => { 
+                        // import transactions
+                        if let Some(select_mode) = &app.currently_selected { 
+                            match select_mode { 
+                                CurrentlySelecting::Account => {
+                                    disable_raw_mode()?;
+                                    execute!(io::stdout(), Clear(ratatui::crossterm::terminal::ClearType::All), MoveTo(0,0)).unwrap();
+                                    
+                                    if let Some(acct) = &app.account { 
+                                        acct.import();
+                                    } else {
+                                        app.invalid_input = true;
+                                    }
+
+                                    enable_raw_mode()?;
+                                    terminal.clear().unwrap();
+                                }
+                                _ => {}
                             }
                         }
                     }

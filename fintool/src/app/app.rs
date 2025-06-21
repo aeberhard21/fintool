@@ -3,7 +3,7 @@ use crate::{accounts::base::Account, app::screen::TabMenu};
 use crate::database::DbConn;
 use crate::types::accounts::AccountType;
 
-use super::screen::{TabBankSelected, CurrentScreen};
+use super::screen::{CurrentlySelecting, CurrentScreen};
 
 pub struct App { 
     pub key_input : String, 
@@ -12,15 +12,14 @@ pub struct App {
     pub selected_atype_tab : AccountType,
     pub accounts_for_type: Option<Vec<String>>,
     pub selected_account_tab : usize,
-    pub tab_bank_selected : Option<TabBankSelected>,
-    pub receiving_manual_input : bool,
+    pub currently_selected : Option<CurrentlySelecting>,
     pub db : DbConn,
     pub user_id : Option<u32>, 
     pub account : Option<Box<dyn Account>>,
 }
 
 impl App { 
-    pub fn new(db: &mut DbConn) -> App { 
+    pub fn new(db: &DbConn) -> App { 
         App { 
             key_input : String::new(), 
             invalid_input : false,
@@ -28,22 +27,26 @@ impl App {
             selected_atype_tab : AccountType::Bank,
             accounts_for_type : None, 
             selected_account_tab : 0, 
-            tab_bank_selected : Some(TabBankSelected::AccountTypeTabs),
-            receiving_manual_input : false,
+            currently_selected : Some(CurrentlySelecting::AccountTypeTabs),
             db : db.clone(),
             user_id : None,
             account : None,
         }
     }
 
-    pub fn toggle_selecting(&mut self) { 
-        if let Some(select_mode) = &self.tab_bank_selected { 
-            match select_mode {
-                TabBankSelected::AccountTabs => self.tab_bank_selected = Some(TabBankSelected::AccountTypeTabs),
-                TabBankSelected::AccountTypeTabs => self.tab_bank_selected = Some(TabBankSelected::AccountTabs),
-            }
+    pub fn advance_currently_selecting(&mut self) { 
+        if let Some(selecting) = &self.currently_selected { 
+            self.currently_selected =  Some(selecting.next());
         } else { 
-            self.tab_bank_selected = Some(TabBankSelected::AccountTabs)
+            self.currently_selected = Some(CurrentlySelecting::AccountTabs)
+        }
+    }
+
+    pub fn retreat_currently_selecting(&mut self) { 
+        if let Some(selecting) = &self.currently_selected { 
+            self.currently_selected =  Some(selecting.previous());
+        } else { 
+            self.currently_selected = Some(CurrentlySelecting::AccountTabs)
         }
     }
 
@@ -67,6 +70,13 @@ impl App {
             return
         }
         self.selected_account_tab = self.selected_account_tab.saturating_sub(1).min(0)
+    }
+
+    pub fn skip_to_last_account(&mut self) { 
+        if self.accounts_for_type.is_none() { 
+            return
+        }
+        self.selected_account_tab = self.accounts_for_type.clone().unwrap().len()-1
     }
 
     pub fn validate_user(&mut self, username : String) -> Option<u32> {

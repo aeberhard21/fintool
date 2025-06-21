@@ -1,13 +1,16 @@
 use ratatui::{text::Line, Frame, layout::Rect};
+use strum::FromRepr;
 pub enum CurrentScreen { 
     Login,
     Main,
     Accounts
 }
 
-pub enum TabBankSelected {
+#[derive(Debug, Clone, Copy, FromRepr)]
+pub enum CurrentlySelecting {
     AccountTypeTabs, 
-    AccountTabs
+    AccountTabs,
+    Account
 }
 
 pub trait TabMenu { 
@@ -17,19 +20,15 @@ pub trait TabMenu {
     fn render(frame: &mut Frame, area : Rect, selected_tab : usize, title : String);
 }
 
-// impl TabMenu for Option<Vec<String>> {
-
-//     fn next(&mut self) {
-//         if self.is_none() { 
-//             return
-//         }
-//         self = self.selected_account.saturating_add(1).min(self.accounts.clone().unwrap().len()-1)
-//     }
-
-//     fn previous (&mut self) {
-//         if self.accounts.is_none() { 
-//             return
-//         }
-//         self.selected_account = self.selected_account.saturating_sub(1).min(0)
-//     }
-// }
+impl CurrentlySelecting { 
+    pub fn previous(self) -> Self { 
+        let current = self.clone() as usize;
+        let prev = current.saturating_sub(1);
+        Self::from_repr(prev).unwrap_or(self)
+    }
+    pub fn next(self) -> Self { 
+        let current = self.clone() as usize;
+        let next = current.saturating_add(1);
+        Self::from_repr(next).unwrap_or(self)
+    }
+}
