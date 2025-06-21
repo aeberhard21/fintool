@@ -450,9 +450,11 @@ dependencies = [
  "savefile",
  "shared_lib",
  "strum 0.27.1",
+ "style",
  "time",
  "tokio",
  "tokio-test",
+ "unicode-width 0.2.0",
  "yahoo_finance_api",
 ]
 
@@ -1636,6 +1638,7 @@ name = "shared_lib"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "strum 0.27.1",
 ]
 
 [[package]]
@@ -1767,6 +1770,12 @@ dependencies = [
  "rustversion",
  "syn",
 ]
+
+[[package]]
+name = "style"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3b3baeb5ebb9b755879655f7108819cf4bf0a2868f4b301a02ec7a9b13f8580f"
 
 [[package]]
 name = "subtle"

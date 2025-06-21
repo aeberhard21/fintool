@@ -10,6 +10,7 @@ use crate::accounts::bank_account::BankAccount;
 use crate::accounts::base::Account;
 use crate::accounts::base::AccountCreation;
 use crate::accounts::base::AccountOperations;
+use crate::accounts::base::AnalysisPeriod;
 use crate::accounts::certificate_of_deposit::CertificateOfDepositAccount;
 use crate::accounts::investment_account_manager::InvestmentAccountManager;
 use crate::accounts::credit_card_account::CreditCardAccount;
@@ -259,58 +260,64 @@ pub fn decode_and_init_account_type(
 }
 
 pub fn query_user_for_analysis_period() -> (NaiveDate, NaiveDate) {
-    const PERIOD_CHOICES: [&'static str; 10] = [
-        "1 Day", "1 Week", "1 Month", "3 Months", "6 Months", "1 Year", "2 Year", "10 Year", "YTD",
-        "Custom",
-    ];
+    let period_choices = AnalysisPeriod::iter().map(AnalysisPeriod::to_menu_selection).collect::<Vec<String>>();
     let choice: String = Select::new(
         "What period would you like to analyze:",
-        PERIOD_CHOICES.to_vec(),
+        period_choices,
     )
     .prompt()
     .unwrap()
     .to_string();
 
-    let mut period_end = Local::now().date_naive();
+    let duration = choice.parse().expect("Unrecognized analysis period!");
+    match duration { 
+        AnalysisPeriod::Custom => {
+            let period_end = DateSelect::new("Enter ending date").prompt().unwrap();
+            let period_start = DateSelect::new("Enter starting date").prompt().unwrap();
+            return (period_start, period_end);
+        }
+        _ => {}
+    }
+    return get_analysis_period_dates(duration);
+}
+
+pub fn get_analysis_period_dates(duration : AnalysisPeriod) -> (NaiveDate, NaiveDate) {  
+    let period_end = Local::now().date_naive();
     let mut period_start = period_end;
 
-    match choice.as_str() {
-        "1 Day" => {
+    match duration {
+        AnalysisPeriod::OneDay => {
             period_start = period_start.checked_sub_days(Days::new(1)).unwrap();
         }
-        "1 Week" => {
+        AnalysisPeriod::OneWeek => {
             period_start = period_start.checked_sub_days(Days::new(7)).unwrap();
         }
-        "1 Month" => {
+        AnalysisPeriod::OneMonth => {
             period_start = period_start.checked_sub_months(Months::new(1)).unwrap();
         }
-        "3 Months" => {
+        AnalysisPeriod::ThreeMonths => {
             period_start = period_start.checked_sub_months(Months::new(3)).unwrap();
         }
-        "6 Months" => {
+        AnalysisPeriod::SixMonths => {
             period_start = period_start.checked_sub_months(Months::new(6)).unwrap();
         }
-        "1 Year" => {
+        AnalysisPeriod::OneYear => {
             period_start = period_start.with_year(period_start.year() - 1).unwrap();
         }
-        "2 Year" => {
+        AnalysisPeriod::TwoYears => {
             period_start = period_start.with_year(period_start.year() - 2).unwrap();
         }
-        "5 Year" => {
+        AnalysisPeriod::FiveYears => {
             // plus 1 accounts for leap year
             period_start = period_start.with_year(period_start.year() - 5).unwrap();
         }
-        "10 Year" => {
+        AnalysisPeriod::TenYears => {
             period_start = period_start.with_year(period_start.year() - 10).unwrap();
         }
-        "YTD" => {
+        AnalysisPeriod::YTD => {
             // set as January 1st
             period_start = period_start.with_day(1).unwrap();
             period_start = period_start.with_month(1).unwrap();
-        }
-        "Custom" | _ => {
-            period_end = DateSelect::new("Enter ending date").prompt().unwrap();
-            period_start = DateSelect::new("Enter starting date").prompt().unwrap();
         }
         _ => {
             panic!("Not found!");

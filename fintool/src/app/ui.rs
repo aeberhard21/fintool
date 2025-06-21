@@ -12,7 +12,7 @@ use super::app::App;
 use super::screen::{CurrentScreen, TabMenu};
 use crate::types::accounts::AccountType;
 
-pub fn ui(frame :&mut Frame, app: &App) {
+pub fn ui(frame :&mut Frame, app: &mut App) {
 
     // Create the layout sections.
     let chunks = match app.current_screen { 
@@ -48,7 +48,7 @@ pub fn ui(frame :&mut Frame, app: &App) {
         "FINTOOL",
         Style::default().fg(Color::Green),
     ))
-    .block(title_block);
+    .block(title_block).centered().bold();
 
     frame.render_widget(title, chunks[0]);
     
@@ -83,7 +83,7 @@ pub fn ui(frame :&mut Frame, app: &App) {
                     }
                     CurrentlySelecting::Account => { 
                         Span::styled (
-                        "(q) to quit / (⌫) Deselect / (e) Edit Account / (r) Record Entry / (m) Modify Ledger / (i) Import ",
+                        "(q) to quit / (⌫) Deselect / (e) Edit Account / (r) Record Entry / (m) Modify Ledger / (i) Import / (j) Advance Row / (k) Retreat Row / (G) Go to Last / (H) Go to First",
                         Style::default().fg(Color::LightBlue),
                         )
                     }
@@ -165,8 +165,9 @@ pub fn ui(frame :&mut Frame, app: &App) {
                         }
                     }
                 }
-                if let Some(acct) = &app.account {
+                if let Some(acct) = app.account.take() {
                     acct.render(frame, chunks[3], app);
+                    app.account = Some(acct);
                 } else { 
                     let error_footer = Paragraph::new(Line::from("ERROR: Unable to retrieve account information!"))
                         .block(Block::default().borders(Borders::ALL)

@@ -74,17 +74,19 @@ impl DbConn {
         let sql: &str = "INSERT INTO users (id, name, admin) VALUES ( ?1, ?2, ?3)";
         let id = self.get_next_user_id().unwrap();
         let p = rusqlite::params![id, name, admin];
-        let conn_lock = self.conn.lock().unwrap();
-        let rs = conn_lock.execute(sql, p);
-        match rs {
-            Ok(rows_inserted) => { 
-                self.initialize_user_account_table(id).unwrap();
-                Ok(id)
-            } 
-            Err(error) =>  { 
-                panic!("Unable to allocate user!");
+        {
+            let conn_lock = self.conn.lock().unwrap();
+            let rs = conn_lock.execute(sql, p);
+            match rs {
+                Ok(rows_inserted) => { 
+                } 
+                Err(error) =>  { 
+                    panic!("Unable to allocate user!");
+                }
             }
         }
+        self.initialize_user_account_table(id).unwrap();
+        Ok(id)
     }
 
     pub fn get_users(&self) -> rusqlite::Result<Vec<String>, rusqlite::Error> {

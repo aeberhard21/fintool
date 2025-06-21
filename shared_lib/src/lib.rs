@@ -2,6 +2,7 @@ use serde::de;
 use serde::de::Visitor;
 use serde::Deserialize;
 use serde::Deserializer;
+use strum::{Display, FromRepr, EnumIter};
 use std::fmt;
 
 #[derive(Clone, Debug, Deserialize)]
@@ -26,11 +27,15 @@ pub struct StockInfo {
     pub is_split: bool,
 }
 
-#[derive(PartialEq, Clone, Debug, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Deserialize, Display, FromRepr, EnumIter)]
 pub enum TransferType {
+    #[strum(to_string = "Withdrawal")]
     WithdrawalToExternalAccount,
+    #[strum(to_string = "Deposit")]
     DepositFromExternalAccount,
+    #[strum(to_string = "Withdrawal")]
     WithdrawalToInternalAccount,
+    #[strum(to_string = "Deposit")]
     DepositFromInternalAccount,
     ZeroSumChange
 }

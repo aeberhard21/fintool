@@ -6,8 +6,12 @@ use inquire::Select;
 use inquire::Text;
 #[cfg(feature = "ratatui_support")]
 use ratatui::{
-    Frame, 
-    layout::Rect, 
+    buffer::Buffer, 
+    layout::{self, Constraint, Direction, Layout, Rect}, 
+    style::{palette, Color, Style, Stylize}, 
+    text::{Line, Span, Text as ratatuiText}, 
+    widgets::{Cell, Bar, BarChart, BarGroup, Block, Borders, Clear, List, ListItem, Paragraph, Tabs, Widget, Wrap, Table, Row, HighlightSpacing}, 
+    Frame
 };
 use rustyline::completion::FilenameCompleter;
 use rustyline::highlight::MatchingBracketHighlighter;
@@ -30,6 +34,8 @@ use std::rc;
 
 #[cfg(feature = "ratatui_support")]
 use crate::app::app::App;
+#[cfg(feature = "ratatui_support")]
+use crate::app::screen::ledger_table_constraint_len_calculator;
 use crate::database::DbConn;
 use crate::tui::query_user_for_analysis_period;
 use crate::types::accounts::AccountInfo;
@@ -492,12 +498,88 @@ impl AccountData for Wallet {
     fn get_name(&self) -> String { 
         return self.db.get_account_name(self.uid, self.id).unwrap();
     }
+    fn get_ledger(&self) -> Vec<LedgerRecord> {
+        return self.db.get_ledger(self.uid, self.id).unwrap();
+    }
+    fn get_displayable_ledger(&self) -> Vec<crate::types::ledger::DisplayableLedgerRecord> {
+        return self.db.get_displayable_ledger(self.uid, self.id).unwrap();
+    }
+
+    fn get_value(&self) -> f32 {
+        return self.fixed.get_current_value();
+    }
 }
 
 #[cfg(feature = "ratatui_support")]
 impl AccountUI for Wallet { 
-    fn render(&self, frame : &mut Frame, area : Rect, app: &App) {
+    fn render(&self, frame : &mut Frame, area : Rect, app: &mut App) {
 
+    }
+
+    fn render_ledger_table( &self, frame : &mut Frame, area : Rect, app: &mut App) {
+                use ratatui::style::Modifier;
+
+        let header_style = Style::default()
+            .fg(app.ledger_table_colors.header_fg)
+            .bg(app.ledger_table_colors.header_bg);
+
+        let selected_row_style = Style::new() 
+            .add_modifier(Modifier::REVERSED)
+            .fg(app.ledger_table_colors.selected_row_style_fg);
+
+        let header = ["ID", "Date", "Type", "Amount", "Category", "Peer", "Description"]
+            .into_iter()
+            .map(Cell::from)
+            .collect::<Row>()
+            .style(header_style)
+            .height(1);
+
+        let data = self.get_displayable_ledger();
+        app.ledger_entries = Some(data.clone());
+
+        let rows = data.iter().enumerate().map(|(i, record)| {
+            let color = match i % 2 {
+                0 => app.ledger_table_colors.normal_row_color,
+                _ => app.ledger_table_colors.alt_row_color,
+            };
+            let item = [&record.id.to_string(), &record.info.date, &record.info.transfer_type, &record.info.amount.to_string(), &record.info.category, &record.info.participant.to_string(), &record.info.description];
+            item.into_iter()
+                .map(|content| Cell::from(ratatuiText::from(format!("\n{content}\n"))))
+                .collect::<Row>()
+                .style(Style::new().fg(app.ledger_table_colors.row_fg).bg(color))
+                .height(4)
+        });
+
+        let bar: &'static str = " █ ";
+        let constraint_lens = ledger_table_constraint_len_calculator(&data);
+        let t = Table::new(
+            rows, 
+            [
+                Constraint::Length(constraint_lens.0+1),
+                Constraint::Min(constraint_lens.1+1),
+                Constraint::Min(constraint_lens.2+1),
+                Constraint::Min(constraint_lens.3+1),
+                Constraint::Min(constraint_lens.4+1),
+                Constraint::Min(constraint_lens.5+1),
+                Constraint::Min(constraint_lens.6+1),
+
+            ]
+        )        
+        .header(header)
+        .row_highlight_style(selected_row_style)
+        .highlight_symbol(ratatuiText::from(vec![
+            "".into(),
+            bar.into(),
+            bar.into(),
+            "".into(),
+        ]))
+        .bg(app.ledger_table_colors.buffer_bg)
+        .highlight_spacing(HighlightSpacing::Always);
+        frame.render_stateful_widget(t, area, &mut app.ledger_table_state);
+    }
+
+    fn render_current_value(&self, frame : &mut Frame, area : Rect, app: &mut App) {
+        
     }
 }
 

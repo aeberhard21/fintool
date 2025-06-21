@@ -1,5 +1,5 @@
 use chrono::Date;
-use chrono::NaiveDate;
+use chrono::{NaiveDate, NaiveTime, NaiveDateTime};
 use csv::ReaderBuilder;
 use inquire::Confirm;
 use inquire::Select;
@@ -8,9 +8,10 @@ use inquire::Text;
 use ratatui::{
     buffer::Buffer, 
     layout::{self, Constraint, Direction, Layout, Rect}, 
-    style::{palette, Color, Style, Stylize}, 
+    style::{palette, Color, Style, Stylize, palette::tailwind, Modifier}, 
+    symbols::{self, Marker},
     text::{Line, Span, Text as ratatuiText}, 
-    widgets::{Bar, BarChart, BarGroup, Block, Borders, Clear, List, ListItem, Paragraph, Tabs, Widget, Wrap}, 
+    widgets::{Axis, Cell, Chart, Bar, BarChart, BarGroup, Block, Borders, Clear, Dataset, GraphType, List, ListItem, Paragraph, Tabs, Widget, Wrap, Table, Row, HighlightSpacing}, 
     Frame
 };
 use rustyline::completion::FilenameCompleter;
@@ -33,13 +34,19 @@ use std::path::Path;
 use std::rc;
 
 #[cfg(feature = "ratatui_support")]
+use crate::accounts::base::AnalysisPeriod;
+#[cfg(feature = "ratatui_support")]
 use crate::app::app::App;
+#[cfg(feature = "ratatui_support")]
+use crate::app::screen::ledger_table_constraint_len_calculator;
 use crate::database::DbConn;
 use crate::tui::query_user_for_analysis_period;
+use crate::tui::get_analysis_period_dates;
 use crate::types::accounts::AccountInfo;
 use crate::types::accounts::AccountRecord;
 use crate::types::accounts::AccountTransaction;
 use crate::types::accounts::AccountType;
+use crate::types::ledger::DisplayableLedgerRecord;
 use crate::types::ledger::LedgerInfo;
 use crate::types::ledger::LedgerRecord;
 use crate::types::participants;
@@ -489,6 +496,92 @@ impl AccountOperations for BankAccount {
     }
 }
 
+#[cfg(feature = "ratatui_support")]
+impl BankAccount {
+    fn get_growth(&self, duration : AnalysisPeriod) -> f32 {
+        let (start, end) = get_analysis_period_dates(duration);
+        return self.fixed.simple_rate_of_return(start, end);
+    }
+
+    fn render_simple_growth(&self, frame: &mut Frame, area : Rect, app : &mut App) {
+        let value = self.get_growth(AnalysisPeriod::YTD) * 100.0;
+        let fg_color = if value < 0.0 { 
+            tailwind::ROSE.c200
+        } else { 
+            tailwind::EMERALD.c400
+        };
+        let value = ratatuiText::styled(format!("{:.2}%",value).to_string(), Style::default()
+            .fg(fg_color)
+            .bold()
+        );
+
+        let display = Paragraph::new(value)
+            .centered()
+            .alignment(layout::Alignment::Center)
+            .block(
+                Block::default().borders(Borders::ALL)
+                    .title("Year to Date Growth")
+                    .title_alignment(layout::Alignment::Center)
+            ).bg(tailwind::SLATE.c900);
+
+        frame.render_widget(display, area);
+    }
+
+    fn render_growth_chart(&self, frame: &mut Frame, area : Rect, app: &mut App) {
+        let mut entries = self.get_ledger();
+        let last = entries.pop().unwrap();
+
+        let mut aggregate: f64 = last.info.amount as f64;
+        let starting_date = NaiveDate::parse_from_str(&last.info.date, "%Y-%m-%d").unwrap();
+        let mut min_total = aggregate;
+        let mut max_total = aggregate;
+        let tstamp_min = starting_date.and_time(NaiveTime::from_hms_opt(0,0,0).unwrap()).and_utc().timestamp_millis() as f64;
+        let mut tstamp_max = tstamp_min;
+        
+        let data: Vec<(f64, f64)> = entries.iter().rev().map(|record| {
+            let date = NaiveDate::parse_from_str(&record.info.date, "%Y-%m-%d").unwrap();
+            let dt = date.and_time(NaiveTime::from_hms_opt(0,0,0).unwrap());
+            let tstamp = dt.and_utc().timestamp_millis() as f64;
+            aggregate = match record.info.transfer_type { 
+                TransferType::DepositFromExternalAccount|TransferType::DepositFromInternalAccount => { aggregate + record.info.amount as f64},
+                TransferType::WithdrawalToExternalAccount|TransferType::WithdrawalToInternalAccount => { aggregate - record.info.amount as f64 },
+                TransferType::ZeroSumChange => { aggregate }
+            };
+            max_total = if aggregate > max_total { aggregate } else { max_total } ;
+            min_total = if aggregate < min_total { aggregate } else { min_total } ;
+            tstamp_max = if tstamp > tstamp_max { tstamp } else { tstamp_max } ;
+            (tstamp, aggregate)
+        }).collect();
+
+        let datasets = vec![Dataset::default()
+            .name("History")
+            .marker(symbols::Marker::Braille)
+            .style(Style::default().fg(tailwind::LIME.c400))
+            .graph_type(GraphType::Line)
+            .data(&data)];
+ 
+        let chart = Chart::new(datasets)
+            .block(Block::bordered().title(Line::from("Value Over Time").cyan().bold().centered()))
+            .x_axis(
+                Axis::default()
+                    .title("Time")
+                    .style(Style::default().gray())
+                    .bounds([tstamp_min, tstamp_max])
+                    .labels([last.info.date.as_str(), entries[0].info.date.as_str()]),
+            )
+            .y_axis(
+                Axis::default()
+                    .title("Value (💰)")
+                    .style(Style::default().gray())
+                    .bounds([min_total, max_total])
+                    // .labels([format!("{:.2}", min_total), format!("{:.2}", max_total)]),
+                    .labels(float_range(min_total, max_total, (max_total-min_total) / 5.0).into_iter().map(|x| format!("{:.2}", x))),
+            );
+
+        frame.render_widget(chart, area);
+    }
+}
+
 impl AccountData for BankAccount {
     fn get_id(&self) -> u32 {
         return self.id
@@ -496,25 +589,138 @@ impl AccountData for BankAccount {
     fn get_name(&self) -> String { 
         return self.db.get_account_name(self.uid, self.id).unwrap();
     }
+    fn get_ledger(&self) -> Vec<LedgerRecord> {
+        return self.db.get_ledger(self.uid, self.id).unwrap();
+    }
+    fn get_displayable_ledger(&self) -> Vec<DisplayableLedgerRecord> {
+        return self.db.get_displayable_ledger(self.uid, self.id).unwrap();
+    }
+    fn get_value(&self) -> f32 { 
+        return self.fixed.get_current_value();
+    }
 }
 
 #[cfg(feature = "ratatui_support")]
 impl AccountUI for BankAccount { 
-    fn render(&self, frame : &mut Frame, area : Rect, app: &App) {
-        let title_block = Block::default()
-            .borders(Borders::ALL)
-            .style(Style::default());
+    fn render(&self, frame : &mut Frame, area : Rect, app: &mut App) {
+        let chunk = Layout::default()
+            .direction(Direction::Vertical) 
+            .constraints([
+                Constraint::Percentage(50), 
+                Constraint::Percentage(50),
+            ]).split(area);
 
-        let title = Paragraph::new(ratatuiText::styled(
-            format!("This is a bank account! My id is: {}. Name is {}. Value is {}.", self.get_id(), self.get_name(), self.fixed.get_current_value()),
-            Style::default().fg(Color::Green),
-        ))
-        .block(title_block);
+        let graphs_reports = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(50),
+                Constraint::Percentage(50)
+            ]).split(chunk[0]);
 
-        frame.render_widget(title, area);
+        let reports_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Percentage(50),
+                Constraint::Percentage(50)
+            ]).split(graphs_reports[0]);
+
+        self.render_current_value(frame, reports_chunks[0], app);
+        self.render_simple_growth(frame, reports_chunks[1], app);
+        self.render_growth_chart(frame, graphs_reports[1], app);
+        self.render_ledger_table(frame, chunk[1], app);
+    }
+
+    fn render_ledger_table( &self, frame : &mut Frame, area : Rect, app: &mut App) {
+        let header_style = Style::default()
+            .fg(app.ledger_table_colors.header_fg)
+            .bg(app.ledger_table_colors.header_bg);
+
+        let selected_row_style = Style::new() 
+            .add_modifier(Modifier::REVERSED)
+            .fg(app.ledger_table_colors.selected_row_style_fg);
+
+        let header = ["ID", "Date", "Type", "Amount", "Category", "Peer", "Description"]
+            .into_iter()
+            .map(Cell::from)
+            .collect::<Row>()
+            .style(header_style)
+            .height(1);
+
+        let data = self.get_displayable_ledger();
+        app.ledger_entries = Some(data.clone());
+
+        let rows = data.iter().enumerate().map(|(i, record)| {
+            let color = match i % 2 {
+                0 => app.ledger_table_colors.normal_row_color,
+                _ => app.ledger_table_colors.alt_row_color,
+            };
+            let item = [&record.id.to_string(), &record.info.date, &record.info.transfer_type, &record.info.amount.to_string(), &record.info.category, &record.info.participant.to_string(), &record.info.description];
+            item.into_iter()
+                .map(|content| Cell::from(ratatuiText::from(format!("\n{content}\n"))))
+                .collect::<Row>()
+                .style(Style::new().fg(app.ledger_table_colors.row_fg).bg(color))
+                .height(4)
+        });
+
+        let bar: &'static str = " █ ";
+        let constraint_lens = ledger_table_constraint_len_calculator(&data);
+        let t = Table::new(
+            rows, 
+            [
+                Constraint::Length(constraint_lens.0+1),
+                Constraint::Min(constraint_lens.1+1),
+                Constraint::Min(constraint_lens.2+1),
+                Constraint::Min(constraint_lens.3+1),
+                Constraint::Min(constraint_lens.4+1),
+                Constraint::Min(constraint_lens.5+1),
+                Constraint::Min(constraint_lens.6+1),
+
+            ]
+        )        
+        .header(header)
+        .block(Block::default().borders(Borders::ALL).title("Transactions").title_alignment(layout::Alignment::Center))
+        .row_highlight_style(selected_row_style)
+        .highlight_symbol(ratatuiText::from(vec![
+            "".into(),
+            bar.into(),
+            bar.into(),
+            "".into(),
+        ]))
+        .bg(app.ledger_table_colors.buffer_bg)
+        .highlight_spacing(HighlightSpacing::Always);
+        frame.render_stateful_widget(t, area, &mut app.ledger_table_state);
+    }
+
+    fn render_current_value(&self, frame : &mut Frame, area : Rect, app: &mut App) {
+        let value = ratatuiText::styled(self.get_value().to_string(), Style::default()
+            .fg(tailwind::EMERALD.c400)
+            .bold()
+        );
+
+        let display = Paragraph::new(value)
+            .centered()
+            .alignment(layout::Alignment::Center)
+            .block(
+                Block::default().borders(Borders::ALL)
+                    .title("Current Value")
+                    .title_alignment(layout::Alignment::Center)
+            ).bg(tailwind::SLATE.c900);
+
+        frame.render_widget(display, area);
     }
 }
 
 impl Account for BankAccount {
 
 }
+
+fn float_range(start: f64, end: f64, step: f64) -> Vec<f64> {
+    let mut vec = Vec::new();
+    let mut current = start;
+    while current <= end {
+        vec.push(current);
+        current += step;
+    }
+    vec
+}
+

@@ -23,6 +23,33 @@ pub struct LedgerRecord {
     pub info: LedgerInfo,
 }
 
+#[derive(Clone, Debug)]
+pub struct DisplayableLedgerInfo {
+    pub date: String,
+    pub amount: String,
+    pub transfer_type: String,
+    pub participant: String,
+    pub category: String,
+    pub description: String,
+    pub ancillary_f32data : String
+}
+
+#[derive(Clone, Debug)]
+pub struct DisplayableLedgerRecord {
+    pub id: String,
+    pub info: DisplayableLedgerInfo,
+}
+
+// impl DisplayableLedgerRecord { 
+//     fn ref_array(&self) -> Vec::<String> {
+//         vec![self.id.to_string(), self.info.date.clone(), self.info.transfer_type.clone(),  self.info.amount.to_string(), self.info.category.clone(), self.info.participant.clone(), self.info.description.clone()]
+//     }
+//     // fn id(&self) -> &str { 
+//     //     format!("{}", &self.id)
+//     // }
+//     // fn 
+// }
+
 impl DbConn {
     pub fn create_ledger_table(&self) -> Result<()> {
         let sql: &str;
@@ -190,6 +217,95 @@ impl DbConn {
             }
         }
     }
+
+        
+    pub fn get_displayable_ledger(&self, uid: u32, aid: u32) -> rusqlite::Result<Vec<DisplayableLedgerRecord>, rusqlite::Error> {
+        let p = rusqlite::params![aid, uid];
+        let sql = "
+            SELECT l.id, l.date, l.amount, l.transfer_type, p.name, c.category, l.desc, l.ancillary_f32 
+            FROM ledgers l 
+            INNER JOIN categories c ON
+                l.cid = c.id AND
+                l.uid = c.uid AND
+                l.aid = c.aid
+            INNER JOIN people p ON
+                l.pid = p.id AND
+                l.uid = p.uid AND
+                l.aid = p.aid
+            WHERE l.aid = (?1) and l.uid = (?2) order by date DESC";
+        let conn_lock = self.conn.lock().unwrap();
+        let mut stmt = conn_lock.prepare(sql)?;
+        let exists = stmt.exists(p)?;
+        let mut entries: Vec<DisplayableLedgerRecord> = Vec::new();
+        match exists {
+            true => {
+                let found_entries = stmt
+                    .query_map(p, |row| {
+                        Ok(DisplayableLedgerRecord {
+                            id: row.get::<_, u32>(0)?.to_string(),
+                            info: DisplayableLedgerInfo {
+                                date: row.get(1)?,
+                                amount: row.get::<_,f32>(2)?.to_string(),
+                                transfer_type: format!("{}", TransferType::from_repr(row.get::<_, u32>(3)? as usize).unwrap()),
+                                participant: row.get(4)?,
+                                category: row.get(5)?,
+                                description: row.get(6)?,
+                                ancillary_f32data : row.get::<_, f32>(7)?.to_string(),
+                            },
+                        })
+                    })
+                    .unwrap()
+                    .collect::<Vec<_>>();
+
+                for entry in found_entries {
+                    entries.push(entry.unwrap());
+                }
+                Ok(entries)
+            }
+            false => {
+                return Ok(entries);
+            }
+        }
+    }
+
+    pub fn get_full_ledger(&self, uid: u32, aid: u32) -> rusqlite::Result<Vec<LedgerRecord>, rusqlite::Error> {
+        let p = rusqlite::params![aid, uid];
+        let sql = "SELECT id, date, amount, transfer_type, pid, cid, desc, ancillary_f32 FROM ledgers WHERE aid = (?1) and uid = (?2) order by date DESC";
+        let conn_lock = self.conn.lock().unwrap();
+        let mut stmt = conn_lock.prepare(sql)?;
+        let exists = stmt.exists(p)?;
+        let mut entries: Vec<LedgerRecord> = Vec::new();
+        match exists {
+            true => {
+                let found_entries = stmt
+                    .query_map(p, |row| {
+                        Ok(LedgerRecord {
+                            id: row.get(0)?,
+                            info: LedgerInfo {
+                                date: row.get(1)?,
+                                amount: row.get(2)?,
+                                transfer_type: TransferType::from(row.get::<_, u32>(3)? as u32),
+                                participant: row.get(4)?,
+                                category_id: row.get(5)?,
+                                description: row.get(6)?,
+                                ancillary_f32data : row.get(7)?,
+                            },
+                        })
+                    })
+                    .unwrap()
+                    .collect::<Vec<_>>();
+
+                for entry in found_entries {
+                    entries.push(entry.unwrap());
+                }
+                Ok(entries)
+            }
+            false => {
+                return Ok(entries);
+            }
+        }
+    }
+
 
     pub fn check_if_ledger_references_category(&self, uid: u32, aid: u32, category: String) -> rusqlite::Result<Option<Vec<LedgerRecord>>, rusqlite::Error> {
         let p = rusqlite::params![uid, aid, category];

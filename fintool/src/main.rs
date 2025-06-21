@@ -232,6 +232,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                                     // update accounts for type
                                     app.accounts_for_type = app.db.get_user_accounts_by_type(app.user_id.unwrap(), app.selected_atype_tab).unwrap();
                                     app.skip_to_last_account();
+                                    app.get_account();
                                 }
                                 _ => {}
                             }
@@ -318,6 +319,42 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                                     enable_raw_mode()?;
                                     terminal.clear().unwrap();
                                 }
+                                _ => {}
+                            }
+                        }
+                    }
+                    (_, KeyCode::Char('j')) => { 
+                        // decrement table row
+                        if let Some(select_mode) = &app.currently_selected { 
+                            match select_mode { 
+                                CurrentlySelecting::Account => { app.advance_ledger_table_row();}
+                                _ => {}
+                            }
+                        }
+                    }
+                    (_, KeyCode::Char('k')) => { 
+                        // decrement table row
+                        if let Some(select_mode) = &app.currently_selected { 
+                            match select_mode { 
+                                CurrentlySelecting::Account => { app.retreat_ledger_table_row(); }
+                                _ => {}
+                            }
+                        }
+                    }
+                    (KeyModifiers::SHIFT, KeyCode::Char('G')) => { 
+                        // decrement table row
+                        if let Some(select_mode) = &app.currently_selected { 
+                            match select_mode { 
+                                CurrentlySelecting::Account => { app.go_to_last_ledger_table_row();}
+                                _ => {}
+                            }
+                        }
+                    }
+                    (KeyModifiers::SHIFT, KeyCode::Char('H')) => { 
+                        // decrement table row
+                        if let Some(select_mode) = &app.currently_selected { 
+                            match select_mode { 
+                                CurrentlySelecting::Account => { app.go_to_first_ledger_table_row();}
                                 _ => {}
                             }
                         }
