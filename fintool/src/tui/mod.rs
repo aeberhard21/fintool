@@ -12,13 +12,13 @@ use crate::accounts::base::AccountCreation;
 use crate::accounts::base::AccountOperations;
 use crate::accounts::base::AnalysisPeriod;
 use crate::accounts::certificate_of_deposit::CertificateOfDepositAccount;
-use crate::accounts::investment_account_manager::InvestmentAccountManager;
 use crate::accounts::credit_card_account::CreditCardAccount;
+use crate::accounts::investment_account_manager::InvestmentAccountManager;
 use crate::accounts::wallet::Wallet;
 use crate::database::DbConn;
 use crate::tui::tui_user::*;
-use crate::types::accounts::*;
 use crate::types::accounts::AccountType;
+use crate::types::accounts::*;
 use chrono::NaiveDate;
 use inquire::*;
 
@@ -69,7 +69,8 @@ pub fn menu(_db: &mut DbConn) {
 }
 
 fn access_account(uid: u32, db: &mut DbConn) {
-    const ACCOUNT_OPTIONS: [&'static str; 4] = ["Create Account", "Select Account", "Edit Account", "Exit"];
+    const ACCOUNT_OPTIONS: [&'static str; 4] =
+        ["Create Account", "Select Account", "Edit Account", "Exit"];
     let mut accounts: Vec<AccountRecord> = db.get_user_accounts(uid).unwrap();
     let mut acct: Box<dyn Account>;
     let mut choice;
@@ -150,7 +151,7 @@ fn access_account(uid: u32, db: &mut DbConn) {
                 acct = decode_and_init_account_type(uid, db, acctx);
                 // acct.info();
             }
-            "Edit Account" => {    
+            "Edit Account" => {
                 const MODIFY_ACCT_ACTIONS: [&'static str; 3] = ["Rename", "Remove", "None"];
                 let mut account_map: HashMap<String, AccountRecord> = HashMap::new();
                 let mut account_names: Vec<String> = Vec::new();
@@ -174,9 +175,10 @@ fn access_account(uid: u32, db: &mut DbConn) {
                     .expect("Account not found!");
                 acct = decode_and_init_account_type(uid, db, acctx);
 
-                let selected_action = Select::new("What would you like to do:", MODIFY_ACCT_ACTIONS.to_vec())
-                    .prompt()
-                    .unwrap();
+                let selected_action =
+                    Select::new("What would you like to do:", MODIFY_ACCT_ACTIONS.to_vec())
+                        .prompt()
+                        .unwrap();
 
                 let id = acct.get_id();
 
@@ -197,7 +199,6 @@ fn access_account(uid: u32, db: &mut DbConn) {
                         panic!("Unrecognized input: {}", selected_action);
                     }
                 }
-
             }
             "Exit" => {
                 return;
@@ -259,18 +260,22 @@ pub fn decode_and_init_account_type(
     }
 }
 
-pub fn query_user_for_analysis_period() -> (NaiveDate, NaiveDate) {
-    let period_choices = AnalysisPeriod::iter().map(AnalysisPeriod::to_menu_selection).collect::<Vec<String>>();
-    let choice: String = Select::new(
-        "What period would you like to analyze:",
-        period_choices,
-    )
-    .prompt()
-    .unwrap()
-    .to_string();
+pub fn select_analysis_period() -> AnalysisPeriod {
+    let period_choices = AnalysisPeriod::iter()
+        .map(AnalysisPeriod::to_menu_selection)
+        .collect::<Vec<String>>();
+    let choice: String = Select::new("What period would you like to analyze:", period_choices)
+        .prompt()
+        .unwrap()
+        .to_string();
 
     let duration = choice.parse().expect("Unrecognized analysis period!");
-    match duration { 
+    return duration;
+}
+
+pub fn query_user_for_analysis_period(acct: &impl Account) -> (NaiveDate, NaiveDate) {
+    let duration = select_analysis_period();
+    match duration {
         AnalysisPeriod::Custom => {
             let period_end = DateSelect::new("Enter ending date").prompt().unwrap();
             let period_start = DateSelect::new("Enter starting date").prompt().unwrap();
@@ -278,10 +283,13 @@ pub fn query_user_for_analysis_period() -> (NaiveDate, NaiveDate) {
         }
         _ => {}
     }
-    return get_analysis_period_dates(duration);
+    return get_analysis_period_dates(acct, duration);
 }
 
-pub fn get_analysis_period_dates(duration : AnalysisPeriod) -> (NaiveDate, NaiveDate) {  
+pub fn get_analysis_period_dates(
+    acct: &impl Account,
+    duration: AnalysisPeriod,
+) -> (NaiveDate, NaiveDate) {
     let period_end = Local::now().date_naive();
     let mut period_start = period_end;
 
@@ -319,6 +327,15 @@ pub fn get_analysis_period_dates(duration : AnalysisPeriod) -> (NaiveDate, Naive
             period_start = period_start.with_day(1).unwrap();
             period_start = period_start.with_month(1).unwrap();
         }
+        AnalysisPeriod::AllTime => {
+            let mut ledger_entries = acct.get_ledger();
+            ledger_entries.sort_by(|x, y| {
+                (NaiveDate::parse_from_str(&x.info.date, "%Y-%m-%d").unwrap())
+                    .cmp(&NaiveDate::parse_from_str(&y.info.date, "%Y-%m-%d").unwrap())
+            });
+            period_start =
+                NaiveDate::parse_from_str(&ledger_entries[0].info.date, "%Y-%m-%d").unwrap();
+        }
         _ => {
             panic!("Not found!");
         }
@@ -330,7 +347,9 @@ pub fn prompt_and_create_new_account(
     uid: u32,
     db: &DbConn,
 ) -> (Option<(Box<dyn Account>, AccountRecord)>) {
-    let mut account_types = AccountType::iter().map(AccountType::to_menu_selection).collect::<Vec<String>>();
+    let mut account_types = AccountType::iter()
+        .map(AccountType::to_menu_selection)
+        .collect::<Vec<String>>();
     account_types.push("None".to_string());
     let selected_account_type = Select::new(
         "What account type would you like to create:",
@@ -344,11 +363,17 @@ pub fn prompt_and_create_new_account(
         return None;
     }
 
-    let account_type : AccountType = selected_account_type.parse().expect("Unrecognized account type! Must match the Account Type enumeration!");
+    let account_type: AccountType = selected_account_type
+        .parse()
+        .expect("Unrecognized account type! Must match the Account Type enumeration!");
     return create_account(uid, account_type, db);
 }
 
-pub fn create_account(uid : u32, atype : AccountType, db : &DbConn ) -> (Option<(Box<dyn Account>, AccountRecord)>) { 
+pub fn create_account(
+    uid: u32,
+    atype: AccountType,
+    db: &DbConn,
+) -> (Option<(Box<dyn Account>, AccountRecord)>) {
     let name: String = name_account(uid, db);
     let new_account: AccountRecord;
     let acct: Box<dyn Account>;
@@ -358,31 +383,28 @@ pub fn create_account(uid : u32, atype : AccountType, db : &DbConn ) -> (Option<
             new_account = BankAccount::create(uid, name, db);
         }
         AccountType::Investment => {
-            new_account = InvestmentAccountManager::create(uid, name,db);
+            new_account = InvestmentAccountManager::create(uid, name, db);
         }
         AccountType::CreditCard => {
             new_account = CreditCardAccount::create(uid, name, db);
         }
-        AccountType::CD => { 
+        AccountType::CD => {
             new_account = CertificateOfDepositAccount::create(uid, name, db);
         }
-        AccountType::Wallet => { 
+        AccountType::Wallet => {
             new_account = Wallet::create(uid, name, db);
         }
         _ => {
             panic!("Unrecognized input!");
         }
     }
-    
+
     acct = decode_and_init_account_type(uid, db, &new_account);
 
-    return Some((
-        acct,
-        new_account
-    ));
+    return Some((acct, new_account));
 }
 
-pub fn name_account(uid : u32, db: &DbConn) -> String {
+pub fn name_account(uid: u32, db: &DbConn) -> String {
     let mut name;
     loop {
         name = Text::new("Enter account name:")
@@ -391,11 +413,11 @@ pub fn name_account(uid : u32, db: &DbConn) -> String {
             .trim()
             .to_string();
 
-        if name.len() == 0 { 
+        if name.len() == 0 {
             println!("Invalid account name!");
-        } else if db.account_with_name_exists(uid, name.clone()).unwrap() { 
+        } else if db.account_with_name_exists(uid, name.clone()).unwrap() {
             println!("Account with name {} already exists!", name);
-        } else { 
+        } else {
             break;
         }
     }
@@ -403,7 +425,7 @@ pub fn name_account(uid : u32, db: &DbConn) -> String {
     return name;
 }
 
-pub fn rename_account(db : &DbConn, uid : u32, id : u32) {
+pub fn rename_account(db: &DbConn, uid: u32, id: u32) {
     let new_name = name_account(uid, db);
     db.rename_account(uid, id, new_name).unwrap();
 }

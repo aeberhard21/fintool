@@ -1,17 +1,17 @@
-use rusqlite::{Error, Result};
 #[cfg(feature = "ratatui_support")]
 use ratatui::{
+    layout::Rect,
+    style::Color,
     text::Line,
-    widgets::{Block, Tabs}, 
+    widgets::{Block, Tabs},
     Frame,
-    layout::Rect, 
-    style::Color
 };
+use rusqlite::{Error, Result};
 use strum::{Display, EnumIter, EnumString, FromRepr, IntoEnumIterator};
 
-use crate::database::DbConn;
 #[cfg(feature = "ratatui_support")]
 use crate::app::screen::TabMenu;
+use crate::database::DbConn;
 
 use super::ledger;
 
@@ -30,20 +30,20 @@ pub enum AccountType {
     CD,
 }
 
-impl AccountType { 
-    pub fn to_menu_selection(value : Self) ->  String { 
+impl AccountType {
+    pub fn to_menu_selection(value: Self) -> String {
         format!("{value}")
     }
 }
 
 #[cfg(feature = "ratatui_support")]
-impl TabMenu for AccountType { 
-    fn previous(self) -> Self { 
+impl TabMenu for AccountType {
+    fn previous(self) -> Self {
         let current = self as usize;
         let prev = current.saturating_sub(1);
         Self::from_repr(prev).unwrap_or(self)
     }
-    fn next(self) -> Self { 
+    fn next(self) -> Self {
         let current = self as usize;
         let next = current.saturating_add(1);
         Self::from_repr(next).unwrap_or(self)
@@ -52,7 +52,7 @@ impl TabMenu for AccountType {
         let text = format!("  {value}  ");
         text.into()
     }
-    fn render(frame: &mut Frame, area : Rect, selected_tab : usize, title : String) { 
+    fn render(frame: &mut Frame, area: Rect, selected_tab: usize, title: String) {
         let atype_tabs = Tabs::new(AccountType::iter().map(AccountType::to_tab_title))
             .highlight_style(Color::Red)
             .select(selected_tab)
@@ -129,8 +129,7 @@ pub struct AccountTransactionRecord {
 }
 
 impl DbConn {
-
-    pub fn create_accounts_id_table(&self) -> rusqlite::Result<()> { 
+    pub fn create_accounts_id_table(&self) -> rusqlite::Result<()> {
         let sql = "
             CREATE TABLE IF NOT EXISTS account_ids (
                 uid INTEGER NOT NULL PRIMARY KEY,
@@ -143,15 +142,15 @@ impl DbConn {
         let rs = conn_lock.execute(sql, ());
         match rs {
             Ok(_) => {}
-            Err(error) => { 
+            Err(error) => {
                 panic!("Unable to create account_ids table: {}", error)
             }
         }
         Ok(())
     }
 
-    pub fn initialize_user_account_table(&self, uid : u32) -> rusqlite::Result<()> {
-        let p = rusqlite:: params![uid, 0, 0];
+    pub fn initialize_user_account_table(&self, uid: u32) -> rusqlite::Result<()> {
+        let p = rusqlite::params![uid, 0, 0];
         let sql: &str = "
             INSERT INTO account_ids 
                 (uid, next_account_id, next_account_transaction_id) 
@@ -160,16 +159,19 @@ impl DbConn {
         ";
         let conn_lock = self.conn.lock().unwrap();
         let rs = conn_lock.execute(sql, p);
-        match rs { 
+        match rs {
             Ok(_usize) => {}
-            Err(error) => { 
-                panic!("Unable to intialize account ids table for for user {}:\n\t{}", uid, error);
+            Err(error) => {
+                panic!(
+                    "Unable to intialize account ids table for for user {}:\n\t{}",
+                    uid, error
+                );
             }
         }
         Ok(())
     }
 
-    pub fn get_next_account_id(&self, uid : u32) -> rusqlite::Result<u32> {
+    pub fn get_next_account_id(&self, uid: u32) -> rusqlite::Result<u32> {
         let sql = "SELECT next_account_id FROM account_ids WHERE uid = (?1)";
         let p = rusqlite::params![uid];
         let conn_lock = self.conn.lock().unwrap();
@@ -178,7 +180,8 @@ impl DbConn {
         match exists {
             true => {
                 let id = stmt.query_row(p, |row| row.get::<_, u32>(0))?;
-                let sql = "UPDATE account_ids SET next_account_id = next_account_id + 1 WHERE uid = (?1)";
+                let sql =
+                    "UPDATE account_ids SET next_account_id = next_account_id + 1 WHERE uid = (?1)";
                 conn_lock.execute(sql, p)?;
                 Ok(id)
             }
@@ -188,7 +191,7 @@ impl DbConn {
         }
     }
 
-    pub fn get_next_transaction_id(&self, uid : u32) -> rusqlite::Result<u32> {
+    pub fn get_next_transaction_id(&self, uid: u32) -> rusqlite::Result<u32> {
         let sql = "SELECT next_account_transaction_id FROM account_ids WHERE uid = (?1)";
         let p = rusqlite::params![uid];
         let conn_lock = self.conn.lock().unwrap();
@@ -231,7 +234,11 @@ impl DbConn {
         Ok(())
     }
 
-    pub fn account_with_name_exists(&self, uid : u32, name : String) -> Result<bool, rusqlite::Error> { 
+    pub fn account_with_name_exists(
+        &self,
+        uid: u32,
+        name: String,
+    ) -> Result<bool, rusqlite::Error> {
         let p = rusqlite::params![uid, name];
         let sql = "
             SELECT * FROM
@@ -302,7 +309,7 @@ impl DbConn {
         Ok(())
     }
 
-    pub fn add_account_transaction(&self, uid : u32, info: AccountTransaction) -> Result<u32> {
+    pub fn add_account_transaction(&self, uid: u32, info: AccountTransaction) -> Result<u32> {
         let tid = self.get_next_transaction_id(uid).unwrap();
         let p = rusqlite::params![
             tid,
@@ -328,8 +335,8 @@ impl DbConn {
 
     pub fn check_and_get_account_transaction_record_matching_from_ledger_id(
         &self,
-        uid : u32,
-        aid : u32,
+        uid: u32,
+        aid: u32,
         id: u32,
     ) -> rusqlite::Result<Option<AccountTransactionRecord>, rusqlite::Error> {
         let p = rusqlite::params![id, uid, aid];
@@ -360,8 +367,8 @@ impl DbConn {
 
     pub fn check_and_get_account_transaction_record_matching_to_ledger_id(
         &self,
-        uid : u32,
-        aid : u32,
+        uid: u32,
+        aid: u32,
         id: u32,
     ) -> rusqlite::Result<Option<AccountTransactionRecord>, rusqlite::Error> {
         let p = rusqlite::params![id, uid, aid];
@@ -392,10 +399,10 @@ impl DbConn {
 
     pub fn remove_account_transaction(
         &self,
-        uid : u32, 
+        uid: u32,
         id: u32,
     ) -> rusqlite::Result<u32, rusqlite::Error> {
-        let p = rusqlite::params![id,uid];
+        let p = rusqlite::params![id, uid];
         let sql = "DELETE FROM account_transactions WHERE id = ?1 and uid = ?2";
         let conn_lock = self.conn.lock().unwrap();
         let rs = conn_lock.execute(sql, p);
@@ -411,7 +418,10 @@ impl DbConn {
         match rs {
             Ok(_usize) => {}
             Err(error) => {
-                println!("Unable to update 'id' within account transactions: {}", error);
+                println!(
+                    "Unable to update 'id' within account transactions: {}",
+                    error
+                );
             }
         }
 
@@ -430,10 +440,10 @@ impl DbConn {
 
     pub fn remove_account_transaction_matching_ledger_id(
         &self,
-        uid : u32, 
+        uid: u32,
         ledger_id: u32,
     ) -> rusqlite::Result<u32, rusqlite::Error> {
-        let p = rusqlite::params![ledger_id,uid];
+        let p = rusqlite::params![ledger_id, uid];
         let sql = "DELETE FROM account_transactions WHERE from_ledger_id = ?1 and uid = ?2 VALUES (?1, ?2)";
         let conn_lock = self.conn.lock().unwrap();
         let rs = conn_lock.execute(sql, p);
@@ -446,11 +456,7 @@ impl DbConn {
         Ok(ledger_id)
     }
 
-
-    pub fn get_user_accounts(
-        &self,
-        uid: u32,
-    ) -> rusqlite::Result<Vec<AccountRecord>, Error> {
+    pub fn get_user_accounts(&self, uid: u32) -> rusqlite::Result<Vec<AccountRecord>, Error> {
         let sql: &str = "SELECT * FROM accounts WHERE uid = (?1)";
         let p = rusqlite::params![uid];
         let conn_lock = self.conn.lock().unwrap();
@@ -465,7 +471,8 @@ impl DbConn {
                         Ok(AccountRecord {
                             id: row.get(0)?,
                             info: AccountInfo {
-                                atype: AccountType::from_repr(row.get::<_, u32>(1)? as usize).unwrap(),
+                                atype: AccountType::from_repr(row.get::<_, u32>(1)? as usize)
+                                    .unwrap(),
                                 name: row.get(2)?,
                                 has_stocks: row.get(3)?,
                                 has_bank: row.get(4)?,
@@ -510,9 +517,7 @@ impl DbConn {
                 }
                 return Ok(Some(accounts));
             }
-            false => {
-                return Ok(None)
-            }
+            false => return Ok(None),
         }
     }
 
@@ -532,9 +537,8 @@ impl DbConn {
             AccountFilter::Stocks => {
                 sql = "SELECT name FROM accounts WHERE uid = (?1) and stocks = TRUE";
             }
-            _ => { 
+            _ => {
                 sql = "SELECT name FROM accounts WHERE uid = (?1) and ledger = TRUE";
-
             }
         }
 
@@ -607,7 +611,7 @@ impl DbConn {
             }
         }
     }
-    pub fn get_account(&self, uid : u32, aid: u32, ) -> rusqlite::Result<AccountRecord, Error> {
+    pub fn get_account(&self, uid: u32, aid: u32) -> rusqlite::Result<AccountRecord, Error> {
         let sql: &str = "SELECT * from accounts WHERE id = (?1) and uid = (?2)";
         let p = rusqlite::params![aid, uid];
         let conn_lock = self.conn.lock().unwrap();
@@ -660,15 +664,15 @@ impl DbConn {
         let rs = conn_lock.execute(sql, ());
         match rs {
             Ok(_) => {}
-            Err(error) => { 
+            Err(error) => {
                 panic!("Unable to create account_ids table: {}", error)
             }
         }
         Ok(())
     }
 
-    pub fn initialize_user_account_info_table(&self, uid : u32, aid : u32) -> rusqlite::Result<()> {
-        let p = rusqlite:: params![uid, aid, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    pub fn initialize_user_account_info_table(&self, uid: u32, aid: u32) -> rusqlite::Result<()> {
+        let p = rusqlite::params![uid, aid, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
         let sql: &str = "
             INSERT INTO user_account_info 
                 (uid, aid, spid, ssid, said, cid, pid, bid, lid, splid, ccid, cdid, stock_split_allocation_id) 
@@ -677,16 +681,21 @@ impl DbConn {
         ";
         let conn_lock = self.conn.lock().unwrap();
         let rs = conn_lock.execute(sql, p);
-        match rs { 
+        match rs {
             Ok(_usize) => {}
-            Err(error) => { 
-                panic!("Unable to intialize user account info for user {} account {}:\n\t{}", uid, self.get_account_name(uid, aid).unwrap(), error);
+            Err(error) => {
+                panic!(
+                    "Unable to intialize user account info for user {} account {}:\n\t{}",
+                    uid,
+                    self.get_account_name(uid, aid).unwrap(),
+                    error
+                );
             }
         }
         Ok(())
     }
 
-    pub fn get_next_stock_purchase_id(&self, uid : u32, aid : u32) -> rusqlite::Result<u32> {
+    pub fn get_next_stock_purchase_id(&self, uid: u32, aid: u32) -> rusqlite::Result<u32> {
         let sql = "SELECT spid FROM user_account_info WHERE uid = (?1) and aid = (?2)";
         let p = rusqlite::params![uid, aid];
         let conn_lock = self.conn.lock().unwrap();
@@ -695,17 +704,20 @@ impl DbConn {
         match exists {
             true => {
                 let id = stmt.query_row(p, |row| row.get::<_, u32>(0))?;
-                let sql = "UPDATE user_account_info SET spid = spid + 1 WHERE uid = (?1) and aid = (?2)";
+                let sql =
+                    "UPDATE user_account_info SET spid = spid + 1 WHERE uid = (?1) and aid = (?2)";
                 conn_lock.execute(sql, p)?;
                 Ok(id)
             }
             false => {
-                panic!("The next stock purchase ID within table 'user_account_info' does not exist.");
+                panic!(
+                    "The next stock purchase ID within table 'user_account_info' does not exist."
+                );
             }
         }
     }
 
-    pub fn get_next_stock_sale_id(&self, uid : u32, aid : u32) -> rusqlite::Result<u32> {
+    pub fn get_next_stock_sale_id(&self, uid: u32, aid: u32) -> rusqlite::Result<u32> {
         let sql = "SELECT ssid FROM user_account_info  WHERE uid = (?1) and aid = (?2)";
         let p = rusqlite::params![uid, aid];
         let conn_lock = self.conn.lock().unwrap();
@@ -714,7 +726,8 @@ impl DbConn {
         match exists {
             true => {
                 let id = stmt.query_row(p, |row| row.get::<_, u32>(0))?;
-                let sql = "UPDATE user_account_info SET ssid = ssid + 1 WHERE uid = (?1) and aid = (?2)";
+                let sql =
+                    "UPDATE user_account_info SET ssid = ssid + 1 WHERE uid = (?1) and aid = (?2)";
                 conn_lock.execute(sql, p)?;
                 Ok(id)
             }
@@ -733,7 +746,8 @@ impl DbConn {
         match exists {
             true => {
                 let id = stmt.query_row(p, |row| row.get::<_, u32>(0))?;
-                let sql = "UPDATE user_account_info SET said = said + 1 WHERE uid = (?1) and aid = (?2)";
+                let sql =
+                    "UPDATE user_account_info SET said = said + 1 WHERE uid = (?1) and aid = (?2)";
                 conn_lock.execute(sql, p)?;
                 Ok(id)
             }
@@ -752,7 +766,8 @@ impl DbConn {
         match exists {
             true => {
                 let id = stmt.query_row(p, |row| row.get::<_, u32>(0))?;
-                let sql = "UPDATE user_account_info SET cid = cid + 1  WHERE uid = (?1) and aid = (?2)";
+                let sql =
+                    "UPDATE user_account_info SET cid = cid + 1  WHERE uid = (?1) and aid = (?2)";
                 conn_lock.execute(sql, p)?;
                 Ok(id)
             }
@@ -762,7 +777,7 @@ impl DbConn {
         }
     }
 
-    pub fn get_next_people_id(&self, uid : u32, aid : u32) -> rusqlite::Result<u32> {
+    pub fn get_next_people_id(&self, uid: u32, aid: u32) -> rusqlite::Result<u32> {
         let sql = "SELECT pid FROM user_account_info  WHERE uid = (?1) and aid = (?2)";
         let p = rusqlite::params![uid, aid];
         let conn_lock = self.conn.lock().unwrap();
@@ -771,7 +786,8 @@ impl DbConn {
         match exists {
             true => {
                 let id = stmt.query_row(p, |row| row.get::<_, u32>(0))?;
-                let sql = "UPDATE user_account_info SET pid = pid + 1  WHERE uid = (?1) and aid = (?2)";
+                let sql =
+                    "UPDATE user_account_info SET pid = pid + 1  WHERE uid = (?1) and aid = (?2)";
                 conn_lock.execute(sql, p)?;
                 Ok(id)
             }
@@ -781,7 +797,7 @@ impl DbConn {
         }
     }
 
-    pub fn get_next_budget_item_id(&self, uid : u32, aid :u32 ) -> rusqlite::Result<u32> {
+    pub fn get_next_budget_item_id(&self, uid: u32, aid: u32) -> rusqlite::Result<u32> {
         let sql = "SELECT bid FROM user_account_info  WHERE uid = (?1) and aid = (?2)";
         let conn_lock = self.conn.lock().unwrap();
         let mut stmt = conn_lock.prepare(sql)?;
@@ -790,7 +806,8 @@ impl DbConn {
         match exists {
             true => {
                 let id = stmt.query_row(p, |row| row.get::<_, u32>(0))?;
-                let sql = "UPDATE user_account_info SET bid = bid + 1  WHERE uid = (?1) and aid = (?2)";
+                let sql =
+                    "UPDATE user_account_info SET bid = bid + 1  WHERE uid = (?1) and aid = (?2)";
                 conn_lock.execute(sql, p)?;
                 Ok(id)
             }
@@ -800,7 +817,7 @@ impl DbConn {
         }
     }
 
-    pub fn get_next_ledger_id(&self, uid : u32, aid : u32) -> rusqlite::Result<u32> {
+    pub fn get_next_ledger_id(&self, uid: u32, aid: u32) -> rusqlite::Result<u32> {
         let sql = "SELECT lid FROM user_account_info WHERE uid = (?1) and aid = (?2)";
         let p = rusqlite::params![uid, aid];
         let conn_lock = self.conn.lock().unwrap();
@@ -809,7 +826,8 @@ impl DbConn {
         match exists {
             true => {
                 let id = stmt.query_row(p, |row| row.get::<_, u32>(0))?;
-                let sql = "UPDATE user_account_info SET lid = lid + 1 WHERE uid = (?1) and aid = (?2)";
+                let sql =
+                    "UPDATE user_account_info SET lid = lid + 1 WHERE uid = (?1) and aid = (?2)";
                 conn_lock.execute(sql, p)?;
                 Ok(id)
             }
@@ -819,7 +837,7 @@ impl DbConn {
         }
     }
 
-    pub fn get_next_stock_split_id(&self, uid : u32, aid : u32) -> rusqlite::Result<u32> {
+    pub fn get_next_stock_split_id(&self, uid: u32, aid: u32) -> rusqlite::Result<u32> {
         let sql = "SELECT splid FROM user_account_info WHERE uid = (?1) and aid = (?2)";
         let p = rusqlite::params![uid, aid];
         let conn_lock = self.conn.lock().unwrap();
@@ -838,8 +856,7 @@ impl DbConn {
         }
     }
 
-
-   pub fn get_next_stock_split_allocation_id(&self, uid : u32, aid :u32) -> rusqlite::Result<u32> {
+    pub fn get_next_stock_split_allocation_id(&self, uid: u32, aid: u32) -> rusqlite::Result<u32> {
         let sql = "SELECT stock_split_allocation_id FROM user_account_info WHERE uid = (?1) and aid = (?2)";
         let p = rusqlite::params![uid, aid];
         let conn_lock = self.conn.lock().unwrap();
@@ -858,7 +875,7 @@ impl DbConn {
         }
     }
 
-    pub fn get_next_credit_card_id(&self, uid : u32, aid :u32) -> rusqlite::Result<u32> {
+    pub fn get_next_credit_card_id(&self, uid: u32, aid: u32) -> rusqlite::Result<u32> {
         let sql = "SELECT ccid FROM user_account_info WHERE uid = (?1) and aid = (?2)";
         let p = rusqlite::params![uid, aid];
         let conn_lock = self.conn.lock().unwrap();
@@ -867,7 +884,8 @@ impl DbConn {
         match exists {
             true => {
                 let id = stmt.query_row(p, |row| row.get::<_, u32>(0))?;
-                let sql = "UPDATE user_account_info SET ccid = ccid + 1 WHERE uid = (?1) and aid = (?2)";
+                let sql =
+                    "UPDATE user_account_info SET ccid = ccid + 1 WHERE uid = (?1) and aid = (?2)";
                 conn_lock.execute(sql, p)?;
                 Ok(id)
             }
@@ -877,7 +895,7 @@ impl DbConn {
         }
     }
 
-    pub fn get_next_certificate_of_deposit_id(&self, uid : u32, aid :u32) -> rusqlite::Result<u32> {
+    pub fn get_next_certificate_of_deposit_id(&self, uid: u32, aid: u32) -> rusqlite::Result<u32> {
         let sql = "SELECT cdid FROM user_account_info WHERE uid = (?1) and aid = (?2)";
         let p = rusqlite::params![uid, aid];
         let conn_lock = self.conn.lock().unwrap();
@@ -886,7 +904,8 @@ impl DbConn {
         match exists {
             true => {
                 let id = stmt.query_row(p, |row| row.get::<_, u32>(0))?;
-                let sql = "UPDATE user_account_info SET cdid = cdid + 1 WHERE uid = (?1) and aid = (?2)";
+                let sql =
+                    "UPDATE user_account_info SET cdid = cdid + 1 WHERE uid = (?1) and aid = (?2)";
                 conn_lock.execute(sql, p)?;
                 Ok(id)
             }
@@ -896,10 +915,9 @@ impl DbConn {
         }
     }
 
-
-    pub fn remove_account(&self, uid : u32, aid : u32) -> rusqlite::Result<u32, rusqlite::Error> {
+    pub fn remove_account(&self, uid: u32, aid: u32) -> rusqlite::Result<u32, rusqlite::Error> {
         let sql = "DELETE FROM accounts WHERE uid = (?1) and id = (?2)";
-        let p= rusqlite::params![uid, aid];
+        let p = rusqlite::params![uid, aid];
         let conn_lock = self.conn.lock().unwrap();
         let rs = conn_lock.execute(sql, p);
         match rs {
@@ -929,7 +947,12 @@ impl DbConn {
         Ok(aid)
     }
 
-    pub fn rename_account(&self, uid : u32, aid : u32, new_name : String) -> rusqlite::Result<u32, rusqlite::Error> {
+    pub fn rename_account(
+        &self,
+        uid: u32,
+        aid: u32,
+        new_name: String,
+    ) -> rusqlite::Result<u32, rusqlite::Error> {
         let p = rusqlite::params![uid, aid, new_name];
         let sql = "UPDATE accounts SET name = (?3) WHERE uid = (?1) and id = (?2)";
         let conn_lock = self.conn.lock().unwrap();

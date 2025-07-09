@@ -1,14 +1,14 @@
 use crate::database::DbConn;
-use crate::tui::{prompt_and_create_new_account, decode_and_init_account_type};
+use crate::tui::{decode_and_init_account_type, prompt_and_create_new_account};
 use crate::types::accounts::AccountRecord;
 use crate::types::categories::CategoryAutoCompleter;
 use crate::types::ledger::{LedgerInfo, LedgerRecord};
 use crate::types::participants::{ParticipantAutoCompleter, ParticipantType};
 use chrono::{Datelike, NaiveDate};
+use core::panic;
 use inquire::validator::MinLengthValidator;
 use inquire::*;
 use shared_lib::{LedgerEntry, TransferType};
-use core::panic;
 use std::collections::HashMap;
 use std::hash::Hash;
 
@@ -30,11 +30,22 @@ impl FixedAccount {
         acct
     }
 
-    pub fn withdrawal(&self, initial_opt : Option<LedgerRecord>, overwrite : bool) -> LedgerRecord {
-        let default_to_use : bool;
-        let mut initial = LedgerRecord { id : 0, info : LedgerInfo { date: "1970-01-01".to_string(), amount: 0.0, transfer_type: TransferType::WithdrawalToExternalAccount, participant: 0, category_id: 0, description: "".to_string(), ancillary_f32data: 0.0 }};
+    pub fn withdrawal(&self, initial_opt: Option<LedgerRecord>, overwrite: bool) -> LedgerRecord {
+        let default_to_use: bool;
+        let mut initial = LedgerRecord {
+            id: 0,
+            info: LedgerInfo {
+                date: "1970-01-01".to_string(),
+                amount: 0.0,
+                transfer_type: TransferType::WithdrawalToExternalAccount,
+                participant: 0,
+                category_id: 0,
+                description: "".to_string(),
+                ancillary_f32data: 0.0,
+            },
+        };
 
-        if initial_opt.is_some() { 
+        if initial_opt.is_some() {
             default_to_use = true;
             initial = initial_opt.unwrap();
         } else {
@@ -42,79 +53,83 @@ impl FixedAccount {
         }
 
         let date_prompt = "Enter date of withdrawal:";
-        let date_input = if default_to_use { 
+        let date_input = if default_to_use {
             DateSelect::new(date_prompt)
-            .with_default(NaiveDate::parse_from_str(&initial.info.date, "%Y-%m-%d").unwrap())
-            .prompt()
-            .unwrap()
-            .format("%Y-%m-%d")
-            .to_string()
-        } else { 
+                .with_default(NaiveDate::parse_from_str(&initial.info.date, "%Y-%m-%d").unwrap())
+                .prompt()
+                .unwrap()
+                .format("%Y-%m-%d")
+                .to_string()
+        } else {
             DateSelect::new(date_prompt)
-            .prompt()
-            .unwrap()
-            .format("%Y-%m-%d")
-            .to_string()
+                .prompt()
+                .unwrap()
+                .format("%Y-%m-%d")
+                .to_string()
         };
 
         let amount_prompt = "Enter amount withdrew:";
-        let amount_input: f32 = if default_to_use { 
+        let amount_input: f32 = if default_to_use {
             CustomType::<f32>::new(amount_prompt)
-            .with_placeholder("00000.00")
-            .with_default(initial.info.amount)
-            .with_error_message("Please type a valid amount!")
-            .prompt()
-            .unwrap()
-        } else { 
+                .with_placeholder("00000.00")
+                .with_default(initial.info.amount)
+                .with_error_message("Please type a valid amount!")
+                .prompt()
+                .unwrap()
+        } else {
             CustomType::<f32>::new(amount_prompt)
-            .with_placeholder("00000.00")
-            .with_default(00000.00)
-            .with_error_message("Please type a valid amount!")
-            .prompt()
-            .unwrap()  
+                .with_placeholder("00000.00")
+                .with_default(00000.00)
+                .with_error_message("Please type a valid amount!")
+                .prompt()
+                .unwrap()
         };
 
         let cid;
         let category_prompt = "Enter category:";
-        let selected_category = if default_to_use { 
+        let selected_category = if default_to_use {
             Text::new(category_prompt)
-            .with_autocomplete(CategoryAutoCompleter {
-                uid: self.uid,
-                aid: self.id,
-                db: self.db.clone(),
-            })
-            .with_default(self.db.get_category_name(self.uid, self.id, initial.info.category_id).unwrap().as_str())
-            .prompt()
-            .unwrap()
-            .to_ascii_uppercase()
-        } else { 
+                .with_autocomplete(CategoryAutoCompleter {
+                    uid: self.uid,
+                    aid: self.id,
+                    db: self.db.clone(),
+                })
+                .with_default(
+                    self.db
+                        .get_category_name(self.uid, self.id, initial.info.category_id)
+                        .unwrap()
+                        .as_str(),
+                )
+                .prompt()
+                .unwrap()
+                .to_ascii_uppercase()
+        } else {
             Text::new(category_prompt)
-            .with_autocomplete(CategoryAutoCompleter {
-                uid: self.uid,
-                aid: self.id,
-                db: self.db.clone(),
-            })
-            .prompt()
-            .unwrap()
-            .to_ascii_uppercase()
+                .with_autocomplete(CategoryAutoCompleter {
+                    uid: self.uid,
+                    aid: self.id,
+                    db: self.db.clone(),
+                })
+                .prompt()
+                .unwrap()
+                .to_ascii_uppercase()
         };
 
-        cid = self.db.check_and_add_category(self.uid, self.id, selected_category);
+        cid = self
+            .db
+            .check_and_add_category(self.uid, self.id, selected_category);
 
         let description_prompt = "Enter description:";
-        let description_input = if default_to_use { 
+        let description_input = if default_to_use {
             Text::new(description_prompt)
-            .with_default(&initial.info.description)
-            .prompt()
-            .unwrap()
-            .to_string()
-        } else { 
-            Text::new(description_prompt)
-            .prompt()
-            .unwrap()
-            .to_string()
+                .with_default(&initial.info.description)
+                .prompt()
+                .unwrap()
+                .to_string()
+        } else {
+            Text::new(description_prompt).prompt().unwrap().to_string()
         };
-        
+
         let link = Confirm::new("Link transaction to another account?")
             .prompt()
             .unwrap();
@@ -123,33 +138,43 @@ impl FixedAccount {
         let mut acct: Box<dyn Account>;
         let pid;
         let payee_prompt = "Enter payee:";
-        if !link { 
-            selected_payee = if default_to_use { 
+        if !link {
+            selected_payee = if default_to_use {
                 Text::new(payee_prompt)
-                .with_autocomplete(ParticipantAutoCompleter {
-                    uid: self.uid,
-                    aid: self.id,
-                    db: self.db.clone(),
-                    ptype: ParticipantType::Payee,
-                    with_accounts : false
-                })
-                .with_default(self.db.get_participant(self.uid, self.id, initial.info.participant).unwrap().as_str())
-                .prompt()
-                .unwrap()
+                    .with_autocomplete(ParticipantAutoCompleter {
+                        uid: self.uid,
+                        aid: self.id,
+                        db: self.db.clone(),
+                        ptype: ParticipantType::Payee,
+                        with_accounts: false,
+                    })
+                    .with_default(
+                        self.db
+                            .get_participant(self.uid, self.id, initial.info.participant)
+                            .unwrap()
+                            .as_str(),
+                    )
+                    .prompt()
+                    .unwrap()
             } else {
                 Text::new(payee_prompt)
-                .with_autocomplete(ParticipantAutoCompleter {
-                    uid: self.uid,
-                    aid: self.id,
-                    db: self.db.clone(),
-                    ptype: ParticipantType::Payee,
-                    with_accounts : false
-                })
-                .prompt()
-                .unwrap()
+                    .with_autocomplete(ParticipantAutoCompleter {
+                        uid: self.uid,
+                        aid: self.id,
+                        db: self.db.clone(),
+                        ptype: ParticipantType::Payee,
+                        with_accounts: false,
+                    })
+                    .prompt()
+                    .unwrap()
             };
-            pid = self.db
-                .check_and_add_participant(self.uid, self.id, selected_payee, ParticipantType::Payee, false);
+            pid = self.db.check_and_add_participant(
+                self.uid,
+                self.id,
+                selected_payee,
+                ParticipantType::Payee,
+                false,
+            );
 
             let withdrawal = LedgerInfo {
                 date: date_input,
@@ -158,31 +183,50 @@ impl FixedAccount {
                 participant: pid,
                 category_id: cid,
                 description: description_input,
-                ancillary_f32data : 0.0
-            };
-    
-            let id = if default_to_use && overwrite { 
-                self.db.update_ledger_item(self.uid, self.id, LedgerRecord { id: initial.id, info: withdrawal.clone()} ).unwrap()
-            } else { 
-                self.db.add_ledger_entry(self.uid, self.id, withdrawal.clone()).unwrap()
+                ancillary_f32data: 0.0,
             };
 
-            return LedgerRecord { id : id, info : withdrawal };
+            let id = if default_to_use && overwrite {
+                self.db
+                    .update_ledger_item(
+                        self.uid,
+                        self.id,
+                        LedgerRecord {
+                            id: initial.id,
+                            info: withdrawal.clone(),
+                        },
+                    )
+                    .unwrap()
+            } else {
+                self.db
+                    .add_ledger_entry(self.uid, self.id, withdrawal.clone())
+                    .unwrap()
+            };
+
+            return LedgerRecord {
+                id: id,
+                info: withdrawal,
+            };
         } else {
-            
             let initial_account_opt = if default_to_use {
-                self.db.get_participant(self.uid, self.id, initial.info.participant)
-            } else { 
+                self.db
+                    .get_participant(self.uid, self.id, initial.info.participant)
+            } else {
                 None
             };
 
             let user_input = self.link_transaction(initial_account_opt);
-            if user_input.is_none() { 
+            if user_input.is_none() {
                 return initial;
             }
             (acct, selected_payee) = user_input.unwrap();
-            pid = self.db
-                .check_and_add_participant(self.uid, self.id, selected_payee, ParticipantType::Both, true);
+            pid = self.db.check_and_add_participant(
+                self.uid,
+                self.id,
+                selected_payee,
+                ParticipantType::Both,
+                true,
+            );
 
             let withdrawal = LedgerInfo {
                 date: date_input,
@@ -191,20 +235,31 @@ impl FixedAccount {
                 participant: pid,
                 category_id: cid,
                 description: description_input,
-                ancillary_f32data : 0.0
+                ancillary_f32data: 0.0,
             };
-            
-            let id = if default_to_use && overwrite { 
-                self.db.update_ledger_item(self.uid, self.id, LedgerRecord { id: initial.id, info: withdrawal.clone() }).unwrap()
-            } else { 
-                self.db.add_ledger_entry(self.uid, self.id, withdrawal.clone()).unwrap()
+
+            let id = if default_to_use && overwrite {
+                self.db
+                    .update_ledger_item(
+                        self.uid,
+                        self.id,
+                        LedgerRecord {
+                            id: initial.id,
+                            info: withdrawal.clone(),
+                        },
+                    )
+                    .unwrap()
+            } else {
+                self.db
+                    .add_ledger_entry(self.uid, self.id, withdrawal.clone())
+                    .unwrap()
             };
 
             let entry = LedgerRecord {
                 id: id,
                 info: withdrawal,
             };
-    
+
             if link {
                 acct.link(self.id, entry.clone());
             }
@@ -213,12 +268,22 @@ impl FixedAccount {
         }
     }
 
-    pub fn deposit(&self, initial_opt : Option<LedgerRecord>, overwrite : bool) -> LedgerRecord {
+    pub fn deposit(&self, initial_opt: Option<LedgerRecord>, overwrite: bool) -> LedgerRecord {
+        let default_to_use: bool;
+        let mut initial = LedgerRecord {
+            id: 0,
+            info: LedgerInfo {
+                date: "1970-01-01".to_string(),
+                amount: 0.0,
+                transfer_type: TransferType::DepositFromExternalAccount,
+                participant: 0,
+                category_id: 0,
+                description: "".to_string(),
+                ancillary_f32data: 0.0,
+            },
+        };
 
-        let default_to_use : bool;
-        let mut initial = LedgerRecord { id : 0, info : LedgerInfo { date: "1970-01-01".to_string(), amount: 0.0, transfer_type: TransferType::DepositFromExternalAccount, participant: 0, category_id: 0, description: "".to_string(), ancillary_f32data: 0.0 }};
-
-        if initial_opt.is_some() { 
+        if initial_opt.is_some() {
             default_to_use = true;
             initial = initial_opt.unwrap();
         } else {
@@ -226,90 +291,98 @@ impl FixedAccount {
         }
 
         let date_prompt = "Enter date of deposit:";
-        let date_input = if default_to_use { 
+        let date_input = if default_to_use {
             DateSelect::new(date_prompt)
-            .with_default(NaiveDate::parse_from_str(&initial.info.date, "%Y-%m-%d").unwrap())
-            .prompt()
-            .unwrap()
-            .format("%Y-%m-%d")
-            .to_string()
-        } else { 
+                .with_default(NaiveDate::parse_from_str(&initial.info.date, "%Y-%m-%d").unwrap())
+                .prompt()
+                .unwrap()
+                .format("%Y-%m-%d")
+                .to_string()
+        } else {
             DateSelect::new(date_prompt)
-            .prompt()
-            .unwrap()
-            .format("%Y-%m-%d")
-            .to_string()
+                .prompt()
+                .unwrap()
+                .format("%Y-%m-%d")
+                .to_string()
         };
 
         let amount_prompt = "Enter amount deposited:";
-        let amount_input: f32 = if default_to_use { 
+        let amount_input: f32 = if default_to_use {
             CustomType::<f32>::new(amount_prompt)
-            .with_placeholder("00000.00")
-            .with_default(initial.info.amount)
-            .with_error_message("Please type a valid amount!")
-            .prompt()
-            .unwrap()
-        } else { 
+                .with_placeholder("00000.00")
+                .with_default(initial.info.amount)
+                .with_error_message("Please type a valid amount!")
+                .prompt()
+                .unwrap()
+        } else {
             CustomType::<f32>::new(amount_prompt)
-            .with_placeholder("00000.00")
-            .with_default(00000.00)
-            .with_error_message("Please type a valid amount!")
-            .prompt()
-            .unwrap()  
+                .with_placeholder("00000.00")
+                .with_default(00000.00)
+                .with_error_message("Please type a valid amount!")
+                .prompt()
+                .unwrap()
         };
 
         let cid;
-        let category_validator = MinLengthValidator::new(3).with_message("Category cannot be empty!");
+        let category_validator =
+            MinLengthValidator::new(3).with_message("Category cannot be empty!");
         let category_prompt = "Enter category:";
-        let selected_category = if default_to_use { 
+        let selected_category = if default_to_use {
             Text::new(category_prompt)
-            .with_autocomplete(CategoryAutoCompleter {
-                uid: self.uid,
-                aid: self.id,
-                db: self.db.clone(),
-            })
-            .with_default(self.db.get_category_name(self.uid, self.id, initial.info.category_id).unwrap().as_str())
-            .with_validator(category_validator)
-            .prompt()
-            .unwrap()
-            .to_ascii_uppercase()
-            .trim()
-            .to_string()
-        } else { 
+                .with_autocomplete(CategoryAutoCompleter {
+                    uid: self.uid,
+                    aid: self.id,
+                    db: self.db.clone(),
+                })
+                .with_default(
+                    self.db
+                        .get_category_name(self.uid, self.id, initial.info.category_id)
+                        .unwrap()
+                        .as_str(),
+                )
+                .with_validator(category_validator)
+                .prompt()
+                .unwrap()
+                .to_ascii_uppercase()
+                .trim()
+                .to_string()
+        } else {
             Text::new(category_prompt)
-            .with_autocomplete(CategoryAutoCompleter {
-                uid: self.uid,
-                aid: self.id,
-                db: self.db.clone(),
-            })
-            .with_validator(category_validator)
-            .prompt()
-            .unwrap()
-            .to_ascii_uppercase()
-            .trim()
-            .to_string()
+                .with_autocomplete(CategoryAutoCompleter {
+                    uid: self.uid,
+                    aid: self.id,
+                    db: self.db.clone(),
+                })
+                .with_validator(category_validator)
+                .prompt()
+                .unwrap()
+                .to_ascii_uppercase()
+                .trim()
+                .to_string()
         };
 
-        cid = self.db.check_and_add_category(self.uid, self.id, selected_category);
+        cid = self
+            .db
+            .check_and_add_category(self.uid, self.id, selected_category);
 
         let description_prompt = "Enter description:";
-        let description_input = if default_to_use { 
+        let description_input = if default_to_use {
             Text::new(description_prompt)
-            .with_default(&initial.info.description)
-            .prompt()
-            .unwrap()
-            .to_string()
-            .trim()
-            .to_string()
-        } else { 
+                .with_default(&initial.info.description)
+                .prompt()
+                .unwrap()
+                .to_string()
+                .trim()
+                .to_string()
+        } else {
             Text::new(description_prompt)
-            .prompt()
-            .unwrap()
-            .to_string()
-            .trim()
-            .to_string()
+                .prompt()
+                .unwrap()
+                .to_string()
+                .trim()
+                .to_string()
         };
-        
+
         let link = Confirm::new("Link transaction to another account?")
             .prompt()
             .unwrap();
@@ -317,40 +390,51 @@ impl FixedAccount {
         let selected_payer;
         let mut acct: Box<dyn Account>;
         let pid;
-        let participant_validator = MinLengthValidator::new(1).with_message("Payer cannot be empty!");
-        if !link { 
-            selected_payer = if default_to_use { 
+        let participant_validator =
+            MinLengthValidator::new(1).with_message("Payer cannot be empty!");
+        if !link {
+            selected_payer = if default_to_use {
                 Text::new("Enter payer:")
-                .with_autocomplete(ParticipantAutoCompleter {
-                    uid: self.uid,
-                    aid: self.id,
-                    db: self.db.clone(),
-                    ptype: ParticipantType::Payer,
-                    with_accounts : false
-                })
-                .with_default(self.db.get_participant(self.uid, self.id, initial.info.participant).unwrap().as_str())
-                .with_validator(participant_validator)
-                .prompt()
-                .unwrap()
-                .trim()
-                .to_string()
+                    .with_autocomplete(ParticipantAutoCompleter {
+                        uid: self.uid,
+                        aid: self.id,
+                        db: self.db.clone(),
+                        ptype: ParticipantType::Payer,
+                        with_accounts: false,
+                    })
+                    .with_default(
+                        self.db
+                            .get_participant(self.uid, self.id, initial.info.participant)
+                            .unwrap()
+                            .as_str(),
+                    )
+                    .with_validator(participant_validator)
+                    .prompt()
+                    .unwrap()
+                    .trim()
+                    .to_string()
             } else {
                 Text::new("Enter payer:")
-                .with_autocomplete(ParticipantAutoCompleter {
-                    uid: self.uid,
-                    aid: self.id,
-                    db: self.db.clone(),
-                    ptype: ParticipantType::Payer,
-                    with_accounts : false
-                })
-                .with_validator(participant_validator)
-                .prompt()
-                .unwrap()
-                .trim()
-                .to_string()
+                    .with_autocomplete(ParticipantAutoCompleter {
+                        uid: self.uid,
+                        aid: self.id,
+                        db: self.db.clone(),
+                        ptype: ParticipantType::Payer,
+                        with_accounts: false,
+                    })
+                    .with_validator(participant_validator)
+                    .prompt()
+                    .unwrap()
+                    .trim()
+                    .to_string()
             };
-            pid = self.db
-                .check_and_add_participant(self.uid, self.id, selected_payer, ParticipantType::Payer, false);
+            pid = self.db.check_and_add_participant(
+                self.uid,
+                self.id,
+                selected_payer,
+                ParticipantType::Payer,
+                false,
+            );
 
             let deposit = LedgerInfo {
                 date: date_input,
@@ -359,31 +443,50 @@ impl FixedAccount {
                 participant: pid,
                 category_id: cid,
                 description: description_input,
-                ancillary_f32data : 0.0
-            };
-    
-            let id = if default_to_use && overwrite { 
-                self.db.update_ledger_item(self.uid, self.id, LedgerRecord { id: initial.id, info: deposit.clone() } ).unwrap()
-            } else {  
-                self.db.add_ledger_entry(self.uid, self.id, deposit.clone()).unwrap()
+                ancillary_f32data: 0.0,
             };
 
-            return LedgerRecord { id : id, info : deposit } ;
+            let id = if default_to_use && overwrite {
+                self.db
+                    .update_ledger_item(
+                        self.uid,
+                        self.id,
+                        LedgerRecord {
+                            id: initial.id,
+                            info: deposit.clone(),
+                        },
+                    )
+                    .unwrap()
+            } else {
+                self.db
+                    .add_ledger_entry(self.uid, self.id, deposit.clone())
+                    .unwrap()
+            };
+
+            return LedgerRecord {
+                id: id,
+                info: deposit,
+            };
         } else {
-            
             let initial_account_opt = if default_to_use {
-                self.db.get_participant(self.uid, self.id, initial.info.participant)
-            } else { 
+                self.db
+                    .get_participant(self.uid, self.id, initial.info.participant)
+            } else {
                 None
             };
 
             let user_input = self.link_transaction(initial_account_opt);
-            if user_input.is_none() { 
+            if user_input.is_none() {
                 return initial;
             }
             (acct, selected_payer) = user_input.unwrap();
-            pid = self.db
-                .check_and_add_participant(self.uid, self.id, selected_payer, ParticipantType::Both, true);
+            pid = self.db.check_and_add_participant(
+                self.uid,
+                self.id,
+                selected_payer,
+                ParticipantType::Both,
+                true,
+            );
 
             let deposit = LedgerInfo {
                 date: date_input,
@@ -392,83 +495,164 @@ impl FixedAccount {
                 participant: pid,
                 category_id: cid,
                 description: description_input,
-                ancillary_f32data : 0.0
+                ancillary_f32data: 0.0,
             };
-    
-            let id = if default_to_use && overwrite  {
-                self.db.update_ledger_item(self.uid, self.id, LedgerRecord { id:initial.id, info: deposit.clone() }).unwrap()
+
+            let id = if default_to_use && overwrite {
+                self.db
+                    .update_ledger_item(
+                        self.uid,
+                        self.id,
+                        LedgerRecord {
+                            id: initial.id,
+                            info: deposit.clone(),
+                        },
+                    )
+                    .unwrap()
             } else {
-                self.db.add_ledger_entry(self.uid, self.id, deposit.clone()).unwrap()
+                self.db
+                    .add_ledger_entry(self.uid, self.id, deposit.clone())
+                    .unwrap()
             };
-            
+
             let entry = LedgerRecord {
                 id: id,
                 info: deposit,
             };
-    
+
             if link {
                 acct.link(self.id, entry.clone());
             }
 
-            return entry ;
+            return entry;
         }
-
     }
 
     pub fn modify(&self, selected_record: LedgerRecord) -> LedgerRecord {
-
-        let was_deposit = match selected_record.info.transfer_type.clone() { 
-            TransferType::DepositFromExternalAccount|TransferType::DepositFromInternalAccount => { true }
-            TransferType::WithdrawalToInternalAccount|TransferType::WithdrawalToExternalAccount => { false }
-            TransferType::ZeroSumChange => { println!("Unable to modify a zero-sum change!"); return selected_record }
+        let was_deposit = match selected_record.info.transfer_type.clone() {
+            TransferType::DepositFromExternalAccount | TransferType::DepositFromInternalAccount => {
+                true
+            }
+            TransferType::WithdrawalToInternalAccount
+            | TransferType::WithdrawalToExternalAccount => false,
+            TransferType::ZeroSumChange => {
+                println!("Unable to modify a zero-sum change!");
+                return selected_record;
+            }
         };
 
         const OPTIONS: [&'static str; 3] = ["Update", "Remove", "None"];
-        let modify_choice = Select::new("What would you like to do:", OPTIONS.to_vec()).prompt().unwrap();
-        match modify_choice { 
+        let modify_choice = Select::new("What would you like to do:", OPTIONS.to_vec())
+            .prompt()
+            .unwrap();
+        match modify_choice {
             "Update" => {
-                let account_transaction_opt: Option<crate::types::accounts::AccountTransactionRecord>;
-                let updated_record = if was_deposit { 
-                    account_transaction_opt = self.db.check_and_get_account_transaction_record_matching_to_ledger_id(self.uid, self.id, selected_record.id).unwrap();
-                    if account_transaction_opt.is_some() { 
+                let account_transaction_opt: Option<
+                    crate::types::accounts::AccountTransactionRecord,
+                >;
+                let updated_record = if was_deposit {
+                    account_transaction_opt = self
+                        .db
+                        .check_and_get_account_transaction_record_matching_to_ledger_id(
+                            self.uid,
+                            self.id,
+                            selected_record.id,
+                        )
+                        .unwrap();
+                    if account_transaction_opt.is_some() {
                         let account_transaction = account_transaction_opt.unwrap();
-                        self.db.remove_account_transaction(self.uid, account_transaction.id).unwrap();
-                        self.db.remove_ledger_item(self.uid, account_transaction.info.from_account, account_transaction.info.from_ledger).unwrap();
+                        self.db
+                            .remove_account_transaction(self.uid, account_transaction.id)
+                            .unwrap();
+                        self.db
+                            .remove_ledger_item(
+                                self.uid,
+                                account_transaction.info.from_account,
+                                account_transaction.info.from_ledger,
+                            )
+                            .unwrap();
                     }
                     self.deposit(Some(selected_record.clone()), true)
-                } else { 
-                    account_transaction_opt = self.db.check_and_get_account_transaction_record_matching_from_ledger_id(self.uid, self.id, selected_record.id).unwrap();
-                    if account_transaction_opt.is_some() { 
+                } else {
+                    account_transaction_opt = self
+                        .db
+                        .check_and_get_account_transaction_record_matching_from_ledger_id(
+                            self.uid,
+                            self.id,
+                            selected_record.id,
+                        )
+                        .unwrap();
+                    if account_transaction_opt.is_some() {
                         let account_transaction = account_transaction_opt.unwrap();
-                        self.db.remove_ledger_item(self.uid, account_transaction.info.to_account, account_transaction.info.to_ledger).unwrap();
-                    }                    
+                        self.db
+                            .remove_ledger_item(
+                                self.uid,
+                                account_transaction.info.to_account,
+                                account_transaction.info.to_ledger,
+                            )
+                            .unwrap();
+                    }
                     self.withdrawal(Some(selected_record.clone()), true)
                 };
                 return updated_record;
             }
-            "Remove" => { 
-                let account_transaction_opt: Option<crate::types::accounts::AccountTransactionRecord>;
-                if was_deposit { 
-                    account_transaction_opt = self.db.check_and_get_account_transaction_record_matching_to_ledger_id(self.uid, self.id, selected_record.id).unwrap();
-                    if account_transaction_opt.is_some() { 
+            "Remove" => {
+                let account_transaction_opt: Option<
+                    crate::types::accounts::AccountTransactionRecord,
+                >;
+                if was_deposit {
+                    account_transaction_opt = self
+                        .db
+                        .check_and_get_account_transaction_record_matching_to_ledger_id(
+                            self.uid,
+                            self.id,
+                            selected_record.id,
+                        )
+                        .unwrap();
+                    if account_transaction_opt.is_some() {
                         let account_transaction = account_transaction_opt.unwrap();
-                        self.db.remove_account_transaction(self.uid, account_transaction.id).unwrap();
-                        self.db.remove_ledger_item(self.uid, account_transaction.info.from_account, account_transaction.info.from_ledger).unwrap();
+                        self.db
+                            .remove_account_transaction(self.uid, account_transaction.id)
+                            .unwrap();
+                        self.db
+                            .remove_ledger_item(
+                                self.uid,
+                                account_transaction.info.from_account,
+                                account_transaction.info.from_ledger,
+                            )
+                            .unwrap();
                     }
-                } else { 
-                    account_transaction_opt = self.db.check_and_get_account_transaction_record_matching_from_ledger_id(self.uid, self.id, selected_record.id).unwrap();
-                    if account_transaction_opt.is_some() { 
+                } else {
+                    account_transaction_opt = self
+                        .db
+                        .check_and_get_account_transaction_record_matching_from_ledger_id(
+                            self.uid,
+                            self.id,
+                            selected_record.id,
+                        )
+                        .unwrap();
+                    if account_transaction_opt.is_some() {
                         let account_transaction = account_transaction_opt.unwrap();
-                        self.db.remove_account_transaction(self.uid, account_transaction.id).unwrap();
-                        self.db.remove_ledger_item(self.uid, account_transaction.info.to_account, account_transaction.info.to_ledger).unwrap();
-                    }                    
+                        self.db
+                            .remove_account_transaction(self.uid, account_transaction.id)
+                            .unwrap();
+                        self.db
+                            .remove_ledger_item(
+                                self.uid,
+                                account_transaction.info.to_account,
+                                account_transaction.info.to_ledger,
+                            )
+                            .unwrap();
+                    }
                 }
-                self.db.remove_ledger_item(self.uid, self.id, selected_record.id.clone()).unwrap();
+                self.db
+                    .remove_ledger_item(self.uid, self.id, selected_record.id.clone())
+                    .unwrap();
             }
-            "None" => { 
+            "None" => {
                 return selected_record.clone();
             }
-            _ =>  { 
+            _ => {
                 panic!("Unrecognized input!");
             }
         }
@@ -522,14 +706,16 @@ impl FixedAccount {
         Some(selected_record)
     }
 
-    pub fn link_transaction(&self, initial_opt : Option<String>) -> Option<(Box<dyn Account>, String)> {
-
+    pub fn link_transaction(
+        &self,
+        initial_opt: Option<String>,
+    ) -> Option<(Box<dyn Account>, String)> {
         let default_to_use;
         let mut initial_account = String::new();
-        if initial_opt.is_some() { 
+        if initial_opt.is_some() {
             default_to_use = true;
             initial_account = initial_opt.unwrap();
-        } else { 
+        } else {
             default_to_use = false;
         }
 
@@ -544,27 +730,27 @@ impl FixedAccount {
         let select_account_prompt = "Select account:";
         let mut selected_account = if default_to_use {
             Text::new(select_account_prompt)
-            .with_autocomplete(ParticipantAutoCompleter {
-                uid: self.uid,
-                aid: self.id,
-                db: self.db.clone(),
-                ptype: ParticipantType::Both,
-                with_accounts : true
-            })         
-            .with_default(initial_account.as_str())       
-            .prompt()
-            .unwrap()
-        } else { 
+                .with_autocomplete(ParticipantAutoCompleter {
+                    uid: self.uid,
+                    aid: self.id,
+                    db: self.db.clone(),
+                    ptype: ParticipantType::Both,
+                    with_accounts: true,
+                })
+                .with_default(initial_account.as_str())
+                .prompt()
+                .unwrap()
+        } else {
             Text::new(select_account_prompt)
-            .with_autocomplete(ParticipantAutoCompleter {
-                uid: self.uid,
-                aid: self.id,
-                db: self.db.clone(),
-                ptype: ParticipantType::Both,
-                with_accounts : true
-            })                
-            .prompt()
-            .unwrap()
+                .with_autocomplete(ParticipantAutoCompleter {
+                    uid: self.uid,
+                    aid: self.id,
+                    db: self.db.clone(),
+                    ptype: ParticipantType::Both,
+                    with_accounts: true,
+                })
+                .prompt()
+                .unwrap()
         };
 
         if selected_account.clone() == "None" {
@@ -575,7 +761,7 @@ impl FixedAccount {
         let record: AccountRecord;
         if selected_account.clone() == "New Account".to_ascii_uppercase().to_string() {
             let user_input = prompt_and_create_new_account(self.uid, &self.db);
-            if user_input.is_none() { 
+            if user_input.is_none() {
                 return None;
             }
             (acct, record) = user_input.unwrap();
@@ -608,11 +794,7 @@ impl FixedAccount {
         return rate;
     }
 
-    pub fn compound_annual_growth_rate(
-        &self,
-        start_date: NaiveDate,
-        end_date: NaiveDate,
-    ) -> f32 {
+    pub fn compound_annual_growth_rate(&self, start_date: NaiveDate, end_date: NaiveDate) -> f32 {
         let mut rate: f32 = 0.0;
         let starting_amount: f32 = self
             .db

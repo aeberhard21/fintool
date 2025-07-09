@@ -1,38 +1,43 @@
-use std::fs::{self};
-use std::path::{Path, PathBuf};
-use std::result;
-use std::io::Error;
-use std::io;
 #[cfg(feature = "ratatui_support")]
 use ratatui::{
     backend::{Backend, CrosstermBackend},
     crossterm::{
         cursor::MoveTo,
-        event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers},
+        event::{
+            self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind,
+            KeyModifiers,
+        },
         execute,
-        terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen, Clear, ClearType},
+        terminal::{
+            disable_raw_mode, enable_raw_mode, Clear, ClearType, EnterAlternateScreen,
+            LeaveAlternateScreen,
+        },
     },
     Terminal,
 };
+use std::fs::{self};
+use std::io;
+use std::io::Error;
+use std::path::{Path, PathBuf};
+use std::result;
 
 #[cfg(feature = "ratatui_support")]
 use crate::app::app::App;
 #[cfg(feature = "ratatui_support")]
-use crate::app::ui;
-#[cfg(feature = "ratatui_support")]
 use crate::app::screen::{CurrentScreen, CurrentlySelecting};
+#[cfg(feature = "ratatui_support")]
+use crate::app::ui;
 use crate::database::DbConn;
-use crate::tui::*;
 use crate::tui::tui_user::create_user;
+use crate::tui::*;
 
 mod accounts;
+#[cfg(feature = "ratatui_support")]
+mod app;
 mod database;
 mod stocks;
 mod tui;
 mod types;
-#[cfg(feature = "ratatui_support")]
-mod app;
-
 
 fn main() -> Result<(), std::io::Error> {
     let db_dir: String = String::from("./db");
@@ -75,7 +80,7 @@ fn main() -> Result<(), std::io::Error> {
 }
 
 #[cfg(feature = "ratatui_support")]
-fn init_and_run_app(_db: &mut DbConn) -> io::Result<bool> { 
+fn init_and_run_app(_db: &mut DbConn) -> io::Result<bool> {
     // setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -111,32 +116,43 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                 continue;
             }
             match app.current_screen {
-                CurrentScreen::Login => match (key.modifiers, key.code) { 
+                CurrentScreen::Login => match (key.modifiers, key.code) {
                     (_, KeyCode::Enter) => {
                         if let Some(id) = app.validate_user(app.key_input.to_string()) {
                             app.user_id = Some(id);
                             app.current_screen = CurrentScreen::Accounts;
-                            app.accounts_for_type = app.db.get_user_accounts_by_type(app.user_id.unwrap(), app.selected_atype_tab).unwrap();
+                            app.accounts_for_type = app
+                                .db
+                                .get_user_accounts_by_type(
+                                    app.user_id.unwrap(),
+                                    app.selected_atype_tab,
+                                )
+                                .unwrap();
                             if app.accounts_for_type.is_some() {
                                 app.get_account();
                             }
-                        } else { 
+                        } else {
                             app.invalid_input = true;
                         }
                     }
-                    (KeyModifiers::CONTROL, KeyCode::Char('c') | KeyCode::Char('C')) => { 
+                    (KeyModifiers::CONTROL, KeyCode::Char('c') | KeyCode::Char('C')) => {
                         return Ok(true)
                     }
                     (_, KeyCode::Char(':')) => {
                         disable_raw_mode()?;
-                        execute!(io::stdout(), Clear(ratatui::crossterm::terminal::ClearType::All), MoveTo(0,0)).unwrap();
-                        
+                        execute!(
+                            io::stdout(),
+                            Clear(ratatui::crossterm::terminal::ClearType::All),
+                            MoveTo(0, 0)
+                        )
+                        .unwrap();
+
                         create_user(&mut app.db);
-                        
+
                         enable_raw_mode()?;
                         terminal.clear().unwrap();
                     }
-                    (_, KeyCode::Char(value)) => { 
+                    (_, KeyCode::Char(value)) => {
                         app.key_input.push(value);
                     }
                     (_, KeyCode::Backspace) => {
@@ -145,11 +161,12 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                     _ => {}
                 },
                 CurrentScreen::Accounts => match (key.modifiers, key.code) {
-                    (_, KeyCode::Char('q')) | (KeyModifiers::CONTROL, KeyCode::Char('c') | KeyCode::Char('C'))  => { 
+                    (_, KeyCode::Char('q'))
+                    | (KeyModifiers::CONTROL, KeyCode::Char('c') | KeyCode::Char('C')) => {
                         return Ok(true)
                     }
-                    (_, KeyCode::Right) => { 
-                        match app.currently_selected { 
+                    (_, KeyCode::Right | KeyCode::Char('l')) => {
+                        match app.currently_selected {
                             Some(CurrentlySelecting::AccountTabs) => {
                                 app.advance_account();
                                 if app.accounts_for_type.is_some() {
@@ -159,26 +176,13 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                             Some(CurrentlySelecting::AccountTypeTabs) => {
                                 // get accounts for filter
                                 app.advance_account_type();
-                                app.accounts_for_type = app.db.get_user_accounts_by_type(app.user_id.unwrap(), app.selected_atype_tab).unwrap();
-                                if app.accounts_for_type.is_some() {
-                                    app.get_account();
-                                }
-                            }
-                            _ => {}
-                        }
-
-                    }
-                    (_, KeyCode::Left) => { 
-                        match app.currently_selected { 
-                            Some(CurrentlySelecting::AccountTabs) => {
-                                app.retreat_account();
-                                if app.accounts_for_type.is_some() {
-                                    app.get_account();
-                                }
-                            }
-                            Some(CurrentlySelecting::AccountTypeTabs) => {
-                                app.retreat_account_type();
-                                app.accounts_for_type = app.db.get_user_accounts_by_type(app.user_id.unwrap(), app.selected_atype_tab).unwrap();
+                                app.accounts_for_type = app
+                                    .db
+                                    .get_user_accounts_by_type(
+                                        app.user_id.unwrap(),
+                                        app.selected_atype_tab,
+                                    )
+                                    .unwrap();
                                 if app.accounts_for_type.is_some() {
                                     app.get_account();
                                 }
@@ -186,51 +190,99 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                             _ => {}
                         }
                     }
-                    (_, KeyCode::Backspace) => { 
-                        if let Some(select_mode) = &app.currently_selected { 
-                            match select_mode { 
+                    (_, KeyCode::Left | KeyCode::Char('h')) => match app.currently_selected {
+                        Some(CurrentlySelecting::AccountTabs) => {
+                            app.retreat_account();
+                            if app.accounts_for_type.is_some() {
+                                app.get_account();
+                            }
+                        }
+                        Some(CurrentlySelecting::AccountTypeTabs) => {
+                            app.retreat_account_type();
+                            app.accounts_for_type = app
+                                .db
+                                .get_user_accounts_by_type(
+                                    app.user_id.unwrap(),
+                                    app.selected_atype_tab,
+                                )
+                                .unwrap();
+                            if app.accounts_for_type.is_some() {
+                                app.get_account();
+                            }
+                        }
+                        _ => {}
+                    },
+                    (_, KeyCode::Backspace) => {
+                        if let Some(select_mode) = &app.currently_selected {
+                            match select_mode {
                                 CurrentlySelecting::AccountTabs => {
                                     app.retreat_currently_selecting();
-                                    app.accounts_for_type = app.db.get_user_accounts_by_type(app.user_id.unwrap(), app.selected_atype_tab).unwrap();
+                                    app.accounts_for_type = app
+                                        .db
+                                        .get_user_accounts_by_type(
+                                            app.user_id.unwrap(),
+                                            app.selected_atype_tab,
+                                        )
+                                        .unwrap();
                                     if app.accounts_for_type.is_some() {
                                         app.get_account();
                                     }
                                     // upon move out of account type, reset default tab to the first one
                                     app.selected_account_tab = 0;
                                 }
-                                CurrentlySelecting::Account => { 
+                                CurrentlySelecting::Account => {
                                     app.retreat_currently_selecting();
                                 }
                                 _ => {}
-                            } 
+                            }
                         }
                     }
-                    (_, KeyCode::Enter) => { 
-                        if app.accounts_for_type.is_none() {} 
-                        else {
-                            if let Some(select_mode) = &app.currently_selected { 
-                                match select_mode { 
-                                    CurrentlySelecting::AccountTypeTabs => app.advance_currently_selecting(),
-                                    CurrentlySelecting::AccountTabs => app.advance_currently_selecting(),
+                    (_, KeyCode::Enter) => {
+                        if app.accounts_for_type.is_none() {
+                        } else {
+                            if let Some(select_mode) = &app.currently_selected {
+                                match select_mode {
+                                    CurrentlySelecting::AccountTypeTabs => {
+                                        app.advance_currently_selecting()
+                                    }
+                                    CurrentlySelecting::AccountTabs => {
+                                        app.advance_currently_selecting()
+                                    }
                                     _ => {}
                                 }
                             }
                         }
                     }
-                    (_, KeyCode::Char('c')) => { 
-                        if let Some(select_mode) = &app.currently_selected { 
-                            match select_mode { 
-                                CurrentlySelecting::AccountTypeTabs|CurrentlySelecting::AccountTabs => {
+                    (_, KeyCode::Char('c')) => {
+                        if let Some(select_mode) = &app.currently_selected {
+                            match select_mode {
+                                CurrentlySelecting::AccountTypeTabs
+                                | CurrentlySelecting::AccountTabs => {
                                     disable_raw_mode()?;
-                                    execute!(io::stdout(), Clear(ratatui::crossterm::terminal::ClearType::All), MoveTo(0,0)).unwrap();
-                                    
-                                    create_account(app.user_id.unwrap(), app.selected_atype_tab, &app.db);
-                                    
+                                    execute!(
+                                        io::stdout(),
+                                        Clear(ratatui::crossterm::terminal::ClearType::All),
+                                        MoveTo(0, 0)
+                                    )
+                                    .unwrap();
+
+                                    create_account(
+                                        app.user_id.unwrap(),
+                                        app.selected_atype_tab,
+                                        &app.db,
+                                    );
+
                                     enable_raw_mode()?;
                                     terminal.clear().unwrap();
 
                                     // update accounts for type
-                                    app.accounts_for_type = app.db.get_user_accounts_by_type(app.user_id.unwrap(), app.selected_atype_tab).unwrap();
+                                    app.accounts_for_type = app
+                                        .db
+                                        .get_user_accounts_by_type(
+                                            app.user_id.unwrap(),
+                                            app.selected_atype_tab,
+                                        )
+                                        .unwrap();
                                     app.skip_to_last_account();
                                     app.get_account();
                                 }
@@ -238,21 +290,36 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                             }
                         }
                     }
-                    (_, KeyCode::Char('e')) => { 
+                    (_, KeyCode::Char('e')) => {
                         // edit account
-                        if let Some(select_mode) = &app.currently_selected { 
-                            match select_mode { 
+                        if let Some(select_mode) = &app.currently_selected {
+                            match select_mode {
                                 CurrentlySelecting::Account => {
                                     disable_raw_mode()?;
-                                    execute!(io::stdout(), Clear(ratatui::crossterm::terminal::ClearType::All), MoveTo(0,0)).unwrap();
-                                    
-                                    if let Some(acct) = &app.account { 
-                                        rename_account(&app.db, app.user_id.unwrap(), acct.get_id());
+                                    execute!(
+                                        io::stdout(),
+                                        Clear(ratatui::crossterm::terminal::ClearType::All),
+                                        MoveTo(0, 0)
+                                    )
+                                    .unwrap();
+
+                                    if let Some(acct) = &app.account {
+                                        rename_account(
+                                            &app.db,
+                                            app.user_id.unwrap(),
+                                            acct.get_id(),
+                                        );
                                     }
 
                                     // update accounts for type
-                                    app.accounts_for_type = app.db.get_user_accounts_by_type(app.user_id.unwrap(), app.selected_atype_tab).unwrap();
-                                     
+                                    app.accounts_for_type = app
+                                        .db
+                                        .get_user_accounts_by_type(
+                                            app.user_id.unwrap(),
+                                            app.selected_atype_tab,
+                                        )
+                                        .unwrap();
+
                                     enable_raw_mode()?;
                                     terminal.clear().unwrap();
                                 }
@@ -260,19 +327,24 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                             }
                         }
                     }
-                    (_, KeyCode::Char('m')) => { 
+                    (_, KeyCode::Char('m')) => {
                         // modify ledger
-                        if let Some(select_mode) = &app.currently_selected { 
-                            match select_mode { 
+                        if let Some(select_mode) = &app.currently_selected {
+                            match select_mode {
                                 CurrentlySelecting::Account => {
                                     disable_raw_mode()?;
-                                    execute!(io::stdout(), Clear(ratatui::crossterm::terminal::ClearType::All), MoveTo(0,0)).unwrap();
-                                    
-                                    if let Some(acct) = &app.account { 
+                                    execute!(
+                                        io::stdout(),
+                                        Clear(ratatui::crossterm::terminal::ClearType::All),
+                                        MoveTo(0, 0)
+                                    )
+                                    .unwrap();
+
+                                    if let Some(acct) = &app.account {
                                         acct.modify();
-                                    } else { 
+                                    } else {
                                         app.invalid_input = true;
-                                    }                             
+                                    }
                                     enable_raw_mode()?;
                                     terminal.clear().unwrap();
                                 }
@@ -280,15 +352,20 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                             }
                         }
                     }
-                    (_, KeyCode::Char('r')) => { 
+                    (_, KeyCode::Char('r')) => {
                         // record transaction
-                        if let Some(select_mode) = &app.currently_selected { 
-                            match select_mode { 
+                        if let Some(select_mode) = &app.currently_selected {
+                            match select_mode {
                                 CurrentlySelecting::Account => {
                                     disable_raw_mode()?;
-                                    execute!(io::stdout(), Clear(ratatui::crossterm::terminal::ClearType::All), MoveTo(0,0)).unwrap();
-                                    
-                                    if let Some(acct) = &app.account { 
+                                    execute!(
+                                        io::stdout(),
+                                        Clear(ratatui::crossterm::terminal::ClearType::All),
+                                        MoveTo(0, 0)
+                                    )
+                                    .unwrap();
+
+                                    if let Some(acct) = &app.account {
                                         acct.record();
                                     } else {
                                         app.invalid_input = true;
@@ -301,16 +378,20 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                             }
                         }
                     }
-
-                    (_, KeyCode::Char('i')) => { 
+                    (_, KeyCode::Char('i')) => {
                         // import transactions
-                        if let Some(select_mode) = &app.currently_selected { 
-                            match select_mode { 
+                        if let Some(select_mode) = &app.currently_selected {
+                            match select_mode {
                                 CurrentlySelecting::Account => {
                                     disable_raw_mode()?;
-                                    execute!(io::stdout(), Clear(ratatui::crossterm::terminal::ClearType::All), MoveTo(0,0)).unwrap();
-                                    
-                                    if let Some(acct) = &app.account { 
+                                    execute!(
+                                        io::stdout(),
+                                        Clear(ratatui::crossterm::terminal::ClearType::All),
+                                        MoveTo(0, 0)
+                                    )
+                                    .unwrap();
+
+                                    if let Some(acct) = &app.account {
                                         acct.import();
                                     } else {
                                         app.invalid_input = true;
@@ -323,44 +404,65 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                             }
                         }
                     }
-                    (_, KeyCode::Char('j')) => { 
+                    (_, KeyCode::Char('a')) => {
+                        // analysis period
+                        disable_raw_mode()?;
+                        execute!(
+                            io::stdout(),
+                            Clear(ratatui::crossterm::terminal::ClearType::All),
+                            MoveTo(0, 0)
+                        )
+                        .unwrap();
+                        app.analysis_period = select_analysis_period();
+                        enable_raw_mode()?;
+                        terminal.clear().unwrap();
+                    }
+                    (_, KeyCode::Char('j')) => {
                         // decrement table row
-                        if let Some(select_mode) = &app.currently_selected { 
-                            match select_mode { 
-                                CurrentlySelecting::Account => { app.advance_ledger_table_row();}
+                        if let Some(select_mode) = &app.currently_selected {
+                            match select_mode {
+                                CurrentlySelecting::Account => {
+                                    app.advance_ledger_table_row();
+                                }
                                 _ => {}
                             }
                         }
                     }
-                    (_, KeyCode::Char('k')) => { 
+                    (_, KeyCode::Char('k')) => {
                         // decrement table row
-                        if let Some(select_mode) = &app.currently_selected { 
-                            match select_mode { 
-                                CurrentlySelecting::Account => { app.retreat_ledger_table_row(); }
+                        if let Some(select_mode) = &app.currently_selected {
+                            match select_mode {
+                                CurrentlySelecting::Account => {
+                                    app.retreat_ledger_table_row();
+                                }
                                 _ => {}
                             }
                         }
                     }
-                    (KeyModifiers::SHIFT, KeyCode::Char('G')) => { 
+                    (KeyModifiers::SHIFT, KeyCode::Char('G')) => {
                         // decrement table row
-                        if let Some(select_mode) = &app.currently_selected { 
-                            match select_mode { 
-                                CurrentlySelecting::Account => { app.go_to_last_ledger_table_row();}
+                        if let Some(select_mode) = &app.currently_selected {
+                            match select_mode {
+                                CurrentlySelecting::Account => {
+                                    app.go_to_last_ledger_table_row();
+                                }
                                 _ => {}
                             }
                         }
                     }
-                    (KeyModifiers::SHIFT, KeyCode::Char('H')) => { 
+                    (KeyModifiers::SHIFT, KeyCode::Char('H')) => {
                         // decrement table row
-                        if let Some(select_mode) = &app.currently_selected { 
-                            match select_mode { 
-                                CurrentlySelecting::Account => { app.go_to_first_ledger_table_row();}
+                        if let Some(select_mode) = &app.currently_selected {
+                            match select_mode {
+                                CurrentlySelecting::Account => {
+                                    app.go_to_first_ledger_table_row();
+                                }
                                 _ => {}
                             }
                         }
                     }
                     _ => {}
-                }
+                },
                 _ => {}
             }
         }

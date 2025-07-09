@@ -73,7 +73,7 @@ fn main() {
         let cat: String = txn.activity.clone();
         let peer: String;
         let description: String;
-        let mut ancillary_data : f32 = 0.0; 
+        let mut ancillary_data: f32 = 0.0;
         let mut stock_txn: StockInfo = StockInfo {
             shares: 0.0,
             costbasis: 0.0,
@@ -163,7 +163,7 @@ fn main() {
                 peer = txn.symbol;
                 description = txn.description.clone();
 
-                stock_txn = StockInfo { 
+                stock_txn = StockInfo {
                     shares: quantity,
                     costbasis: price,
                     remaining: quantity,
@@ -255,7 +255,7 @@ fn main() {
                 participant: peer,
                 category: cat,
                 description: format!("\"{}\"", description),
-                ancillary_f32 : ancillary_data,
+                ancillary_f32: ancillary_data,
                 stock_info: Some(stock_txn),
             };
 
@@ -287,7 +287,7 @@ fn main() {
                 participant: peer,
                 category: cat,
                 description: format!("\"{}\"", description),
-                ancillary_f32 : ancillary_data,
+                ancillary_f32: ancillary_data,
                 stock_info: None,
             };
 

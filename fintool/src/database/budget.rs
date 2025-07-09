@@ -1,5 +1,5 @@
-use rusqlite::{Error, Result};
 use super::DbConn;
+use rusqlite::{Error, Result};
 
 pub struct BudgetItem {
     pub category_id: u32,
@@ -18,7 +18,9 @@ impl DbConn {
             FOREIGN KEY(aid,uid) references accounts(id,uid) ON DELETE CASCADE ON UPDATE CASCADE
             FOREIGN KEY(cid,uid,aid) references categories(id, uid, aid) ON DELETE CASCADE ON UPDATE CASCADE
         )";
-        self.conn.lock().unwrap()
+        self.conn
+            .lock()
+            .unwrap()
             .execute(sql, ())
             .expect("Unable to initialize budgets table!");
         Ok(())
@@ -69,7 +71,11 @@ impl DbConn {
         }
     }
 
-    pub fn get_budget_categories(&self, uid: u32, aid: u32) -> Result<Option<Vec<String>>, rusqlite::Error> {
+    pub fn get_budget_categories(
+        &self,
+        uid: u32,
+        aid: u32,
+    ) -> Result<Option<Vec<String>>, rusqlite::Error> {
         let p = rusqlite::params![aid, uid];
         let sql = "SELECT c.category FROM budgets b INNER JOIN categories c ON b.cid = c.id WHERE aid = (?1) and uid = (?2)";
         let mut categories_wrapped: Vec<Result<String>>;
@@ -86,13 +92,11 @@ impl DbConn {
                         .unwrap()
                         .collect::<Vec<_>>();
                 }
-                false => {
-                    return Ok(None)
-                }
+                false => return Ok(None),
             }
         }
 
-        for category_wrapped in categories_wrapped { 
+        for category_wrapped in categories_wrapped {
             categories.push(category_wrapped.unwrap())
         }
 

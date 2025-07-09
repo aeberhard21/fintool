@@ -29,12 +29,13 @@ impl DbConn {
                 FOREIGN KEY(uid) REFERENCES users(id)
             )";
         let conn_lock = self.conn.lock().unwrap();
-        conn_lock.execute(sql, ())
+        conn_lock
+            .execute(sql, ())
             .expect("Unable to initialize categories table!");
         Ok(())
     }
 
-    pub fn add_category(&self, uid : u32, aid: u32, category: String) -> Result<u32> {
+    pub fn add_category(&self, uid: u32, aid: u32, category: String) -> Result<u32> {
         let id = self.get_next_category_id(uid, aid).unwrap();
         let p = rusqlite::params!(id, aid, category, uid);
         let sql = "INSERT INTO categories (id, aid, category, uid) VALUES (?1, ?2, ?3, ?4)";
@@ -47,19 +48,33 @@ impl DbConn {
         }
     }
 
-    pub fn update_category_name(&self, uid : u32, aid: u32, old : String, new : String) -> Result<String> {
+    pub fn update_category_name(
+        &self,
+        uid: u32,
+        aid: u32,
+        old: String,
+        new: String,
+    ) -> Result<String> {
         let p = rusqlite::params!(uid, aid, old, new);
-        let sql = "UPDATE categories SET name = (?4) WHERE uid = (?1) and aid = (?2) and name = (?3)";
+        let sql =
+            "UPDATE categories SET name = (?4) WHERE uid = (?1) and aid = (?2) and name = (?3)";
         let conn_lock = self.conn.lock().unwrap();
         match conn_lock.execute(sql, p) {
             Ok(_) => Ok(new),
             Err(error) => {
-                panic!("Unable to update category {} in account {}: {}!", old, aid, error);
+                panic!(
+                    "Unable to update category {} in account {}: {}!",
+                    old, aid, error
+                );
             }
         }
     }
 
-    pub fn get_categories(&self, uid : u32, aid: u32) -> Result<Vec<CategoryRecord>, rusqlite::Error> {
+    pub fn get_categories(
+        &self,
+        uid: u32,
+        aid: u32,
+    ) -> Result<Vec<CategoryRecord>, rusqlite::Error> {
         let p = rusqlite::params![aid, uid];
         let sql = "SELECT id, category FROM categories WHERE aid = (?1) and uid = (?2)";
         let conn_lock = self.conn.lock().unwrap();
@@ -93,7 +108,8 @@ impl DbConn {
         aid: u32,
         cid: u32,
     ) -> rusqlite::Result<String, rusqlite::Error> {
-        let sql: &str = "SELECT category FROM categories WHERE aid = (?1) AND id = (?2) and uid = (?3)";
+        let sql: &str =
+            "SELECT category FROM categories WHERE aid = (?1) AND id = (?2) and uid = (?3)";
         let p = rusqlite::params![aid, cid, uid];
         let conn_lock = self.conn.lock().unwrap();
         let mut stmt = conn_lock.prepare(sql)?;
@@ -123,7 +139,8 @@ impl DbConn {
         category: String,
         uid: u32,
     ) -> rusqlite::Result<u32, rusqlite::Error> {
-        let sql: &str = "SELECT id FROM categories WHERE aid = (?1) AND category = (?2) and uid = (?3)";
+        let sql: &str =
+            "SELECT id FROM categories WHERE aid = (?1) AND category = (?2) and uid = (?3)";
         let p = rusqlite::params![aid, category, uid];
         let conn_lock = self.conn.lock().unwrap();
         let mut stmt = conn_lock.prepare(sql)?;
@@ -186,15 +203,20 @@ impl DbConn {
         self.add_category(uid, aid, name).unwrap()
     }
 
-    pub fn remove_category(&self, uid: u32, aid : u32, name : String) -> rusqlite::Result<u32, rusqlite::Error> {
+    pub fn remove_category(
+        &self,
+        uid: u32,
+        aid: u32,
+        name: String,
+    ) -> rusqlite::Result<u32, rusqlite::Error> {
         let id = self.get_category_id(aid, name.clone(), uid).unwrap();
         let p = rusqlite::params![uid, aid, name];
         let sql = "DELETE FROM categories WHERE uid = (?1) and aid = (?2) and category = (?3)";
         let conn_lock = self.conn.lock().unwrap();
         let rs = conn_lock.execute(sql, p);
-        match rs { 
+        match rs {
             Ok(_usize) => {}
-            Err(error) => { 
+            Err(error) => {
                 panic!("Unable to remove category item: {}!", error);
             }
         }
@@ -214,7 +236,10 @@ impl DbConn {
         match rs {
             Ok(_usize) => {}
             Err(error) => {
-                panic!("Unable to update 'cid' value in 'user_account_info': {}!", error);
+                panic!(
+                    "Unable to update 'cid' value in 'user_account_info': {}!",
+                    error
+                );
             }
         }
 
@@ -252,7 +277,9 @@ impl Autocomplete for CategoryAutoCompleter {
         Ok(match highlighted_suggestion {
             Some(suggestion) => Replacement::Some(suggestion),
             None => {
-                let suggestions = self.get_suggestions(input.to_ascii_uppercase().as_str()).unwrap();
+                let suggestions = self
+                    .get_suggestions(input.to_ascii_uppercase().as_str())
+                    .unwrap();
                 if suggestions.len() == 0 {
                     autocompletion::Replacement::None
                 } else {

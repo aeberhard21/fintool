@@ -6,12 +6,15 @@ use inquire::Select;
 use inquire::Text;
 #[cfg(feature = "ratatui_support")]
 use ratatui::{
-    buffer::Buffer, 
-    layout::{self, Constraint, Direction, Layout, Rect}, 
-    style::{palette, Color, Style, Stylize}, 
-    text::{Line, Span, Text as ratatuiText}, 
-    widgets::{Cell, Bar, BarChart, BarGroup, Block, Borders, Clear, List, ListItem, Paragraph, Tabs, Widget, Wrap, Table, Row, HighlightSpacing}, 
-    Frame
+    buffer::Buffer,
+    layout::{self, Constraint, Direction, Layout, Rect},
+    style::{palette, Color, Style, Stylize},
+    text::{Line, Span, Text as ratatuiText},
+    widgets::{
+        Bar, BarChart, BarGroup, Block, Borders, Cell, Clear, HighlightSpacing, List, ListItem,
+        Paragraph, Row, Table, Tabs, Widget, Wrap,
+    },
+    Frame,
 };
 use rustyline::completion::FilenameCompleter;
 use rustyline::highlight::MatchingBracketHighlighter;
@@ -49,15 +52,15 @@ use crate::types::participants::ParticipantType;
 use shared_lib::TransferType;
 
 use super::base::fixed_account::FixedAccount;
+use super::base::Account;
 use super::base::AccountCreation;
-use super::base::AccountOperations;
 use super::base::AccountData;
+use super::base::AccountOperations;
 #[cfg(feature = "ratatui_support")]
 use super::base::AccountUI;
-use super::base::Account;
 
 pub struct Wallet {
-    uid : u32, 
+    uid: u32,
     id: u32,
     db: DbConn,
     fixed: FixedAccount,
@@ -89,8 +92,7 @@ impl Wallet {
 }
 
 impl AccountCreation for Wallet {
-    fn create(uid : u32, name: String, _db : &DbConn) -> AccountRecord {
-
+    fn create(uid: u32, name: String, _db: &DbConn) -> AccountRecord {
         let has_bank = true;
         let has_stocks = false;
         let has_ledger = false;
@@ -107,7 +109,10 @@ impl AccountCreation for Wallet {
 
         let aid = _db.add_account(uid, &account).unwrap();
 
-        return AccountRecord { id : aid, info : account };
+        return AccountRecord {
+            id: aid,
+            info: account,
+        };
     }
 }
 
@@ -164,12 +169,10 @@ impl AccountOperations for Wallet {
         let mut fp = Path::new("~");
         let mut bad_path;
         let mut csv: String = String::new();
-        loop { 
+        loop {
             csv = rl.readline("Enter path to CSV file: ").unwrap();
             bad_path = match Path::new(&csv).try_exists() {
-                Ok(true) => {
-                    false
-                }
+                Ok(true) => false,
                 Ok(false) => {
                     println!("File {} cannot be found!", Path::new(&csv).display());
                     true
@@ -179,10 +182,11 @@ impl AccountOperations for Wallet {
                     true
                 }
             };
-            if !bad_path { break; } 
-            else { 
+            if !bad_path {
+                break;
+            } else {
                 let try_again = Confirm::new("Continue import?").prompt().unwrap();
-                if !try_again { 
+                if !try_again {
                     return;
                 }
             }
@@ -197,13 +201,11 @@ impl AccountOperations for Wallet {
         let mut ledger_entries = Vec::new();
         for result in rdr.deserialize::<LedgerEntry>() {
             ledger_entries.push(result.unwrap());
-        };
-        ledger_entries.sort_by(
-            |x,y| { 
-                (NaiveDate::parse_from_str(&x.date, "%Y-%m-%d").unwrap())
+        }
+        ledger_entries.sort_by(|x, y| {
+            (NaiveDate::parse_from_str(&x.date, "%Y-%m-%d").unwrap())
                 .cmp(&NaiveDate::parse_from_str(&y.date, "%Y-%m-%d").unwrap())
-            }
-        );
+        });
         for rcrd in ledger_entries {
             let ptype = if rcrd.transfer_type == TransferType::WithdrawalToExternalAccount {
                 ParticipantType::Payee
@@ -215,15 +217,26 @@ impl AccountOperations for Wallet {
                 ParticipantType::Payer
             };
             let entry: LedgerInfo = LedgerInfo {
-                date: NaiveDate::parse_from_str( rcrd.date.as_str(),"%Y-%m-%d").unwrap().format("%Y-%m-%d").to_string(),
+                date: NaiveDate::parse_from_str(rcrd.date.as_str(), "%Y-%m-%d")
+                    .unwrap()
+                    .format("%Y-%m-%d")
+                    .to_string(),
                 amount: rcrd.amount,
                 transfer_type: rcrd.transfer_type as TransferType,
-                participant: self
-                    .db
-                    .check_and_add_participant(self.uid, self.id, rcrd.participant, ptype, false),
-                category_id: self.db.check_and_add_category(self.uid, self.id, rcrd.category.to_ascii_uppercase()),
+                participant: self.db.check_and_add_participant(
+                    self.uid,
+                    self.id,
+                    rcrd.participant,
+                    ptype,
+                    false,
+                ),
+                category_id: self.db.check_and_add_category(
+                    self.uid,
+                    self.id,
+                    rcrd.category.to_ascii_uppercase(),
+                ),
                 description: rcrd.description,
-                ancillary_f32data : 0.0
+                ancillary_f32data: 0.0,
             };
             let _lid: u32 = self.db.add_ledger_entry(self.uid, self.id, entry).unwrap();
         }
@@ -231,10 +244,11 @@ impl AccountOperations for Wallet {
 
     fn modify(&self) {
         const MODIFY_OPTIONS: [&'static str; 4] = ["Ledger", "Categories", "People", "None"];
-        let modify_choice = Select::new("\nWhat would you like to modify:", MODIFY_OPTIONS.to_vec())
-        .prompt()
-        .unwrap();
-        match modify_choice { 
+        let modify_choice =
+            Select::new("\nWhat would you like to modify:", MODIFY_OPTIONS.to_vec())
+                .prompt()
+                .unwrap();
+        match modify_choice {
             "Ledger" => {
                 let record_or_none = self.fixed.select_ledger_entry();
                 if record_or_none.is_none() {
@@ -245,7 +259,10 @@ impl AccountOperations for Wallet {
             }
             "Categories" => {
                 let records = self.db.get_categories(self.uid, self.id).unwrap();
-                let mut choices: Vec<String> = records.iter().map(|x| x.category.name.clone()).collect::<Vec<String>>();
+                let mut choices: Vec<String> = records
+                    .iter()
+                    .map(|x| x.category.name.clone())
+                    .collect::<Vec<String>>();
                 choices.push("None".to_string());
                 let chosen_category = Select::new("Select category to modify:", choices)
                     .prompt()
@@ -256,17 +273,29 @@ impl AccountOperations for Wallet {
                 }
 
                 const MODIFY_ACTIONS: [&'static str; 3] = ["Update", "Remove", "None"];
-                let update_or_remove = Select::new("What would you like to do:", MODIFY_ACTIONS.to_vec())
-                    .prompt()
-                    .unwrap();
-                match update_or_remove { 
+                let update_or_remove =
+                    Select::new("What would you like to do:", MODIFY_ACTIONS.to_vec())
+                        .prompt()
+                        .unwrap();
+                match update_or_remove {
                     "Update" => {
-                        let new_name = Text::new("Enter category name:").prompt().unwrap().to_string();
-                        self.db.update_category_name(self.uid, self.id, chosen_category, new_name);
-                     }
+                        let new_name = Text::new("Enter category name:")
+                            .prompt()
+                            .unwrap()
+                            .to_string();
+                        self.db
+                            .update_category_name(self.uid, self.id, chosen_category, new_name);
+                    }
                     "Remove" => {
                         // check if category is referenced by any current ledger
-                        let is_referenced = self.db.check_if_ledger_references_category(self.uid, self.id, chosen_category.clone()).unwrap();
+                        let is_referenced = self
+                            .db
+                            .check_if_ledger_references_category(
+                                self.uid,
+                                self.id,
+                                chosen_category.clone(),
+                            )
+                            .unwrap();
                         if is_referenced.is_some() {
                             let matched_records = is_referenced.unwrap();
                             println!("The following records were found:");
@@ -275,7 +304,9 @@ impl AccountOperations for Wallet {
                                     "{} | {} | {} | {} ",
                                     record.info.date,
                                     chosen_category.clone(),
-                                    self.db.get_participant(self.uid, self.id, record.info.participant).unwrap(),
+                                    self.db
+                                        .get_participant(self.uid, self.id, record.info.participant)
+                                        .unwrap(),
                                     record.info.amount
                                 );
                                 print!("\t{}", v);
@@ -286,8 +317,9 @@ impl AccountOperations for Wallet {
                         // confirm they want to remove
                         let rm_msg = format!("Are you sure you want to delete the category {} (this will also delete found records)?", chosen_category);
                         let delete = Confirm::new(&rm_msg).prompt().unwrap();
-                        if delete { 
-                            self.db.remove_category(self.uid, self.id, chosen_category.clone());
+                        if delete {
+                            self.db
+                                .remove_category(self.uid, self.id, chosen_category.clone());
                         }
                     }
                     "None" => {
@@ -298,25 +330,24 @@ impl AccountOperations for Wallet {
                     }
                 }
             }
-            "People" => { 
+            "People" => {
                 const PTYPE_OPTIONS: [&'static str; 3] = ["Payer", "Payee", "Both"];
-                let selected_ptype = Select::new("What type of person:", PTYPE_OPTIONS.to_vec()).prompt().unwrap();
-                let ptype = match selected_ptype { 
-                    "Payer" => {
-                        ParticipantType::Payer
-                    }
-                    "Payee" => { 
-                        ParticipantType::Payee
-                    }
-                    "Both" => { 
-                        ParticipantType::Both
-                    }
+                let selected_ptype = Select::new("What type of person:", PTYPE_OPTIONS.to_vec())
+                    .prompt()
+                    .unwrap();
+                let ptype = match selected_ptype {
+                    "Payer" => ParticipantType::Payer,
+                    "Payee" => ParticipantType::Payee,
+                    "Both" => ParticipantType::Both,
                     _ => {
                         panic!("Unrecognized input: {}", selected_ptype);
                     }
                 };
                 let participants = self.db.get_participants(self.uid, self.id, ptype).unwrap();
-                let mut people = participants.iter().map(|x| x.participant.name.clone()).collect::<Vec<String>>();
+                let mut people = participants
+                    .iter()
+                    .map(|x| x.participant.name.clone())
+                    .collect::<Vec<String>>();
                 // i think this is needed when "both" is selected, because an entry will be provided for each participant
                 people.sort();
                 people.dedup();
@@ -325,24 +356,44 @@ impl AccountOperations for Wallet {
                 let chosen_person = Select::new("Select person to modify:", people)
                     .prompt()
                     .unwrap();
-                
-                if chosen_person == "None".to_string() { 
+
+                if chosen_person == "None".to_string() {
                     return;
                 }
 
                 const MODIFY_ACTIONS: [&'static str; 3] = ["Update", "Remove", "None"];
-                let update_or_remove = Select::new("What would you like to do:", MODIFY_ACTIONS.to_vec())
-                    .prompt()
-                    .unwrap();
+                let update_or_remove =
+                    Select::new("What would you like to do:", MODIFY_ACTIONS.to_vec())
+                        .prompt()
+                        .unwrap();
 
                 match update_or_remove {
-                    "Update" => { 
-                        let new_name = Text::new("Enter person's name:").prompt().unwrap().to_string();
-                        self.db.update_participant_name(self.uid, self.id, ptype, chosen_person.clone(), new_name).unwrap();
+                    "Update" => {
+                        let new_name = Text::new("Enter person's name:")
+                            .prompt()
+                            .unwrap()
+                            .to_string();
+                        self.db
+                            .update_participant_name(
+                                self.uid,
+                                self.id,
+                                ptype,
+                                chosen_person.clone(),
+                                new_name,
+                            )
+                            .unwrap();
                     }
-                    "Remove" => { 
+                    "Remove" => {
                         // check if participant is referenced by any current ledger
-                        let is_referenced = self.db.check_if_ledger_references_participant(self.uid, self.id,ptype, chosen_person.clone()).unwrap();
+                        let is_referenced = self
+                            .db
+                            .check_if_ledger_references_participant(
+                                self.uid,
+                                self.id,
+                                ptype,
+                                chosen_person.clone(),
+                            )
+                            .unwrap();
                         if is_referenced.is_some() {
                             let matched_records = is_referenced.unwrap();
                             println!("The following records were found:");
@@ -350,7 +401,13 @@ impl AccountOperations for Wallet {
                                 let v = format!(
                                     "{} | {} | {} | {} ",
                                     record.info.date,
-                                    self.db.get_category_name(self.uid, self.id, record.info.category_id).unwrap(),
+                                    self.db
+                                        .get_category_name(
+                                            self.uid,
+                                            self.id,
+                                            record.info.category_id
+                                        )
+                                        .unwrap(),
                                     chosen_person.clone(),
                                     record.info.amount
                                 );
@@ -361,33 +418,61 @@ impl AccountOperations for Wallet {
                         // confirm they want to remove
                         let rm_msg = format!("Are you sure you want to delete the participant {} (this will also delete found records)?", chosen_person);
                         let delete = Confirm::new(&rm_msg).prompt().unwrap();
-                        if delete { 
+                        if delete {
                             match ptype {
                                 ParticipantType::Payee => {
-                                    self.db.remove_participant(self.uid, self.id, ParticipantType::Payee, chosen_person.clone()).unwrap();
+                                    self.db
+                                        .remove_participant(
+                                            self.uid,
+                                            self.id,
+                                            ParticipantType::Payee,
+                                            chosen_person.clone(),
+                                        )
+                                        .unwrap();
                                 }
                                 ParticipantType::Payer => {
-                                    self.db.remove_participant(self.uid, self.id, ParticipantType::Payer, chosen_person.clone()).unwrap();
+                                    self.db
+                                        .remove_participant(
+                                            self.uid,
+                                            self.id,
+                                            ParticipantType::Payer,
+                                            chosen_person.clone(),
+                                        )
+                                        .unwrap();
                                 }
                                 _ => {
-                                    self.db.remove_participant(self.uid, self.id, ParticipantType::Payee, chosen_person.clone()).unwrap();
-                                    self.db.remove_participant(self.uid, self.id, ParticipantType::Payer, chosen_person.clone()).unwrap();
+                                    self.db
+                                        .remove_participant(
+                                            self.uid,
+                                            self.id,
+                                            ParticipantType::Payee,
+                                            chosen_person.clone(),
+                                        )
+                                        .unwrap();
+                                    self.db
+                                        .remove_participant(
+                                            self.uid,
+                                            self.id,
+                                            ParticipantType::Payer,
+                                            chosen_person.clone(),
+                                        )
+                                        .unwrap();
                                 }
                             }
                         }
                     }
-                    "None" => { 
+                    "None" => {
                         return;
                     }
-                    _ => { 
+                    _ => {
                         panic!("Unrecognized input: {}", update_or_remove);
                     }
                 }
             }
-            "None" => { 
+            "None" => {
                 return;
             }
-            _ => { 
+            _ => {
                 panic!("Unrecognized input!")
             }
         }
@@ -408,11 +493,11 @@ impl AccountOperations for Wallet {
                 println!("\tTotal Account Value: {}", value);
             }
             "Simple Growth Rate" => {
-                let (period_start, period_end) = query_user_for_analysis_period();
+                let (period_start, period_end) = query_user_for_analysis_period(self);
                 let rate = self.fixed.simple_rate_of_return(period_start, period_end);
                 println!("\tRate of return: {}%", rate);
             }
-            "None" => { 
+            "None" => {
                 return;
             }
             _ => {
@@ -427,30 +512,62 @@ impl AccountOperations for Wallet {
 
         let cid;
         let pid;
-        let transacting_account_name : String;
+        let transacting_account_name: String;
         let (new_ttype, description) = match entry.info.transfer_type {
             TransferType::DepositFromExternalAccount => {
                 // if the transacting account received a deposit, then self must be the "from" account
                 from_account = self.id;
                 to_account = transacting_account;
-                cid =self.db.check_and_add_category(self.uid,self.id, "Withdrawal".to_ascii_uppercase());
-                transacting_account_name = self.db.get_account_name(self.uid, transacting_account).unwrap();
-                pid =self.db.check_and_add_participant(self.uid, self.id, transacting_account_name.clone(), ParticipantType::Payee, true);
+                cid = self.db.check_and_add_category(
+                    self.uid,
+                    self.id,
+                    "Withdrawal".to_ascii_uppercase(),
+                );
+                transacting_account_name = self
+                    .db
+                    .get_account_name(self.uid, transacting_account)
+                    .unwrap();
+                pid = self.db.check_and_add_participant(
+                    self.uid,
+                    self.id,
+                    transacting_account_name.clone(),
+                    ParticipantType::Payee,
+                    true,
+                );
                 (
                     TransferType::WithdrawalToExternalAccount,
-                    format!("[Link]: Withdrawal of ${} to account {} on {}.", entry.info.amount, transacting_account_name, entry.info.date)
+                    format!(
+                        "[Link]: Withdrawal of ${} to account {} on {}.",
+                        entry.info.amount, transacting_account_name, entry.info.date
+                    ),
                 )
             }
             TransferType::WithdrawalToExternalAccount => {
                 // if the transacting account had an amount withdrawn, then self must be the "to" account
                 from_account = transacting_account;
                 to_account = self.id;
-                cid =self.db.check_and_add_category(self.uid,self.id, "Deposit".to_ascii_uppercase());
-                transacting_account_name = self.db.get_account_name(self.uid, transacting_account).unwrap();
-                pid =self.db.check_and_add_participant(self.uid, self.id, transacting_account_name.clone(), ParticipantType::Payer, true);
+                cid = self.db.check_and_add_category(
+                    self.uid,
+                    self.id,
+                    "Deposit".to_ascii_uppercase(),
+                );
+                transacting_account_name = self
+                    .db
+                    .get_account_name(self.uid, transacting_account)
+                    .unwrap();
+                pid = self.db.check_and_add_participant(
+                    self.uid,
+                    self.id,
+                    transacting_account_name.clone(),
+                    ParticipantType::Payer,
+                    true,
+                );
                 (
                     TransferType::DepositFromExternalAccount,
-                    format!("[Link]: Deposit of ${} from account {} on {}.", entry.info.amount, transacting_account_name, entry.info.date)
+                    format!(
+                        "[Link]: Deposit of ${} from account {} on {}.",
+                        entry.info.amount, transacting_account_name, entry.info.date
+                    ),
                 )
             }
             _ => {
@@ -458,26 +575,32 @@ impl AccountOperations for Wallet {
             }
         };
 
-        let linked_entry = LedgerInfo { 
-            date : entry.info.date,
-            amount : entry.info.amount,
-            transfer_type : new_ttype.clone(), 
-            participant : pid, 
-            category_id: cid, 
-            description : description,
-            ancillary_f32data : 0.0
+        let linked_entry = LedgerInfo {
+            date: entry.info.date,
+            amount: entry.info.amount,
+            transfer_type: new_ttype.clone(),
+            participant: pid,
+            category_id: cid,
+            description: description,
+            ancillary_f32data: 0.0,
         };
 
-        let (from_ledger_id, to_ledger_id) = match new_ttype { 
-            TransferType::WithdrawalToExternalAccount => { (
-                self.db.add_ledger_entry(self.uid, self.id, linked_entry).unwrap(), 
-                entry.id
-            )}
-            TransferType::DepositFromExternalAccount => {(
+        let (from_ledger_id, to_ledger_id) = match new_ttype {
+            TransferType::WithdrawalToExternalAccount => (
+                self.db
+                    .add_ledger_entry(self.uid, self.id, linked_entry)
+                    .unwrap(),
                 entry.id,
-                self.db.add_ledger_entry(self.uid, self.id, linked_entry).unwrap(), 
-            )}
-            _ => { panic!("Unrecognized input!")}
+            ),
+            TransferType::DepositFromExternalAccount => (
+                entry.id,
+                self.db
+                    .add_ledger_entry(self.uid, self.id, linked_entry)
+                    .unwrap(),
+            ),
+            _ => {
+                panic!("Unrecognized input!")
+            }
         };
 
         let transaction_record = AccountTransaction {
@@ -487,19 +610,29 @@ impl AccountOperations for Wallet {
             to_ledger: to_ledger_id,
         };
 
-        return Some(self.db.add_account_transaction(self.uid, transaction_record).unwrap());
+        return Some(
+            self.db
+                .add_account_transaction(self.uid, transaction_record)
+                .unwrap(),
+        );
     }
 }
 
 impl AccountData for Wallet {
     fn get_id(&self) -> u32 {
-        return self.id
+        return self.id;
     }
-    fn get_name(&self) -> String { 
+    fn get_name(&self) -> String {
         return self.db.get_account_name(self.uid, self.id).unwrap();
     }
     fn get_ledger(&self) -> Vec<LedgerRecord> {
         return self.db.get_ledger(self.uid, self.id).unwrap();
+    }
+    fn get_ledger_within_dates(&self, start: NaiveDate, end: NaiveDate) -> Vec<LedgerRecord> {
+        return self
+            .db
+            .get_ledger_entries_within_timestamps(self.uid, self.id, start, end)
+            .unwrap();
     }
     fn get_displayable_ledger(&self) -> Vec<crate::types::ledger::DisplayableLedgerRecord> {
         return self.db.get_displayable_ledger(self.uid, self.id).unwrap();
@@ -511,28 +644,50 @@ impl AccountData for Wallet {
 }
 
 #[cfg(feature = "ratatui_support")]
-impl AccountUI for Wallet { 
-    fn render(&self, frame : &mut Frame, area : Rect, app: &mut App) {
+impl AccountUI for Wallet {
+    fn render(&self, frame: &mut Frame, area: Rect, app: &mut App) {
+        let chunk = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(area);
 
+        let graphs_reports = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(chunk[0]);
+
+        let reports_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(graphs_reports[0]);
+        self.render_ledger_table(frame, chunk[1], app);
     }
 
-    fn render_ledger_table( &self, frame : &mut Frame, area : Rect, app: &mut App) {
-                use ratatui::style::Modifier;
+    fn render_ledger_table(&self, frame: &mut Frame, area: Rect, app: &mut App) {
+        use ratatui::style::Modifier;
 
         let header_style = Style::default()
             .fg(app.ledger_table_colors.header_fg)
             .bg(app.ledger_table_colors.header_bg);
 
-        let selected_row_style = Style::new() 
+        let selected_row_style = Style::new()
             .add_modifier(Modifier::REVERSED)
             .fg(app.ledger_table_colors.selected_row_style_fg);
 
-        let header = ["ID", "Date", "Type", "Amount", "Category", "Peer", "Description"]
-            .into_iter()
-            .map(Cell::from)
-            .collect::<Row>()
-            .style(header_style)
-            .height(1);
+        let header = [
+            "ID",
+            "Date",
+            "Type",
+            "Amount",
+            "Category",
+            "Peer",
+            "Description",
+        ]
+        .into_iter()
+        .map(Cell::from)
+        .collect::<Row>()
+        .style(header_style)
+        .height(1);
 
         let data = self.get_displayable_ledger();
         app.ledger_entries = Some(data.clone());
@@ -542,7 +697,15 @@ impl AccountUI for Wallet {
                 0 => app.ledger_table_colors.normal_row_color,
                 _ => app.ledger_table_colors.alt_row_color,
             };
-            let item = [&record.id.to_string(), &record.info.date, &record.info.transfer_type, &record.info.amount.to_string(), &record.info.category, &record.info.participant.to_string(), &record.info.description];
+            let item = [
+                &record.id.to_string(),
+                &record.info.date,
+                &record.info.transfer_type,
+                &record.info.amount.to_string(),
+                &record.info.category,
+                &record.info.participant.to_string(),
+                &record.info.description,
+            ];
             item.into_iter()
                 .map(|content| Cell::from(ratatuiText::from(format!("\n{content}\n"))))
                 .collect::<Row>()
@@ -553,18 +716,17 @@ impl AccountUI for Wallet {
         let bar: &'static str = " █ ";
         let constraint_lens = ledger_table_constraint_len_calculator(&data);
         let t = Table::new(
-            rows, 
+            rows,
             [
-                Constraint::Length(constraint_lens.0+1),
-                Constraint::Min(constraint_lens.1+1),
-                Constraint::Min(constraint_lens.2+1),
-                Constraint::Min(constraint_lens.3+1),
-                Constraint::Min(constraint_lens.4+1),
-                Constraint::Min(constraint_lens.5+1),
-                Constraint::Min(constraint_lens.6+1),
-
-            ]
-        )        
+                Constraint::Length(constraint_lens.0 + 1),
+                Constraint::Min(constraint_lens.1 + 1),
+                Constraint::Min(constraint_lens.2 + 1),
+                Constraint::Min(constraint_lens.3 + 1),
+                Constraint::Min(constraint_lens.4 + 1),
+                Constraint::Min(constraint_lens.5 + 1),
+                Constraint::Min(constraint_lens.6 + 1),
+            ],
+        )
         .header(header)
         .row_highlight_style(selected_row_style)
         .highlight_symbol(ratatuiText::from(vec![
@@ -578,11 +740,7 @@ impl AccountUI for Wallet {
         frame.render_stateful_widget(t, area, &mut app.ledger_table_state);
     }
 
-    fn render_current_value(&self, frame : &mut Frame, area : Rect, app: &mut App) {
-        
-    }
+    fn render_current_value(&self, frame: &mut Frame, area: Rect, app: &mut App) {}
 }
 
-impl Account for Wallet {
-
-}
+impl Account for Wallet {}

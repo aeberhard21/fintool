@@ -1,23 +1,27 @@
 use ratatui::{
-    buffer::Buffer, 
-    layout::{self, Constraint, Direction, Layout, Rect}, 
-    style::{palette, Color, Style, Stylize}, 
-    text::{Line, Span, Text}, 
-    widgets::{Bar, BarChart, BarGroup, Block, Borders, Clear, List, ListItem, Paragraph, Tabs, Widget, Wrap}, 
-    Frame
+    buffer::Buffer,
+    layout::{self, Constraint, Direction, Layout, Rect},
+    style::{
+        palette::{self, tailwind},
+        Color, Style, Stylize,
+    },
+    text::{Line, Span, Text},
+    widgets::{
+        Bar, BarChart, BarGroup, Block, Borders, Clear, List, ListItem, Paragraph, Tabs, Widget,
+        Wrap,
+    },
+    Frame,
 };
 
-use crate::{accounts::base::Account, app::screen::CurrentlySelecting};
 use super::app::App;
 use super::screen::{CurrentScreen, TabMenu};
 use crate::types::accounts::AccountType;
+use crate::{accounts::base::Account, app::screen::CurrentlySelecting};
 
-pub fn ui(frame :&mut Frame, app: &mut App) {
-
+pub fn ui(frame: &mut Frame, app: &mut App) {
     // Create the layout sections.
-    let chunks = match app.current_screen { 
-        CurrentScreen::Accounts => { 
-            Layout::default()
+    let chunks = match app.current_screen {
+        CurrentScreen::Accounts => Layout::default()
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Length(3),
@@ -26,42 +30,38 @@ pub fn ui(frame :&mut Frame, app: &mut App) {
                 Constraint::Min(1),
                 Constraint::Length(3),
             ])
-            .split(frame.area())
-        }
-        _ => { 
-            Layout::default()
+            .split(frame.area()),
+        _ => Layout::default()
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Length(3),
                 Constraint::Min(1),
-                Constraint::Length(3)
+                Constraint::Length(3),
             ])
-            .split(frame.area())
-        }
+            .split(frame.area()),
     };
 
     let title_block = Block::default()
         .borders(Borders::ALL)
         .style(Style::default());
 
-    let title = Paragraph::new(Text::styled(
-        "FINTOOL",
-        Style::default().fg(Color::Green),
-    ))
-    .block(title_block).centered().bold();
+    let title = Paragraph::new(Text::styled("FINTOOL", Style::default().fg(Color::Green)))
+        .block(title_block)
+        .centered()
+        .bold();
 
     frame.render_widget(title, chunks[0]);
-    
+
     let current_navigation_text = vec![
         // The first half of the text
         match app.current_screen {
             CurrentScreen::Login => Span::styled("Login", Style::default().fg(Color::Cyan)),
             CurrentScreen::Accounts => Span::styled("Accounts", Style::default().fg(Color::White)),
-            CurrentScreen::Main => Span::styled("Main", Style::default().fg(Color::Yellow))
+            CurrentScreen::Main => Span::styled("Main", Style::default().fg(Color::Yellow)),
         }
         .to_owned(),
         // A white divider bar to separate the two sections
-        Span::styled(" | ", Style::default().fg(Color::White))
+        Span::styled(" | ", Style::default().fg(Color::White)),
     ];
 
     let mode_footer = Paragraph::new(Line::from(current_navigation_text))
@@ -83,7 +83,7 @@ pub fn ui(frame :&mut Frame, app: &mut App) {
                     }
                     CurrentlySelecting::Account => { 
                         Span::styled (
-                        "(q) to quit / (⌫) Deselect / (e) Edit Account / (r) Record Entry / (m) Modify Ledger / (i) Import / (j) Advance Row / (k) Retreat Row / (G) Go to Last / (H) Go to First",
+                        "(q) to quit / (⌫) Deselect / (a) Analyze / (e) Edit Account / (r) Record Entry / (m) Modify Ledger / (i) Import / (j) Advance Row / (k) Retreat Row / (G) Go to Last / (H) Go to First",
                         Style::default().fg(Color::LightBlue),
                         )
                     }
@@ -91,8 +91,6 @@ pub fn ui(frame :&mut Frame, app: &mut App) {
             },
             CurrentScreen::Main => Span::styled("(q, Ctrl-c) to quit", Style::default().fg(Color::LightBlue))
         }
-
-
     };
 
     let key_notes_footer =
@@ -101,102 +99,112 @@ pub fn ui(frame :&mut Frame, app: &mut App) {
     let footer_chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(20), Constraint::Percentage(80)])
-        .split(chunks[chunks.len()-1]);
+        .split(chunks[chunks.len() - 1]);
 
     frame.render_widget(mode_footer, footer_chunks[0]);
     frame.render_widget(key_notes_footer, footer_chunks[1]);
 
-    if let CurrentScreen::Login = app.current_screen { 
-        // frame.render_widget(Clear, frame.area());
+    if let CurrentScreen::Login = app.current_screen {
         let popup_block = Block::default()
-            .title("Login")
-            .borders(Borders::NONE)
-            .style(Style::default().bg(Color::DarkGray));
+            .title(" Login ")
+            .borders(Borders::ALL)
+            .style(Style::default().bg(tailwind::EMERALD.c950));
 
         // prompt for user name
         let mut content = "Username: ".to_string();
         content.push_str(&app.key_input.as_str());
-        let username_text = Text::styled(
-            content,
-            Style::default().fg(Color::Red),
-        );
+        let username_text = Text::styled(content, Style::default().fg(tailwind::EMERALD.c50));
 
         let login_paragraph = Paragraph::new(username_text)
             .block(popup_block)
-            .wrap(Wrap {trim : false});
+            .wrap(Wrap { trim: false });
         let area = centered_rect(60, 25, frame.area());
         frame.render_widget(login_paragraph, area);
 
         // display error message when user does not exist
         if app.invalid_input {
-            let error_footer = Paragraph::new(Line::from("Unrecognized user id!"))
-                .block(Block::default().borders(Borders::ALL)
-                .style(Color::Red));
+            let error_footer = Paragraph::new(Line::from("Unrecognized user id!")).block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .style(tailwind::RED.c500),
+            );
             frame.render_widget(error_footer, footer_chunks[0]);
         }
     }
 
     if let CurrentScreen::Accounts = app.current_screen {
-        AccountType::render(frame, chunks[1], app.selected_atype_tab as usize, "Account Types".to_string());
+        AccountType::render(
+            frame,
+            chunks[1],
+            app.selected_atype_tab as usize,
+            " Account Types ".to_string(),
+        );
         if app.accounts_for_type.is_none() {
-                let mut content = "No Accounts found!".to_string();
-                let display_text = Text::styled(
-                    content,
-                    Style::default().fg(Color::Red),
-                );
+            let content = "No Accounts found!".to_string();
+            let display_text = Text::styled(content, Style::default().fg(tailwind::RED.c500));
 
-                let login_paragraph = Paragraph::new(display_text)
-                    .wrap(Wrap {trim : false});
-                let area = centered_rect(60, 25, frame.area());
-                frame.render_widget(login_paragraph, area);
-        } else { 
+            let accounts_paragraph = Paragraph::new(display_text).wrap(Wrap { trim: false });
+            let area = centered_rect(60, 25, frame.area());
+            frame.render_widget(accounts_paragraph, area);
+        } else {
             let accts = app.accounts_for_type.clone().unwrap();
-            if !accts.is_empty() { 
-                if let Some(current_selection) = app.currently_selected { 
-                    match current_selection { 
+            if !accts.is_empty() {
+                if let Some(current_selection) = app.currently_selected {
+                    match current_selection {
                         CurrentlySelecting::AccountTypeTabs => {
-                            render_account_tabs(frame, chunks[2], app.accounts_for_type.clone().unwrap(), app.selected_account_tab, Color::Reset);
-                        },
-                        CurrentlySelecting::AccountTabs => {
-                            render_account_tabs(frame, chunks[2], app.accounts_for_type.clone().unwrap(), app.selected_account_tab, Color::Red)
-                        },
-                        CurrentlySelecting::Account => {
-                            render_account_tabs(frame, chunks[2], app.accounts_for_type.clone().unwrap(), app.selected_account_tab, Color::Green)
+                            render_account_tabs(
+                                frame,
+                                chunks[2],
+                                app.accounts_for_type.clone().unwrap(),
+                                app.selected_account_tab,
+                                Color::Reset,
+                            );
                         }
+                        CurrentlySelecting::AccountTabs => render_account_tabs(
+                            frame,
+                            chunks[2],
+                            app.accounts_for_type.clone().unwrap(),
+                            app.selected_account_tab,
+                            Color::Red,
+                        ),
+                        CurrentlySelecting::Account => render_account_tabs(
+                            frame,
+                            chunks[2],
+                            app.accounts_for_type.clone().unwrap(),
+                            app.selected_account_tab,
+                            Color::Green,
+                        ),
                     }
                 }
                 if let Some(acct) = app.account.take() {
                     acct.render(frame, chunks[3], app);
                     app.account = Some(acct);
-                } else { 
-                    let error_footer = Paragraph::new(Line::from("ERROR: Unable to retrieve account information!"))
-                        .block(Block::default().borders(Borders::ALL)
-                        .style(Color::Red));
+                } else {
+                    let error_footer = Paragraph::new(Line::from(
+                        "ERROR: Unable to retrieve account information!",
+                    ))
+                    .block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .style(tailwind::ROSE.c500),
+                    );
                     frame.render_widget(error_footer, footer_chunks[0]);
                 }
-            } else { 
+            } else {
                 let mut content = "No Accounts found!".to_string();
-                let display_text = Text::styled(
-                    content,
-                    Style::default().fg(Color::Red),
-                );
+                let display_text = Text::styled(content, Style::default().fg(tailwind::RED.c500));
 
-                let login_paragraph = Paragraph::new(display_text)
-                    .wrap(Wrap {trim : false});
+                let login_paragraph = Paragraph::new(display_text).wrap(Wrap { trim: false });
                 let area = centered_rect(60, 25, frame.area());
                 frame.render_widget(login_paragraph, area);
             }
         }
 
-        if app.invalid_input { 
+        if app.invalid_input {
             let mut content = "Account operation invalid!".to_string();
-            let display_text = Text::styled(
-                content,
-                Style::default().fg(Color::Red),
-            );
+            let display_text = Text::styled(content, Style::default().fg(tailwind::RED.c500));
 
-            let login_paragraph = Paragraph::new(display_text)
-                .wrap(Wrap {trim : false});
+            let login_paragraph = Paragraph::new(display_text).wrap(Wrap { trim: false });
             let area = centered_rect(60, 25, frame.area());
             frame.render_widget(login_paragraph, area);
         }
@@ -204,7 +212,7 @@ pub fn ui(frame :&mut Frame, app: &mut App) {
 }
 
 /// helper function to create a centered rect using up certain percentage of the available rect `r`
-fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+pub fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
     // Cut the given rectangle into three vertical pieces
     let popup_layout = Layout::default()
         .direction(Direction::Vertical)
@@ -226,14 +234,18 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
         .split(popup_layout[1])[1] // Return the middle chunk
 }
 
-fn render_account_tabs(frame: &mut Frame, area : Rect, tab_names : Vec<String>, selected_tab : usize, highlight_color : Color) {
-
+fn render_account_tabs(
+    frame: &mut Frame,
+    area: Rect,
+    tab_names: Vec<String>,
+    selected_tab: usize,
+    highlight_color: Color,
+) {
     let atype_tabs = Tabs::new(tab_names.into_iter())
-            .highlight_style(highlight_color)
-            .select(selected_tab)
-            .block(Block::bordered().title("Account Types"))
-            .padding("", "")
-            .divider(" | ");
+        .highlight_style(highlight_color)
+        .select(selected_tab)
+        .block(Block::bordered().title(" Accounts "))
+        .padding("", "")
+        .divider(" | ");
     frame.render_widget(atype_tabs, area);
 }
-

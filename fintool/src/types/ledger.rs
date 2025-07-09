@@ -14,7 +14,7 @@ pub struct LedgerInfo {
     pub participant: u32,
     pub category_id: u32,
     pub description: String,
-    pub ancillary_f32data : f32
+    pub ancillary_f32data: f32,
 }
 
 #[derive(Clone)]
@@ -31,7 +31,7 @@ pub struct DisplayableLedgerInfo {
     pub participant: String,
     pub category: String,
     pub description: String,
-    pub ancillary_f32data : String
+    pub ancillary_f32data: String,
 }
 
 #[derive(Clone, Debug)]
@@ -40,14 +40,14 @@ pub struct DisplayableLedgerRecord {
     pub info: DisplayableLedgerInfo,
 }
 
-// impl DisplayableLedgerRecord { 
+// impl DisplayableLedgerRecord {
 //     fn ref_array(&self) -> Vec::<String> {
 //         vec![self.id.to_string(), self.info.date.clone(), self.info.transfer_type.clone(),  self.info.amount.to_string(), self.info.category.clone(), self.info.participant.clone(), self.info.description.clone()]
 //     }
-//     // fn id(&self) -> &str { 
+//     // fn id(&self) -> &str {
 //     //     format!("{}", &self.id)
 //     // }
-//     // fn 
+//     // fn
 // }
 
 impl DbConn {
@@ -119,8 +119,8 @@ impl DbConn {
 
     pub fn update_ledger_item(
         &self,
-        uid : u32,
-        aid : u32,
+        uid: u32,
+        aid: u32,
         update: LedgerRecord,
     ) -> rusqlite::Result<u32, rusqlite::Error> {
         let p = rusqlite::params![
@@ -147,7 +147,12 @@ impl DbConn {
         Ok(update.id)
     }
 
-    pub fn remove_ledger_item(&self, uid: u32, aid :u32, id: u32) -> rusqlite::Result<u32, rusqlite::Error> {
+    pub fn remove_ledger_item(
+        &self,
+        uid: u32,
+        aid: u32,
+        id: u32,
+    ) -> rusqlite::Result<u32, rusqlite::Error> {
         let p = rusqlite::params![id, uid, aid];
         let sql = "DELETE FROM ledgers WHERE id = ?1 and uid = ?2 and aid = ?3";
         let conn_lock = self.conn.lock().unwrap();
@@ -167,20 +172,27 @@ impl DbConn {
                 println!("Unable to remove ledger item: {}", error);
             }
         }
-        
+
         let p = rusqlite::params![uid, aid];
         let sql = "UPDATE user_account_info SET lid = lid - 1 WHERE uid = ?1 and aid = ?2";
         let rs = conn_lock.execute(sql, p);
         match rs {
             Ok(_usize) => {}
             Err(error) => {
-                println!("Unable to update 'lid' value in 'user_account_info': {}", error);
+                println!(
+                    "Unable to update 'lid' value in 'user_account_info': {}",
+                    error
+                );
             }
         }
         Ok(id)
     }
 
-    pub fn get_ledger(&self, uid: u32, aid: u32) -> rusqlite::Result<Vec<LedgerRecord>, rusqlite::Error> {
+    pub fn get_ledger(
+        &self,
+        uid: u32,
+        aid: u32,
+    ) -> rusqlite::Result<Vec<LedgerRecord>, rusqlite::Error> {
         let p = rusqlite::params![aid, uid];
         let sql = "SELECT id, date, amount, transfer_type, pid, cid, desc, ancillary_f32 FROM ledgers WHERE aid = (?1) and uid = (?2) order by date DESC";
         let conn_lock = self.conn.lock().unwrap();
@@ -200,7 +212,7 @@ impl DbConn {
                                 participant: row.get(4)?,
                                 category_id: row.get(5)?,
                                 description: row.get(6)?,
-                                ancillary_f32data : row.get(7)?,
+                                ancillary_f32data: row.get(7)?,
                             },
                         })
                     })
@@ -218,8 +230,11 @@ impl DbConn {
         }
     }
 
-        
-    pub fn get_displayable_ledger(&self, uid: u32, aid: u32) -> rusqlite::Result<Vec<DisplayableLedgerRecord>, rusqlite::Error> {
+    pub fn get_displayable_ledger(
+        &self,
+        uid: u32,
+        aid: u32,
+    ) -> rusqlite::Result<Vec<DisplayableLedgerRecord>, rusqlite::Error> {
         let p = rusqlite::params![aid, uid];
         let sql = "
             SELECT l.id, l.date, l.amount, l.transfer_type, p.name, c.category, l.desc, l.ancillary_f32 
@@ -245,12 +260,16 @@ impl DbConn {
                             id: row.get::<_, u32>(0)?.to_string(),
                             info: DisplayableLedgerInfo {
                                 date: row.get(1)?,
-                                amount: row.get::<_,f32>(2)?.to_string(),
-                                transfer_type: format!("{}", TransferType::from_repr(row.get::<_, u32>(3)? as usize).unwrap()),
+                                amount: row.get::<_, f32>(2)?.to_string(),
+                                transfer_type: format!(
+                                    "{}",
+                                    TransferType::from_repr(row.get::<_, u32>(3)? as usize)
+                                        .unwrap()
+                                ),
                                 participant: row.get(4)?,
                                 category: row.get(5)?,
                                 description: row.get(6)?,
-                                ancillary_f32data : row.get::<_, f32>(7)?.to_string(),
+                                ancillary_f32data: row.get::<_, f32>(7)?.to_string(),
                             },
                         })
                     })
@@ -268,7 +287,11 @@ impl DbConn {
         }
     }
 
-    pub fn get_full_ledger(&self, uid: u32, aid: u32) -> rusqlite::Result<Vec<LedgerRecord>, rusqlite::Error> {
+    pub fn get_full_ledger(
+        &self,
+        uid: u32,
+        aid: u32,
+    ) -> rusqlite::Result<Vec<LedgerRecord>, rusqlite::Error> {
         let p = rusqlite::params![aid, uid];
         let sql = "SELECT id, date, amount, transfer_type, pid, cid, desc, ancillary_f32 FROM ledgers WHERE aid = (?1) and uid = (?2) order by date DESC";
         let conn_lock = self.conn.lock().unwrap();
@@ -288,7 +311,7 @@ impl DbConn {
                                 participant: row.get(4)?,
                                 category_id: row.get(5)?,
                                 description: row.get(6)?,
-                                ancillary_f32data : row.get(7)?,
+                                ancillary_f32data: row.get(7)?,
                             },
                         })
                     })
@@ -306,8 +329,12 @@ impl DbConn {
         }
     }
 
-
-    pub fn check_if_ledger_references_category(&self, uid: u32, aid: u32, category: String) -> rusqlite::Result<Option<Vec<LedgerRecord>>, rusqlite::Error> {
+    pub fn check_if_ledger_references_category(
+        &self,
+        uid: u32,
+        aid: u32,
+        category: String,
+    ) -> rusqlite::Result<Option<Vec<LedgerRecord>>, rusqlite::Error> {
         let p = rusqlite::params![uid, aid, category];
         let sql = "
             SELECT 
@@ -327,37 +354,41 @@ impl DbConn {
         let mut stmt = conn_lock.prepare(sql)?;
         let exists = stmt.exists(p)?;
         if exists {
-            let matched_record_wrap = stmt.query_map(
-                p, 
-                |row| {
+            let matched_record_wrap = stmt
+                .query_map(p, |row| {
                     Ok(LedgerRecord {
-                        id : row.get(0)?,
-                        info : LedgerInfo { 
+                        id: row.get(0)?,
+                        info: LedgerInfo {
                             date: row.get(1)?,
                             amount: row.get(2)?,
                             transfer_type: TransferType::from(row.get::<_, u32>(3)? as u32),
                             participant: row.get(4)?,
                             category_id: row.get(5)?,
                             description: row.get(6)?,
-                            ancillary_f32data : row.get(7)?,
-                        }
+                            ancillary_f32data: row.get(7)?,
+                        },
                     })
-                }
-            ).unwrap().collect::<Vec<_>>();
+                })
+                .unwrap()
+                .collect::<Vec<_>>();
 
-            let mut records : Vec<LedgerRecord> = Vec::new();
+            let mut records: Vec<LedgerRecord> = Vec::new();
             for wrapped_record in matched_record_wrap {
                 records.push(wrapped_record.unwrap());
             }
 
             return Ok(Some(records));
-
         }
         return Ok(None);
     }
 
-    pub fn check_if_ledger_references_participant(&self, uid: u32, aid: u32, ptype: ParticipantType, name : String) -> rusqlite::Result<Option<Vec<LedgerRecord>>, rusqlite::Error> {
-        
+    pub fn check_if_ledger_references_participant(
+        &self,
+        uid: u32,
+        aid: u32,
+        ptype: ParticipantType,
+        name: String,
+    ) -> rusqlite::Result<Option<Vec<LedgerRecord>>, rusqlite::Error> {
         let (p, sql) = match ptype {
             ParticipantType::Both => {
                 (
@@ -402,35 +433,33 @@ impl DbConn {
         let mut stmt = conn_lock.prepare(sql)?;
         let exists = stmt.exists(p)?;
         if exists {
-            let matched_record_wrap = stmt.query_map(
-                p, 
-                |row| {
+            let matched_record_wrap = stmt
+                .query_map(p, |row| {
                     Ok(LedgerRecord {
-                        id : row.get(0)?,
-                        info : LedgerInfo { 
+                        id: row.get(0)?,
+                        info: LedgerInfo {
                             date: row.get(1)?,
                             amount: row.get(2)?,
                             transfer_type: TransferType::from(row.get::<_, u32>(3)? as u32),
                             participant: row.get(4)?,
                             category_id: row.get(5)?,
                             description: row.get(6)?,
-                            ancillary_f32data : row.get(7)?,
-                        }
+                            ancillary_f32data: row.get(7)?,
+                        },
                     })
-                }
-            ).unwrap().collect::<Vec<_>>();
+                })
+                .unwrap()
+                .collect::<Vec<_>>();
 
-            let mut records : Vec<LedgerRecord> = Vec::new();
+            let mut records: Vec<LedgerRecord> = Vec::new();
             for wrapped_record in matched_record_wrap {
                 records.push(wrapped_record.unwrap());
             }
 
             return Ok(Some(records));
-
         }
         return Ok(None);
     }
-
 
     pub fn get_ledger_entries_within_timestamps(
         &self,
@@ -438,26 +467,34 @@ impl DbConn {
         aid: u32,
         start: NaiveDate,
         end: NaiveDate,
-    ) -> rusqlite::Result<Vec<LedgerInfo>, rusqlite::Error> {
-        let p = rusqlite::params![aid, start.format("%Y-%m-%d").to_string(), end.format("%Y-%m-%d").to_string(), uid];
+    ) -> rusqlite::Result<Vec<LedgerRecord>, rusqlite::Error> {
+        let p = rusqlite::params![
+            aid,
+            start.format("%Y-%m-%d").to_string(),
+            end.format("%Y-%m-%d").to_string(),
+            uid
+        ];
         let sql = "SELECT * FROM ledgers WHERE aid = (?1) and date >= (?2) and date <= (?3) and uid = (?4) ORDER by date ASC";
 
         let conn_lock = self.conn.lock().unwrap();
         let mut stmt = conn_lock.prepare(sql)?;
         let exists = stmt.exists(p)?;
-        let mut entries: Vec<LedgerInfo> = Vec::new();
+        let mut entries: Vec<LedgerRecord> = Vec::new();
         match exists {
             true => {
                 let found_entries = stmt
                     .query_map(p, |row| {
-                        Ok(LedgerInfo {
-                            date: row.get(1)?,
-                            amount: row.get(2)?,
-                            transfer_type: TransferType::from(row.get::<_, u32>(3)? as u32),
-                            participant: row.get(4)?,
-                            category_id: row.get(5)?,
-                            description: row.get(6)?,
-                            ancillary_f32data : row.get(7)?
+                        Ok(LedgerRecord {
+                            id: row.get(0)?,
+                            info: LedgerInfo {
+                                date: row.get(1)?,
+                                amount: row.get(2)?,
+                                transfer_type: TransferType::from(row.get::<_, u32>(3)? as u32),
+                                participant: row.get(4)?,
+                                category_id: row.get(5)?,
+                                description: row.get(6)?,
+                                ancillary_f32data: row.get(7)?,
+                            },
                         })
                     })
                     .unwrap()
@@ -496,7 +533,7 @@ impl DbConn {
 
     pub fn get_cumulative_total_of_ledger_before_date(
         &self,
-        uid : u32,
+        uid: u32,
         aid: u32,
         end: NaiveDate,
     ) -> rusqlite::Result<f32, rusqlite::Error> {
@@ -517,5 +554,4 @@ impl DbConn {
         }
         Ok(sum)
     }
-
 }

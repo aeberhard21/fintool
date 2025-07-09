@@ -110,5 +110,4 @@ impl DbConn {
     fn set_schema_version(conn: &Connection, schema_version: i32) -> rusqlite::Result<()> {
         conn.pragma_update(None, "user_version", schema_version)
     }
-
 }

@@ -52,7 +52,7 @@ fn main() {
     for txn in transactions {
         let cat: String = txn.category.clone();
         let description: String = txn.description.clone();
-        let ancillary_data : f32 = 0.0; 
+        let ancillary_data: f32 = 0.0;
 
         let posted_date = NaiveDate::parse_from_str(&txn.transaction_date, "%m/%d/%Y").unwrap();
 
@@ -62,29 +62,34 @@ fn main() {
             txn.amount
         };
 
-        let (peer, ttype ) = match cat.as_str() {
-            "Awards and Rebate Credits" => { 
+        let x;
+        let mut captured_peer: String;
+        let (peer, ttype) = match cat.as_str() {
+            "Awards and Rebate Credits" => {
                 (
                     // credits from discover
-                    "Discover Financial Services", 
+                    "Discover Financial Services",
                     TransferType::DepositFromInternalAccount,
                 )
             }
-            "Payments and Credits" => { 
-                (
-                    "Checking Account", 
-                    TransferType::DepositFromExternalAccount,
-                )
+            "Payments and Credits" => {
+                ("Checking Account", TransferType::DepositFromExternalAccount)
             }
-            _ => { 
-                let re = Regex::new(r"^(\s*|TST\*|SQ\*)([A-Za-z0-9*#_\-\.\/\'&,]+\s[A-Za-z0-9*#_\-\.\/\'&,]+)").unwrap();
-                let x = re.captures(&txn.description.as_str()).unwrap();
-                if x.get(0).is_none() && x.get(2).is_none() { 
-                    panic!("{} did not produce a valid match for a participant!", txn.description);
+            _ => {
+                let re = Regex::new(
+                    r"^(\s*|TST\*|SQ\*)([A-Za-z0-9*#_\-\.\/\'&,]+\s[A-Za-z0-9*#_\-\.\/\'&,]+)",
+                )
+                .unwrap();
+                x = re.captures(&txn.description.as_str()).unwrap();
+                if x.get(0).is_none() && x.get(2).is_none() {
+                    panic!(
+                        "{} did not produce a valid match for a participant!",
+                        txn.description
+                    );
                 }
-                let peer = x.get(2).unwrap().as_str();
+                captured_peer = format!("\"{}\"", x.get(2).unwrap().as_str()).clone();
                 (
-                    peer, 
+                    captured_peer.as_str(),
                     TransferType::WithdrawalToExternalAccount,
                 )
             }
@@ -102,12 +107,12 @@ fn main() {
             participant: peer.to_string(),
             category: cat,
             description: format!("\"{}\"", description),
-            ancillary_f32 : ancillary_data,
+            ancillary_f32: ancillary_data,
             stock_info: None,
         };
 
         println!(
-            "{},{},{},{},{},{},{},{},{},{},{},{}",
+            "{},{},{},{},{},{},{},{},{},{},{},{},{}",
             ledger_entry.date,
             ledger_entry.amount,
             ledger_entry.transfer_type as u32,
@@ -120,6 +125,7 @@ fn main() {
             "",
             "",
             "",
+            ""
         );
     }
 }

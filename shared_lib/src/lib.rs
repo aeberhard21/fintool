@@ -2,8 +2,8 @@ use serde::de;
 use serde::de::Visitor;
 use serde::Deserialize;
 use serde::Deserializer;
-use strum::{Display, FromRepr, EnumIter};
 use std::fmt;
+use strum::{Display, EnumIter, FromRepr};
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct LedgerEntry {
@@ -14,7 +14,7 @@ pub struct LedgerEntry {
     pub participant: String,
     pub category: String,
     pub description: String,
-    pub ancillary_f32 : f32,
+    pub ancillary_f32: f32,
     pub stock_info: Option<StockInfo>,
 }
 
@@ -37,7 +37,7 @@ pub enum TransferType {
     WithdrawalToInternalAccount,
     #[strum(to_string = "Deposit")]
     DepositFromInternalAccount,
-    ZeroSumChange
+    ZeroSumChange,
 }
 
 impl From<u32> for TransferType {

@@ -1,4 +1,4 @@
-use ratatui::{text::Line, Frame, layout::Rect, style::Color, style::palette::tailwind};
+use ratatui::{layout::Rect, style::palette::tailwind, style::Color, text::Line, Frame};
 use shared_lib::LedgerEntry;
 use strum::FromRepr;
 use unicode_width::UnicodeWidthStr;
@@ -12,33 +12,33 @@ pub const PALETTES: [tailwind::Palette; 4] = [
     tailwind::RED,
 ];
 
-pub enum CurrentScreen { 
+pub enum CurrentScreen {
     Login,
     Main,
-    Accounts
+    Accounts,
 }
 
 #[derive(Debug, Clone, Copy, FromRepr)]
 pub enum CurrentlySelecting {
-    AccountTypeTabs, 
+    AccountTypeTabs,
     AccountTabs,
-    Account
+    Account,
 }
 
-pub trait TabMenu { 
+pub trait TabMenu {
     fn previous(self) -> Self;
     fn next(self) -> Self;
-    fn to_tab_title(value : Self) -> Line<'static>;
-    fn render(frame: &mut Frame, area : Rect, selected_tab : usize, title : String);
+    fn to_tab_title(value: Self) -> Line<'static>;
+    fn render(frame: &mut Frame, area: Rect, selected_tab: usize, title: String);
 }
 
-impl CurrentlySelecting { 
-    pub fn previous(self) -> Self { 
+impl CurrentlySelecting {
+    pub fn previous(self) -> Self {
         let current = self.clone() as usize;
         let prev = current.saturating_sub(1);
         Self::from_repr(prev).unwrap_or(self)
     }
-    pub fn next(self) -> Self { 
+    pub fn next(self) -> Self {
         let current = self.clone() as usize;
         let next = current.saturating_add(1);
         Self::from_repr(next).unwrap_or(self)
@@ -76,14 +76,59 @@ impl LedgerColors {
     }
 }
 
-pub fn ledger_table_constraint_len_calculator(entries: &[DisplayableLedgerRecord]) -> (u16, u16, u16, u16, u16, u16, u16) {
-    let id_len = entries.iter().map(|d| d.id.as_str()).map(UnicodeWidthStr::width).max().unwrap_or(0);
-    let date_len = entries.iter().map(|d| d.info.date.as_str()).map(UnicodeWidthStr::width).max().unwrap_or(0);
-    let amt_len = entries.iter().map(|d| d.info.amount.as_str()).map(UnicodeWidthStr::width).max().unwrap_or(0);
-    let type_len = entries.iter().map(|d| d.info.transfer_type.as_str()).map(UnicodeWidthStr::width).max().unwrap_or(0);
-    let cat_len = entries.iter().map(|d| d.info.category.as_str()).map(UnicodeWidthStr::width).max().unwrap_or(0);
-    let peer_len = entries.iter().map(|d| d.info.participant.as_str()).map(UnicodeWidthStr::width).max().unwrap_or(0);
-    let desc_len = entries.iter().map(|d| d.info.description.as_str()).map(UnicodeWidthStr::width).max().unwrap_or(0);
+pub fn ledger_table_constraint_len_calculator(
+    entries: &[DisplayableLedgerRecord],
+) -> (u16, u16, u16, u16, u16, u16, u16) {
+    let id_len = entries
+        .iter()
+        .map(|d| d.id.as_str())
+        .map(UnicodeWidthStr::width)
+        .max()
+        .unwrap_or(0);
+    let date_len = entries
+        .iter()
+        .map(|d| d.info.date.as_str())
+        .map(UnicodeWidthStr::width)
+        .max()
+        .unwrap_or(0);
+    let amt_len = entries
+        .iter()
+        .map(|d| d.info.amount.as_str())
+        .map(UnicodeWidthStr::width)
+        .max()
+        .unwrap_or(0);
+    let type_len = entries
+        .iter()
+        .map(|d| d.info.transfer_type.as_str())
+        .map(UnicodeWidthStr::width)
+        .max()
+        .unwrap_or(0);
+    let cat_len = entries
+        .iter()
+        .map(|d| d.info.category.as_str())
+        .map(UnicodeWidthStr::width)
+        .max()
+        .unwrap_or(0);
+    let peer_len = entries
+        .iter()
+        .map(|d| d.info.participant.as_str())
+        .map(UnicodeWidthStr::width)
+        .max()
+        .unwrap_or(0);
+    let desc_len = entries
+        .iter()
+        .map(|d| d.info.description.as_str())
+        .map(UnicodeWidthStr::width)
+        .max()
+        .unwrap_or(0);
 
-    (id_len as u16, date_len as u16, type_len as u16, amt_len as u16, cat_len as u16, peer_len as u16, desc_len as u16)
+    (
+        id_len as u16,
+        date_len as u16,
+        type_len as u16,
+        amt_len as u16,
+        cat_len as u16,
+        peer_len as u16,
+        desc_len as u16,
+    )
 }

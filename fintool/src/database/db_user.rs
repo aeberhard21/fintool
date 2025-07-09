@@ -2,8 +2,7 @@ use super::DbConn;
 use rusqlite::{params, Error};
 
 impl DbConn {
-
-    pub fn create_users_id_table(&self) -> rusqlite::Result<()> { 
+    pub fn create_users_id_table(&self) -> rusqlite::Result<()> {
         let sql = "
             CREATE TABLE IF NOT EXISTS user_ids (
             next_user_id INTEGER NOT NULL PRIMARY KEY
@@ -13,10 +12,7 @@ impl DbConn {
         match rs {
             Ok(_) => {}
             Err(error) => {
-                panic!(
-                    "{}",
-                    error
-                );
+                panic!("{}", error);
             }
         }
         let sql: &str = "SELECT * FROM user_ids";
@@ -78,9 +74,8 @@ impl DbConn {
             let conn_lock = self.conn.lock().unwrap();
             let rs = conn_lock.execute(sql, p);
             match rs {
-                Ok(rows_inserted) => { 
-                } 
-                Err(error) =>  { 
+                Ok(rows_inserted) => {}
+                Err(error) => {
                     panic!("Unable to allocate user!");
                 }
             }

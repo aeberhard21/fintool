@@ -97,16 +97,16 @@ fn main() {
 
                     if x.is_some() {
                         let x = x.unwrap();
-                            if x.get(1).unwrap().as_str() == "to" {
-                                ttype = TransferType::WithdrawalToExternalAccount;
-                                cat = "Withdrawal".to_string();
-                            } else if x.get(1).unwrap().as_str() == "from" {
-                                ttype = TransferType::DepositFromExternalAccount;
-                                cat = "Deposit".to_string();
-                            } else {
-                                eprintln!("Unrecognized transfer type: {}", x.get(1).unwrap().as_str());
-                                std::process::exit(1);
-                            }
+                        if x.get(1).unwrap().as_str() == "to" {
+                            ttype = TransferType::WithdrawalToExternalAccount;
+                            cat = "Withdrawal".to_string();
+                        } else if x.get(1).unwrap().as_str() == "from" {
+                            ttype = TransferType::DepositFromExternalAccount;
+                            cat = "Deposit".to_string();
+                        } else {
+                            eprintln!("Unrecognized transfer type: {}", x.get(1).unwrap().as_str());
+                            std::process::exit(1);
+                        }
 
                         peer = x.get(2).unwrap().as_str().to_string();
                     } else {
@@ -267,7 +267,7 @@ fn main() {
             participant: peer,
             category: cat,
             description: format!("\"{}\"", txn.description),
-            ancillary_f32 : 0.0,
+            ancillary_f32: 0.0,
             stock_info: None,
         };
 

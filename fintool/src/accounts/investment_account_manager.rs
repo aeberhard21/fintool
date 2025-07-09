@@ -6,12 +6,15 @@ use inquire::Select;
 use inquire::Text;
 #[cfg(feature = "ratatui_support")]
 use ratatui::{
-    buffer::Buffer, 
-    layout::{self, Constraint, Direction, Layout, Rect}, 
-    style::{palette, Color, Style, Stylize}, 
-    text::{Line, Span, Text as ratatuiText}, 
-    widgets::{Cell, Bar, BarChart, BarGroup, Block, Borders, Clear, List, ListItem, Paragraph, Tabs, Widget, Wrap, Table, Row, HighlightSpacing}, 
-    Frame
+    buffer::Buffer,
+    layout::{self, Constraint, Direction, Layout, Rect},
+    style::{palette, Color, Style, Stylize},
+    text::{Line, Span, Text as ratatuiText},
+    widgets::{
+        Bar, BarChart, BarGroup, Block, Borders, Cell, Clear, HighlightSpacing, List, ListItem,
+        Paragraph, Row, Table, Tabs, Widget, Wrap,
+    },
+    Frame,
 };
 use rustyline::completion::FilenameCompleter;
 use rustyline::highlight::MatchingBracketHighlighter;
@@ -49,12 +52,12 @@ use rustyline::Editor;
 use shared_lib::TransferType;
 
 use super::base::variable_account::VariableAccount;
+use super::base::Account;
 use super::base::AccountCreation;
 use super::base::AccountData;
 use super::base::AccountOperations;
 #[cfg(feature = "ratatui_support")]
 use super::base::AccountUI;
-use super::base::Account;
 
 pub struct InvestmentAccountManager {
     uid: u32,
@@ -77,8 +80,7 @@ struct FilePathHelper {
 }
 
 impl AccountCreation for InvestmentAccountManager {
-    fn create(uid : u32, name: String, _db : &DbConn) -> AccountRecord {
-        
+    fn create(uid: u32, name: String, _db: &DbConn) -> AccountRecord {
         let has_bank = true;
         let has_stocks = true;
         let has_ledger = false;
@@ -95,7 +97,10 @@ impl AccountCreation for InvestmentAccountManager {
 
         let aid = _db.add_account(uid, &account).unwrap();
 
-        return AccountRecord { id : aid, info : account };
+        return AccountRecord {
+            id: aid,
+            info: account,
+        };
     }
 }
 
@@ -141,7 +146,7 @@ impl AccountOperations for InvestmentAccountManager {
                     self.variable.purchase_stock(None, false);
                 }
                 "Sale" => {
-                    self.variable.sell_stock(None,false);
+                    self.variable.sell_stock(None, false);
                 }
                 "Stock Split" => {
                     self.variable.split_stock(None, false);
@@ -178,16 +183,14 @@ impl AccountOperations for InvestmentAccountManager {
             .build();
         let mut rl = Editor::with_config(config).unwrap();
         rl.set_helper(Some(g));
-        
+
         let mut fp = Path::new("~");
         let mut bad_path;
         let mut csv: String = String::new();
-        loop { 
+        loop {
             csv = rl.readline("Enter path to CSV file: ").unwrap();
             bad_path = match Path::new(&csv).try_exists() {
-                Ok(true) => {
-                    false
-                }
+                Ok(true) => false,
                 Ok(false) => {
                     println!("File {} cannot be found!", Path::new(&csv).display());
                     true
@@ -197,16 +200,16 @@ impl AccountOperations for InvestmentAccountManager {
                     true
                 }
             };
-            if !bad_path { break; } 
-            else { 
+            if !bad_path {
+                break;
+            } else {
                 let try_again = Confirm::new("Continue import?").prompt().unwrap();
-                if !try_again { 
+                if !try_again {
                     return;
                 }
             }
         }
         fp = Path::new(&csv);
-
 
         let mut rdr = ReaderBuilder::new()
             .has_headers(false)
@@ -217,15 +220,12 @@ impl AccountOperations for InvestmentAccountManager {
         for result in rdr.deserialize::<LedgerEntry>() {
             ledger_entries.push(result.unwrap());
         }
-        ledger_entries.sort_by(
-            |x,y| { 
-                (NaiveDate::parse_from_str(&x.date, "%Y-%m-%d").unwrap())
+        ledger_entries.sort_by(|x, y| {
+            (NaiveDate::parse_from_str(&x.date, "%Y-%m-%d").unwrap())
                 .cmp(&NaiveDate::parse_from_str(&y.date, "%Y-%m-%d").unwrap())
-            }
-        );
+        });
 
         for entry in ledger_entries {
-
             let ptype = if entry.transfer_type
                 == shared_lib::TransferType::WithdrawalToExternalAccount
             {
@@ -238,17 +238,20 @@ impl AccountOperations for InvestmentAccountManager {
                 ParticipantType::Payer
             };
 
-            let lid : u32;
-            let txn : LedgerInfo;
+            let lid: u32;
+            let txn: LedgerInfo;
             if entry.stock_info.is_some() {
-
-                let s: shared_lib::StockInfo = entry.stock_info.expect("Unable to obtain stock information!");
+                let s: shared_lib::StockInfo = entry
+                    .stock_info
+                    .expect("Unable to obtain stock information!");
 
                 if s.is_buy {
                     if s.is_split {
                         // if split, check that we own this symbol
                         let symbols_owned = self.db.get_stock_tickers(self.uid, self.id).unwrap();
-                        let symbol_found = symbols_owned.iter().any(|i| *i == entry.participant.clone());
+                        let symbol_found = symbols_owned
+                            .iter()
+                            .any(|i| *i == entry.participant.clone());
                         if !symbol_found {
                             panic!("Attempting to register split of symbol not owned by account!");
                         }
@@ -257,58 +260,85 @@ impl AccountOperations for InvestmentAccountManager {
                             date: entry.date,
                             amount: entry.amount,
                             transfer_type: entry.transfer_type as TransferType,
-                            participant: self
-                                .db
-                                .check_and_add_participant(self.uid, self.id, entry.participant.clone(), ptype, false),
-                            category_id: self.db.check_and_add_category(self.uid, self.id, entry.category.to_ascii_uppercase()),
+                            participant: self.db.check_and_add_participant(
+                                self.uid,
+                                self.id,
+                                entry.participant.clone(),
+                                ptype,
+                                false,
+                            ),
+                            category_id: self.db.check_and_add_category(
+                                self.uid,
+                                self.id,
+                                entry.category.to_ascii_uppercase(),
+                            ),
                             description: entry.description,
-                            ancillary_f32data : entry.ancillary_f32
+                            ancillary_f32data: entry.ancillary_f32,
                         };
 
-                        lid = self.db.add_ledger_entry(self.uid, self.id, txn.clone()).unwrap();
+                        lid = self
+                            .db
+                            .add_ledger_entry(self.uid, self.id, txn.clone())
+                            .unwrap();
 
                         // get total shares for ticker and divide by split
-                        let stocks_owned =
-                            self.db.get_stocks(self.uid, self.id, entry.participant.clone()).unwrap();
+                        let stocks_owned = self
+                            .db
+                            .get_stocks(self.uid, self.id, entry.participant.clone())
+                            .unwrap();
                         let all_shares: f32 = stocks_owned.iter().map(|x| x.info.remaining).sum();
                         // lpl takes the split and adds the difference to your account
                         // i.e., if the split is 3:1, it will take your 1 part and add 2 parts
-                        let split_factor = (s.shares + all_shares)/ all_shares;
-                        let stock_split_id = self.db
+                        let split_factor = (s.shares + all_shares) / all_shares;
+                        let stock_split_id = self
+                            .db
                             .add_stock_split(self.uid, self.id, split_factor.clone(), lid)
                             .unwrap();
 
-                        let stock_split_record = StockSplitRecord { 
-                            id : stock_split_id, 
-                            info : StockSplitInfo { 
-                                split : split_factor,
-                                ledger_id : lid
+                        let stock_split_record = StockSplitRecord {
+                            id: stock_split_id,
+                            info: StockSplitInfo {
+                                split: split_factor,
+                                ledger_id: lid,
                             },
-                            txn_opt : Some(txn)
+                            txn_opt: Some(txn),
                         };
 
                         self.variable.allocate_stock_split(stock_split_record);
                     } else {
                         // if buy, confirm it is a valid ticker
-                        let ticker_valid = self.variable.confirm_valid_ticker(entry.participant.clone());
-                        if ticker_valid == false { 
+                        let ticker_valid = self
+                            .variable
+                            .confirm_valid_ticker(entry.participant.clone());
+                        if ticker_valid == false {
                             panic!("Stock symbol invalid!");
                         }
 
                         txn = LedgerInfo {
-                            date: NaiveDate::parse_from_str(entry.date.as_str(), "%Y-%m-%d").unwrap().format("%Y-%m-%d").to_string(),
+                            date: NaiveDate::parse_from_str(entry.date.as_str(), "%Y-%m-%d")
+                                .unwrap()
+                                .format("%Y-%m-%d")
+                                .to_string(),
                             amount: entry.amount,
                             transfer_type: entry.transfer_type as TransferType,
-                            participant: self
-                                .db
-                                .check_and_add_participant(self.uid,self.id, entry.participant.clone(), ptype, false),
-                            category_id: self.db.check_and_add_category(self.uid, self.id, entry.category.to_ascii_uppercase()),
+                            participant: self.db.check_and_add_participant(
+                                self.uid,
+                                self.id,
+                                entry.participant.clone(),
+                                ptype,
+                                false,
+                            ),
+                            category_id: self.db.check_and_add_category(
+                                self.uid,
+                                self.id,
+                                entry.category.to_ascii_uppercase(),
+                            ),
                             description: entry.description,
-                            ancillary_f32data : entry.ancillary_f32
+                            ancillary_f32data: entry.ancillary_f32,
                         };
 
                         lid = self.db.add_ledger_entry(self.uid, self.id, txn).unwrap();
-                        
+
                         let my_s: crate::types::investments::StockInfo = StockInfo {
                             shares: s.shares,
                             costbasis: s.costbasis,
@@ -321,7 +351,9 @@ impl AccountOperations for InvestmentAccountManager {
                 } else {
                     // if sale, check that we own this symbol
                     let symbols_owned = self.db.get_stock_tickers(self.uid, self.id).unwrap();
-                    let symbol_found = symbols_owned.iter().any(|i| *i == entry.participant.clone());
+                    let symbol_found = symbols_owned
+                        .iter()
+                        .any(|i| *i == entry.participant.clone());
                     if !symbol_found {
                         panic!("Attempting to register sale of symbol not owned by account!");
                     }
@@ -330,15 +362,26 @@ impl AccountOperations for InvestmentAccountManager {
                         date: entry.date,
                         amount: entry.amount,
                         transfer_type: entry.transfer_type as TransferType,
-                        participant: self
-                            .db
-                            .check_and_add_participant(self.uid, self.id, entry.participant.clone(), ptype, false),
-                        category_id: self.db.check_and_add_category(self.uid, self.id, entry.category.to_ascii_uppercase()),
+                        participant: self.db.check_and_add_participant(
+                            self.uid,
+                            self.id,
+                            entry.participant.clone(),
+                            ptype,
+                            false,
+                        ),
+                        category_id: self.db.check_and_add_category(
+                            self.uid,
+                            self.id,
+                            entry.category.to_ascii_uppercase(),
+                        ),
                         description: entry.description,
-                        ancillary_f32data : entry.ancillary_f32
+                        ancillary_f32data: entry.ancillary_f32,
                     };
 
-                    lid = self.db.add_ledger_entry(self.uid, self.id, txn.clone()).unwrap();
+                    lid = self
+                        .db
+                        .add_ledger_entry(self.uid, self.id, txn.clone())
+                        .unwrap();
 
                     let my_s: crate::types::investments::StockInfo = StockInfo {
                         shares: s.shares,
@@ -346,23 +389,44 @@ impl AccountOperations for InvestmentAccountManager {
                         remaining: s.remaining,
                         ledger_id: lid,
                     };
-                    let sale_id = self.db.add_stock_sale(self.uid,self.id, my_s.clone()).unwrap();
-                    self.variable.allocate_sale_stock(StockRecord { id : sale_id, info : my_s, txn_opt : Some(txn) }, "LIFO".to_string());
+                    let sale_id = self
+                        .db
+                        .add_stock_sale(self.uid, self.id, my_s.clone())
+                        .unwrap();
+                    self.variable.allocate_sale_stock(
+                        StockRecord {
+                            id: sale_id,
+                            info: my_s,
+                            txn_opt: Some(txn),
+                        },
+                        "LIFO".to_string(),
+                    );
                 }
             } else {
                 // this is just a normal ledger transaction
                 let txn: LedgerInfo = LedgerInfo {
-                    date: NaiveDate::parse_from_str(entry.date.as_str(), "%Y-%m-%d").unwrap().format("%Y-%m-%d").to_string(),
+                    date: NaiveDate::parse_from_str(entry.date.as_str(), "%Y-%m-%d")
+                        .unwrap()
+                        .format("%Y-%m-%d")
+                        .to_string(),
                     amount: entry.amount,
                     transfer_type: entry.transfer_type as TransferType,
-                    participant: self
-                        .db
-                        .check_and_add_participant(self.uid, self.id, entry.participant, ptype, false),
-                    category_id: self.db.check_and_add_category(self.uid, self.id, entry.category.to_ascii_uppercase()),
+                    participant: self.db.check_and_add_participant(
+                        self.uid,
+                        self.id,
+                        entry.participant,
+                        ptype,
+                        false,
+                    ),
+                    category_id: self.db.check_and_add_category(
+                        self.uid,
+                        self.id,
+                        entry.category.to_ascii_uppercase(),
+                    ),
                     description: entry.description,
-                    ancillary_f32data : entry.ancillary_f32
+                    ancillary_f32data: entry.ancillary_f32,
                 };
-    
+
                 lid = self.db.add_ledger_entry(self.uid, self.id, txn).unwrap();
             }
         }
@@ -370,10 +434,11 @@ impl AccountOperations for InvestmentAccountManager {
 
     fn modify(&self) {
         const MODIFY_OPTIONS: [&'static str; 4] = ["Ledger", "Categories", "Participant", "None"];
-        let modify_choice = Select::new("\nWhat would you like to modify:", MODIFY_OPTIONS.to_vec())
-        .prompt()
-        .unwrap();
-        match modify_choice { 
+        let modify_choice =
+            Select::new("\nWhat would you like to modify:", MODIFY_OPTIONS.to_vec())
+                .prompt()
+                .unwrap();
+        match modify_choice {
             "Ledger" => {
                 let record_or_none = self.variable.fixed.select_ledger_entry();
                 if record_or_none.is_none() {
@@ -384,7 +449,10 @@ impl AccountOperations for InvestmentAccountManager {
             }
             "Categories" => {
                 let records = self.db.get_categories(self.uid, self.id).unwrap();
-                let mut choices: Vec<String> = records.iter().map(|x| x.category.name.clone()).collect::<Vec<String>>();
+                let mut choices: Vec<String> = records
+                    .iter()
+                    .map(|x| x.category.name.clone())
+                    .collect::<Vec<String>>();
                 choices.push("None".to_string());
                 let chosen_category = Select::new("Select category to modify:", choices)
                     .prompt()
@@ -395,17 +463,29 @@ impl AccountOperations for InvestmentAccountManager {
                 }
 
                 const MODIFY_ACTIONS: [&'static str; 3] = ["Update", "Remove", "None"];
-                let update_or_remove = Select::new("What would you like to do:", MODIFY_ACTIONS.to_vec())
-                    .prompt()
-                    .unwrap();
-                match update_or_remove { 
+                let update_or_remove =
+                    Select::new("What would you like to do:", MODIFY_ACTIONS.to_vec())
+                        .prompt()
+                        .unwrap();
+                match update_or_remove {
                     "Update" => {
-                        let new_name = Text::new("Enter category name:").prompt().unwrap().to_string();
-                        self.db.update_category_name(self.uid, self.id, chosen_category, new_name);
-                     }
+                        let new_name = Text::new("Enter category name:")
+                            .prompt()
+                            .unwrap()
+                            .to_string();
+                        self.db
+                            .update_category_name(self.uid, self.id, chosen_category, new_name);
+                    }
                     "Remove" => {
                         // check if category is referenced by any current ledger
-                        let is_referenced = self.db.check_if_ledger_references_category(self.uid, self.id, chosen_category.clone()).unwrap();
+                        let is_referenced = self
+                            .db
+                            .check_if_ledger_references_category(
+                                self.uid,
+                                self.id,
+                                chosen_category.clone(),
+                            )
+                            .unwrap();
                         if is_referenced.is_some() {
                             let matched_records = is_referenced.unwrap();
                             println!("The following records were found:");
@@ -414,7 +494,9 @@ impl AccountOperations for InvestmentAccountManager {
                                     "{} | {} | {} | {} ",
                                     record.info.date,
                                     chosen_category.clone(),
-                                    self.db.get_participant(self.uid, self.id, record.info.participant).unwrap(),
+                                    self.db
+                                        .get_participant(self.uid, self.id, record.info.participant)
+                                        .unwrap(),
                                     record.info.amount
                                 );
                                 print!("\t{}", v);
@@ -425,8 +507,9 @@ impl AccountOperations for InvestmentAccountManager {
                         // confirm they want to remove
                         let rm_msg = format!("Are you sure you want to delete the category {} (this will also delete found records)?", chosen_category);
                         let delete = Confirm::new(&rm_msg).prompt().unwrap();
-                        if delete { 
-                            self.db.remove_category(self.uid, self.id, chosen_category.clone());
+                        if delete {
+                            self.db
+                                .remove_category(self.uid, self.id, chosen_category.clone());
                         }
                     }
                     "None" => {
@@ -437,25 +520,24 @@ impl AccountOperations for InvestmentAccountManager {
                     }
                 }
             }
-            "Participant" => { 
+            "Participant" => {
                 const PTYPE_OPTIONS: [&'static str; 3] = ["Payer", "Payee", "Both"];
-                let selected_ptype = Select::new("What type of person:", PTYPE_OPTIONS.to_vec()).prompt().unwrap();
-                let ptype = match selected_ptype { 
-                    "Payer" => {
-                        ParticipantType::Payer
-                    }
-                    "Payee" => { 
-                        ParticipantType::Payee
-                    }
-                    "Both" => { 
-                        ParticipantType::Both
-                    }
+                let selected_ptype = Select::new("What type of person:", PTYPE_OPTIONS.to_vec())
+                    .prompt()
+                    .unwrap();
+                let ptype = match selected_ptype {
+                    "Payer" => ParticipantType::Payer,
+                    "Payee" => ParticipantType::Payee,
+                    "Both" => ParticipantType::Both,
                     _ => {
                         panic!("Unrecognized input: {}", selected_ptype);
                     }
                 };
                 let participants = self.db.get_participants(self.uid, self.id, ptype).unwrap();
-                let mut people = participants.iter().map(|x| x.participant.name.clone()).collect::<Vec<String>>();
+                let mut people = participants
+                    .iter()
+                    .map(|x| x.participant.name.clone())
+                    .collect::<Vec<String>>();
                 // i think this is needed when "both" is selected, because an entry will be provided for each participant
                 people.sort();
                 people.dedup();
@@ -464,24 +546,44 @@ impl AccountOperations for InvestmentAccountManager {
                 let chosen_person = Select::new("Select person to modify:", people)
                     .prompt()
                     .unwrap();
-                
-                if chosen_person == "None".to_string() { 
+
+                if chosen_person == "None".to_string() {
                     return;
                 }
 
                 const MODIFY_ACTIONS: [&'static str; 3] = ["Update", "Remove", "None"];
-                let update_or_remove = Select::new("What would you like to do:", MODIFY_ACTIONS.to_vec())
-                    .prompt()
-                    .unwrap();
+                let update_or_remove =
+                    Select::new("What would you like to do:", MODIFY_ACTIONS.to_vec())
+                        .prompt()
+                        .unwrap();
 
                 match update_or_remove {
-                    "Update" => { 
-                        let new_name = Text::new("Enter person's name:").prompt().unwrap().to_string();
-                        self.db.update_participant_name(self.uid, self.id, ptype, chosen_person.clone(), new_name).unwrap();
+                    "Update" => {
+                        let new_name = Text::new("Enter person's name:")
+                            .prompt()
+                            .unwrap()
+                            .to_string();
+                        self.db
+                            .update_participant_name(
+                                self.uid,
+                                self.id,
+                                ptype,
+                                chosen_person.clone(),
+                                new_name,
+                            )
+                            .unwrap();
                     }
-                    "Remove" => { 
+                    "Remove" => {
                         // check if participant is referenced by any current ledger
-                        let is_referenced = self.db.check_if_ledger_references_participant(self.uid, self.id,ptype, chosen_person.clone()).unwrap();
+                        let is_referenced = self
+                            .db
+                            .check_if_ledger_references_participant(
+                                self.uid,
+                                self.id,
+                                ptype,
+                                chosen_person.clone(),
+                            )
+                            .unwrap();
                         if is_referenced.is_some() {
                             let matched_records = is_referenced.unwrap();
                             println!("The following records were found:");
@@ -489,7 +591,13 @@ impl AccountOperations for InvestmentAccountManager {
                                 let v = format!(
                                     "{} | {} | {} | {} ",
                                     record.info.date,
-                                    self.db.get_category_name(self.uid, self.id, record.info.category_id).unwrap(),
+                                    self.db
+                                        .get_category_name(
+                                            self.uid,
+                                            self.id,
+                                            record.info.category_id
+                                        )
+                                        .unwrap(),
                                     chosen_person.clone(),
                                     record.info.amount
                                 );
@@ -500,33 +608,61 @@ impl AccountOperations for InvestmentAccountManager {
                         // confirm they want to remove
                         let rm_msg = format!("Are you sure you want to delete the participant {} (this will also delete found records)?", chosen_person);
                         let delete = Confirm::new(&rm_msg).prompt().unwrap();
-                        if delete { 
+                        if delete {
                             match ptype {
                                 ParticipantType::Payee => {
-                                    self.db.remove_participant(self.uid, self.id, ParticipantType::Payee, chosen_person.clone()).unwrap();
+                                    self.db
+                                        .remove_participant(
+                                            self.uid,
+                                            self.id,
+                                            ParticipantType::Payee,
+                                            chosen_person.clone(),
+                                        )
+                                        .unwrap();
                                 }
                                 ParticipantType::Payer => {
-                                    self.db.remove_participant(self.uid, self.id, ParticipantType::Payer, chosen_person.clone()).unwrap();
+                                    self.db
+                                        .remove_participant(
+                                            self.uid,
+                                            self.id,
+                                            ParticipantType::Payer,
+                                            chosen_person.clone(),
+                                        )
+                                        .unwrap();
                                 }
                                 _ => {
-                                    self.db.remove_participant(self.uid, self.id, ParticipantType::Payee, chosen_person.clone()).unwrap();
-                                    self.db.remove_participant(self.uid, self.id, ParticipantType::Payer, chosen_person.clone()).unwrap();
+                                    self.db
+                                        .remove_participant(
+                                            self.uid,
+                                            self.id,
+                                            ParticipantType::Payee,
+                                            chosen_person.clone(),
+                                        )
+                                        .unwrap();
+                                    self.db
+                                        .remove_participant(
+                                            self.uid,
+                                            self.id,
+                                            ParticipantType::Payer,
+                                            chosen_person.clone(),
+                                        )
+                                        .unwrap();
                                 }
                             }
                         }
                     }
-                    "None" => { 
+                    "None" => {
                         return;
                     }
-                    _ => { 
+                    _ => {
                         panic!("Unrecognized input: {}", update_or_remove);
                     }
                 }
             }
-            "None" => { 
+            "None" => {
                 return;
             }
-            _ => { 
+            _ => {
                 panic!("Unrecognized input!")
             }
         }
@@ -535,22 +671,26 @@ impl AccountOperations for InvestmentAccountManager {
     fn export(&self) {}
 
     fn report(&self) {
-        const REPORT_OPTIONS: [&'static str; 4] =
-            ["Positions", "Total Value", "Time-Weighted Rate of Return", "None"];
+        const REPORT_OPTIONS: [&'static str; 4] = [
+            "Positions",
+            "Total Value",
+            "Time-Weighted Rate of Return",
+            "None",
+        ];
         let choice = Select::new("What would you like to report: ", REPORT_OPTIONS.to_vec())
             .prompt()
             .unwrap()
             .to_string();
         match choice.as_str() {
-            "Positions" => { 
+            "Positions" => {
                 let positions_wrapped = self.variable.get_positions();
                 if positions_wrapped.is_some() {
                     let positions = positions_wrapped.unwrap();
                     println!("\nPositions:");
-                    for position in positions { 
+                    for position in positions {
                         println!("\t{} | {}", position.0, position.1);
                     }
-                } else { 
+                } else {
                     println!("\nNo positions found!");
                 }
             }
@@ -570,7 +710,7 @@ impl AccountOperations for InvestmentAccountManager {
                 );
             }
             "Time-Weighted Rate of Return" => {
-                let (period_start, period_end) = query_user_for_analysis_period();
+                let (period_start, period_end) = query_user_for_analysis_period(self);
                 let twr = self.variable.time_weighted_return(period_start, period_end);
                 println!("\tRate of return: {}%", twr);
             }
@@ -589,30 +729,62 @@ impl AccountOperations for InvestmentAccountManager {
 
         let cid;
         let pid;
-        let transacting_account_name : String;
+        let transacting_account_name: String;
         let (new_ttype, description) = match entry.info.transfer_type {
             TransferType::DepositFromExternalAccount => {
                 // if the transacting account received a deposit, then self must be the "from" account
                 from_account = self.id;
                 to_account = transacting_account;
-                cid =self.db.check_and_add_category(self.uid,self.id, "Withdrawal".to_ascii_uppercase());
-                transacting_account_name = self.db.get_account_name(self.uid, transacting_account).unwrap();
-                pid =self.db.check_and_add_participant(self.uid, self.id, transacting_account_name.clone(), ParticipantType::Payee, true);
+                cid = self.db.check_and_add_category(
+                    self.uid,
+                    self.id,
+                    "Withdrawal".to_ascii_uppercase(),
+                );
+                transacting_account_name = self
+                    .db
+                    .get_account_name(self.uid, transacting_account)
+                    .unwrap();
+                pid = self.db.check_and_add_participant(
+                    self.uid,
+                    self.id,
+                    transacting_account_name.clone(),
+                    ParticipantType::Payee,
+                    true,
+                );
                 (
                     TransferType::WithdrawalToExternalAccount,
-                    format!("[Link]: Withdrawal of ${} to account {} on {}.", entry.info.amount, transacting_account_name, entry.info.date)
+                    format!(
+                        "[Link]: Withdrawal of ${} to account {} on {}.",
+                        entry.info.amount, transacting_account_name, entry.info.date
+                    ),
                 )
             }
             TransferType::WithdrawalToExternalAccount => {
                 // if the transacting account had an amount withdrawn, then self must be the "to" account
                 from_account = transacting_account;
                 to_account = self.id;
-                cid =self.db.check_and_add_category(self.uid,self.id, "Deposit".to_ascii_uppercase());
-                transacting_account_name = self.db.get_account_name(self.uid, transacting_account).unwrap();
-                pid =self.db.check_and_add_participant(self.uid, self.id, transacting_account_name.clone(), ParticipantType::Payer, true);
+                cid = self.db.check_and_add_category(
+                    self.uid,
+                    self.id,
+                    "Deposit".to_ascii_uppercase(),
+                );
+                transacting_account_name = self
+                    .db
+                    .get_account_name(self.uid, transacting_account)
+                    .unwrap();
+                pid = self.db.check_and_add_participant(
+                    self.uid,
+                    self.id,
+                    transacting_account_name.clone(),
+                    ParticipantType::Payer,
+                    true,
+                );
                 (
                     TransferType::DepositFromExternalAccount,
-                    format!("[Link]: Deposit of ${} from account {} on {}.", entry.info.amount, transacting_account_name, entry.info.date)
+                    format!(
+                        "[Link]: Deposit of ${} from account {} on {}.",
+                        entry.info.amount, transacting_account_name, entry.info.date
+                    ),
                 )
             }
             _ => {
@@ -620,26 +792,32 @@ impl AccountOperations for InvestmentAccountManager {
             }
         };
 
-        let linked_entry = LedgerInfo { 
-            date : entry.info.date,
-            amount : entry.info.amount,
-            transfer_type : new_ttype.clone(), 
-            participant : pid, 
-            category_id: cid, 
-            description : description,
-            ancillary_f32data : 0.0
+        let linked_entry = LedgerInfo {
+            date: entry.info.date,
+            amount: entry.info.amount,
+            transfer_type: new_ttype.clone(),
+            participant: pid,
+            category_id: cid,
+            description: description,
+            ancillary_f32data: 0.0,
         };
 
-        let (from_ledger_id, to_ledger_id) = match new_ttype { 
-            TransferType::WithdrawalToExternalAccount => { (
-                self.db.add_ledger_entry(self.uid, self.id, linked_entry).unwrap(), 
-                entry.id
-            )}
-            TransferType::DepositFromExternalAccount => {(
+        let (from_ledger_id, to_ledger_id) = match new_ttype {
+            TransferType::WithdrawalToExternalAccount => (
+                self.db
+                    .add_ledger_entry(self.uid, self.id, linked_entry)
+                    .unwrap(),
                 entry.id,
-                self.db.add_ledger_entry(self.uid, self.id, linked_entry).unwrap(), 
-            )}
-            _ => { panic!("Unrecognized input!")}
+            ),
+            TransferType::DepositFromExternalAccount => (
+                entry.id,
+                self.db
+                    .add_ledger_entry(self.uid, self.id, linked_entry)
+                    .unwrap(),
+            ),
+            _ => {
+                panic!("Unrecognized input!")
+            }
         };
 
         let transaction_record = AccountTransaction {
@@ -649,19 +827,29 @@ impl AccountOperations for InvestmentAccountManager {
             to_ledger: to_ledger_id,
         };
 
-        return Some(self.db.add_account_transaction(self.uid, transaction_record).unwrap());
+        return Some(
+            self.db
+                .add_account_transaction(self.uid, transaction_record)
+                .unwrap(),
+        );
     }
 }
 
 impl AccountData for InvestmentAccountManager {
     fn get_id(&self) -> u32 {
-        return self.id
+        return self.id;
     }
-    fn get_name(&self) -> String { 
+    fn get_name(&self) -> String {
         return self.db.get_account_name(self.uid, self.id).unwrap();
     }
     fn get_ledger(&self) -> Vec<LedgerRecord> {
         return self.db.get_ledger(self.uid, self.id).unwrap();
+    }
+    fn get_ledger_within_dates(&self, start: NaiveDate, end: NaiveDate) -> Vec<LedgerRecord> {
+        return self
+            .db
+            .get_ledger_entries_within_timestamps(self.uid, self.id, start, end)
+            .unwrap();
     }
     fn get_displayable_ledger(&self) -> Vec<crate::types::ledger::DisplayableLedgerRecord> {
         return self.db.get_displayable_ledger(self.uid, self.id).unwrap();
@@ -672,28 +860,50 @@ impl AccountData for InvestmentAccountManager {
 }
 
 #[cfg(feature = "ratatui_support")]
-impl AccountUI for InvestmentAccountManager  { 
-    fn render(&self, frame : &mut Frame, area : Rect, app: &mut App) {
+impl AccountUI for InvestmentAccountManager {
+    fn render(&self, frame: &mut Frame, area: Rect, app: &mut App) {
+        let chunk = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(area);
 
+        let graphs_reports = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(chunk[0]);
+
+        let reports_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(graphs_reports[0]);
+        self.render_ledger_table(frame, chunk[1], app);
     }
 
-    fn render_ledger_table( &self, frame : &mut Frame, area : Rect, app: &mut App) {
-                use ratatui::style::Modifier;
+    fn render_ledger_table(&self, frame: &mut Frame, area: Rect, app: &mut App) {
+        use ratatui::style::Modifier;
 
         let header_style = Style::default()
             .fg(app.ledger_table_colors.header_fg)
             .bg(app.ledger_table_colors.header_bg);
 
-        let selected_row_style = Style::new() 
+        let selected_row_style = Style::new()
             .add_modifier(Modifier::REVERSED)
             .fg(app.ledger_table_colors.selected_row_style_fg);
 
-        let header = ["ID", "Date", "Type", "Amount", "Category", "Peer", "Description"]
-            .into_iter()
-            .map(Cell::from)
-            .collect::<Row>()
-            .style(header_style)
-            .height(1);
+        let header = [
+            "ID",
+            "Date",
+            "Type",
+            "Amount",
+            "Category",
+            "Peer",
+            "Description",
+        ]
+        .into_iter()
+        .map(Cell::from)
+        .collect::<Row>()
+        .style(header_style)
+        .height(1);
 
         let data = self.get_displayable_ledger();
         app.ledger_entries = Some(data.clone());
@@ -703,7 +913,15 @@ impl AccountUI for InvestmentAccountManager  {
                 0 => app.ledger_table_colors.normal_row_color,
                 _ => app.ledger_table_colors.alt_row_color,
             };
-            let item = [&record.id.to_string(), &record.info.date, &record.info.transfer_type, &record.info.amount.to_string(), &record.info.category, &record.info.participant.to_string(), &record.info.description];
+            let item = [
+                &record.id.to_string(),
+                &record.info.date,
+                &record.info.transfer_type,
+                &record.info.amount.to_string(),
+                &record.info.category,
+                &record.info.participant.to_string(),
+                &record.info.description,
+            ];
             item.into_iter()
                 .map(|content| Cell::from(ratatuiText::from(format!("\n{content}\n"))))
                 .collect::<Row>()
@@ -714,18 +932,17 @@ impl AccountUI for InvestmentAccountManager  {
         let bar: &'static str = " █ ";
         let constraint_lens = ledger_table_constraint_len_calculator(&data);
         let t = Table::new(
-            rows, 
+            rows,
             [
-                Constraint::Length(constraint_lens.0+1),
-                Constraint::Min(constraint_lens.1+1),
-                Constraint::Min(constraint_lens.2+1),
-                Constraint::Min(constraint_lens.3+1),
-                Constraint::Min(constraint_lens.4+1),
-                Constraint::Min(constraint_lens.5+1),
-                Constraint::Min(constraint_lens.6+1),
-
-            ]
-        )        
+                Constraint::Length(constraint_lens.0 + 1),
+                Constraint::Min(constraint_lens.1 + 1),
+                Constraint::Min(constraint_lens.2 + 1),
+                Constraint::Min(constraint_lens.3 + 1),
+                Constraint::Min(constraint_lens.4 + 1),
+                Constraint::Min(constraint_lens.5 + 1),
+                Constraint::Min(constraint_lens.6 + 1),
+            ],
+        )
         .header(header)
         .row_highlight_style(selected_row_style)
         .highlight_symbol(ratatuiText::from(vec![
@@ -739,10 +956,7 @@ impl AccountUI for InvestmentAccountManager  {
         frame.render_stateful_widget(t, area, &mut app.ledger_table_state);
     }
 
-    fn render_current_value(&self, frame : &mut Frame, area : Rect, app: &mut App) {
-        
-    }
+    fn render_current_value(&self, frame: &mut Frame, area: Rect, app: &mut App) {}
 }
-
 
 impl Account for InvestmentAccountManager {}

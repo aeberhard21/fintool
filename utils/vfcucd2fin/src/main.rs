@@ -23,7 +23,7 @@ pub struct VfcuCertificateOfDepositRecord {
     #[serde(rename = "Credit")]
     pub credit: Option<f32>,
     #[serde(rename = "Status")]
-    pub status: String
+    pub status: String,
 }
 
 fn main() {
@@ -82,27 +82,27 @@ fn main() {
 
         let re = Regex::new(r"Deposit\s+(Transfer|[A-Za-z0-9.]+)").unwrap();
         let x = re.captures(&txn.description.as_str());
-        if x.is_some() { 
+        if x.is_some() {
             let x = x.unwrap();
-            if x.get(1).is_none() { 
+            if x.get(1).is_none() {
                 panic!("No match for deposit type!");
             }
             let deposit_type = x.get(1).unwrap().as_str().to_string();
             if deposit_type == "Transfer" {
                 let deposit_re = Regex::new(r"Deposit\s+Transfer\s+From\s+([A-Za-z0-9]+)").unwrap();
                 let x = deposit_re.captures(&txn.description.as_str());
-                if x.is_none() { 
+                if x.is_none() {
                     panic!("No match for peer of transfer!");
                 }
                 peer = x.unwrap().get(1).unwrap().as_str().to_string();
                 cat = "Deposit".to_string();
                 ttype = TransferType::DepositFromExternalAccount;
-            } else { 
+            } else {
                 cat = "Dividend".to_string();
                 ttype = TransferType::DepositFromInternalAccount;
                 peer = "Visions Federal Credit Union".to_string();
             }
-        } else { 
+        } else {
             // assume this is a withdrawal if deposit did not match
             cat = "Withdrawal".to_string();
             ttype = TransferType::WithdrawalToExternalAccount;
@@ -122,7 +122,7 @@ fn main() {
             participant: peer,
             category: cat,
             description: format!("\"{}\"", txn.description),
-            ancillary_f32 : 0.0,
+            ancillary_f32: 0.0,
             stock_info: None,
         };
 
