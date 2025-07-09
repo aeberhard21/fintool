@@ -23,7 +23,7 @@ pub struct VfcuCreditCardRecord {
     #[serde(rename = "Credit")]
     pub credit: Option<f32>,
     #[serde(rename = "Status")]
-    pub status: String
+    pub status: String,
 }
 
 fn main() {
@@ -79,38 +79,42 @@ fn main() {
         let mut ttype: TransferType = TransferType::WithdrawalToInternalAccount;
         let mut peer = String::new();
         let mut cat = String::new();
-        
+
         let re_loan = Regex::new(r"^Loan Advance Credit Card[\sA-Za-z]*\/(\s*|FSP*|TST\*|SQ\*)([A-Za-z0-9*#_\-\.\/\'&,]+\s[A-Za-z0-9*#_\-\.\/\'&,]+)").unwrap();
         let x = re_loan.captures(&txn.description.as_str());
         if x.is_some() {
             let x: regex::Captures<'_> = x.unwrap();
             if x.get(0).is_some() {
-                if x.get(2).is_none() { 
+                if x.get(2).is_none() {
                     panic!("Peer not found for loan!");
                 }
                 peer = x.get(2).unwrap().as_str().to_string();
                 cat = "Charge".to_string();
                 ttype = TransferType::WithdrawalToExternalAccount;
-            } else { 
+            } else {
                 panic!("Loan not recognized: {}", txn.description);
             }
         } else {
-            let re_payment = Regex::new(r"Payments\s+Transfer\s+\-\s+From\s+([A-Za-z0-9\s]+)\/").unwrap();
+            let re_payment =
+                Regex::new(r"Payments\s+Transfer\s+\-\s+From\s+([A-Za-z0-9\s]+)\/").unwrap();
             let x = re_payment.captures(&txn.description.as_str());
             if x.is_some() {
                 let x = x.unwrap();
                 if x.get(0).is_some() {
-                    if x.get(1).is_none() { 
+                    if x.get(1).is_none() {
                         panic!("Peer not found for payment!");
                     }
                     peer = x.get(1).unwrap().as_str().to_string();
                     cat = "Payment".to_string();
                     ttype = TransferType::DepositFromExternalAccount;
-                } else { 
-                    panic!("Payment not recognized: {}",txn.description);
+                } else {
+                    panic!("Payment not recognized: {}", txn.description);
                 }
-            } else { 
-                panic!("Statment could not be matched for charge or payment: {}", txn.description);
+            } else {
+                panic!(
+                    "Statment could not be matched for charge or payment: {}",
+                    txn.description
+                );
             }
         }
 
@@ -127,7 +131,7 @@ fn main() {
             participant: peer,
             category: cat,
             description: format!("\"{}\"", txn.description),
-            ancillary_f32 : 0.0,
+            ancillary_f32: 0.0,
             stock_info: None,
         };
 
