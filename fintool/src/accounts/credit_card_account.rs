@@ -12,7 +12,7 @@ use ratatui::{
     symbols::{self, Marker},
     text::{Line, Span, Text as ratatuiText},
     widgets::{
-        Axis, Bar, BarChart, BarGroup, Block, Borders, Cell, Chart, Clear, Dataset, GraphType,
+        Axis, Bar, BarChart, BarGroup, Block, Borders, canvas::{Canvas, Circle, Line as CanvasLine}, Cell, Chart, Clear, Dataset, GraphType,
         HighlightSpacing, List, ListItem, Paragraph, Row, Table, Tabs, Widget, Wrap,
     },
     Frame,
@@ -43,7 +43,7 @@ use crate::app::app::App;
 use crate::app::screen::ledger_table_constraint_len_calculator;
 use crate::database::DbConn;
 use crate::tui::query_user_for_analysis_period;
-use crate::{tui::get_analysis_period_dates, types::credit_card::CreditCardExpense};
+use crate::{tui::get_analysis_period_dates, types::ledger::Expenditure};
 use crate::types::accounts::AccountInfo;
 use crate::types::accounts::AccountRecord;
 use crate::types::accounts::AccountTransaction;
@@ -570,7 +570,7 @@ impl AccountOperations for CreditCardAccount {
                 let expenses_wrapped = self
                     .charge
                     .db
-                    .get_credit_expenditures_between_dates(self.uid, self.id, start, end)
+                    .get_expenditures_between_dates(self.uid, self.id, start, end)
                     .unwrap();
                 if expenses_wrapped.is_some() {
                     let mut expenses = expenses_wrapped.unwrap();
@@ -946,7 +946,7 @@ impl CreditCardAccount {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .title("Statement Due Date Countdown")
+                    .title("Remaining Credit")
                     .title_alignment(layout::Alignment::Center),
             )
             .bg(tailwind::SLATE.c900);
@@ -956,12 +956,12 @@ impl CreditCardAccount {
 
     fn render_spend_chart(&self, frame: &mut Frame, area: Rect, app: &App) {
         let (start, end) = get_analysis_period_dates(self, app.analysis_period.clone());
-        if let Some(mut entries ) = self.charge.db.get_credit_expenditures_between_dates(self.uid, self.id, start, end).unwrap() { 
+        if let Some(mut entries ) = self.charge.db.get_expenditures_between_dates(self.uid, self.id, start, end).unwrap() { 
             entries.sort_by(|x, y| { (x.amount).partial_cmp(&y.amount).unwrap_or(std::cmp::Ordering::Equal) });
-            let grouped_others : Option<CreditCardExpense> = if entries.len() > 10 {
-                let misc = entries.drain(10..entries.len()-1).collect::<Vec<CreditCardExpense>>();
+            let grouped_others : Option<Expenditure> = if entries.len() > 10 {
+                let misc = entries.drain(10..entries.len()-1).collect::<Vec<Expenditure>>();
                 let amount = misc.into_iter().map(|x| x.amount).sum();
-                Some(CreditCardExpense { category : "Misc".to_string(), amount : amount })
+                Some(Expenditure { category : "Misc".to_string(), amount : amount })
             } else { 
                 None
             };

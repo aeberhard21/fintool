@@ -8,11 +8,12 @@ use inquire::Text;
 use ratatui::{
     buffer::Buffer,
     layout::{self, Constraint, Direction, Layout, Rect},
-    style::{palette, Color, Style, Stylize},
+    style::{palette, palette::tailwind, Color, Modifier, Style, Stylize},
+    symbols::{self, Marker},
     text::{Line, Span, Text as ratatuiText},
     widgets::{
-        Bar, BarChart, BarGroup, Block, Borders, Cell, Clear, HighlightSpacing, List, ListItem,
-        Paragraph, Row, Table, Tabs, Widget, Wrap,
+        Axis, Bar, BarChart, BarGroup, Block, Borders, Cell, Chart, Clear, Dataset, GraphType,
+        HighlightSpacing, List, ListItem, Paragraph, Row, Table, Tabs, Widget, Wrap,
     },
     Frame,
 };
@@ -36,6 +37,7 @@ use crate::app::app::App;
 use crate::app::screen::ledger_table_constraint_len_calculator;
 use crate::database::DbConn;
 use crate::tui::query_user_for_analysis_period;
+use crate::tui::get_analysis_period_dates;
 use crate::types::accounts::AccountInfo;
 use crate::types::accounts::AccountRecord;
 use crate::types::accounts::AccountTransaction;
@@ -860,6 +862,35 @@ impl AccountData for InvestmentAccountManager {
 }
 
 #[cfg(feature = "ratatui_support")]
+impl InvestmentAccountManager {
+    fn render_growth_chart(&self, frame: &mut Frame, area: Rect, app: &mut App) {
+        let (start, end) = get_analysis_period_dates(self, app.analysis_period.clone());
+        let entries = self.get_ledger_within_dates(start, end);
+        if !entries.is_empty() { 
+            // let x = 
+        } else { 
+            let value = ratatuiText::styled(
+                "No data to display!",
+                Style::default().fg(tailwind::ROSE.c400).bold(),
+            );
+
+            let display = Paragraph::new(value)
+                .centered()
+                .alignment(layout::Alignment::Center)
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title("Current Balance")
+                        .title_alignment(layout::Alignment::Center),
+                )
+                .bg(tailwind::SLATE.c900);
+
+            frame.render_widget(display, area);
+        }
+    }
+}
+
+#[cfg(feature = "ratatui_support")]
 impl AccountUI for InvestmentAccountManager {
     fn render(&self, frame: &mut Frame, area: Rect, app: &mut App) {
         let chunk = Layout::default()
@@ -955,8 +986,6 @@ impl AccountUI for InvestmentAccountManager {
         .highlight_spacing(HighlightSpacing::Always);
         frame.render_stateful_widget(t, area, &mut app.ledger_table_state);
     }
-
-    fn render_current_value(&self, frame: &mut Frame, area: Rect, app: &mut App) {}
 }
 
 impl Account for InvestmentAccountManager {}

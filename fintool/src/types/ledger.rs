@@ -40,6 +40,12 @@ pub struct DisplayableLedgerRecord {
     pub info: DisplayableLedgerInfo,
 }
 
+#[derive(Debug, Clone)]
+pub struct Expenditure {
+    pub category: String,
+    pub amount: f32,
+}
+
 // impl DisplayableLedgerRecord {
 //     fn ref_array(&self) -> Vec::<String> {
 //         vec![self.id.to_string(), self.info.date.clone(), self.info.transfer_type.clone(),  self.info.amount.to_string(), self.info.category.clone(), self.info.participant.clone(), self.info.description.clone()]
@@ -536,7 +542,7 @@ impl DbConn {
         uid: u32,
         aid: u32,
         end: NaiveDate,
-    ) -> rusqlite::Result<f32, rusqlite::Error> {
+    ) -> rusqlite::Result<Option<f32>, rusqlite::Error> {
         let p = rusqlite::params![aid, end.format("%Y-%m-%d").to_string(), uid];
         let mut sum: f32 = 0.0;
         let sql = "SELECT COALESCE(SUM(CASE
@@ -547,11 +553,118 @@ impl DbConn {
 
         let conn_lock = self.conn.lock().unwrap();
         let mut stmt = conn_lock.prepare(sql)?;
-        if stmt.exists(p)? {
-            sum = stmt.query_row(p, |row| row.get(0))?;
-        } else {
-            panic!("Not found!");
+        let exists = stmt.exists(p)?; 
+        match exists { 
+            true => {
+                sum = stmt.query_row(p, |row| row.get(0))?;
+                return Ok(Some(sum));
+            }
+            false => { 
+                return Ok(None);
+            }
         }
-        Ok(sum)
+    }
+
+    pub fn get_expenditures_between_dates(
+        &self,
+        uid: u32,
+        aid: u32,
+        start_date : NaiveDate, 
+        end_date : NaiveDate
+    ) -> Result<Option<Vec<Expenditure>>, rusqlite::Error> {
+        let p = rusqlite::params![uid, aid, start_date.to_string(), end_date.to_string()];
+        let sql = "
+            SELECT 
+                c.category, SUM(l.amount)
+            FROM ledgers AS l 
+            INNER JOIN categories AS C ON 
+                l.cid = c.id and
+                l.aid = c.aid and
+                l.uid = c.uid
+            WHERE 
+                (l.transfer_type = 0 OR l.transfer_type = 2) AND
+                l.date >= (?3) and l.date <= (?4) AND
+                l.uid = (?1) AND
+                l.aid = (?2)
+            GROUP BY
+                c.category;
+        ";
+
+        let conn_lock = self.conn.lock().unwrap();
+        let mut stmt = conn_lock.prepare(sql)?;
+        let exists = stmt.exists(p)?;
+        let mut cumulative_expenses: Vec<Expenditure> = Vec::new();
+        match exists {
+            true => {
+                stmt = conn_lock.prepare(sql)?;
+                let rows = stmt
+                    .query_map(p, |row| {
+                        Ok(Expenditure {
+                            category: row.get(0)?,
+                            amount: row.get(1)?,
+                        })
+                    })
+                    .unwrap()
+                    .collect::<Vec<_>>();
+
+                for row in rows {
+                    cumulative_expenses.push(row.unwrap());
+                }
+                return Ok(Some(cumulative_expenses));
+            }
+            false => {
+                return Ok(None);
+            }
+        }
+    }
+
+    pub fn get_expenditures(
+        &self,
+        uid: u32,
+        aid: u32,
+    ) -> Result<Option<Vec<Expenditure>>, rusqlite::Error> {
+        let p = rusqlite::params![uid, aid];
+        let sql = "
+            SELECT 
+                c.category, SUM(l.amount)
+            FROM ledgers AS l 
+            INNER JOIN categories AS C ON 
+                l.cid = c.id and
+                l.aid = c.aid and
+                l.uid = c.uid
+            WHERE 
+                (l.transfer_type = 0 OR l.transfer_type = 2) AND
+                l.uid = (?1) AND
+                l.aid = (?2)
+            GROUP BY
+                c.category;
+        ";
+
+        let conn_lock = self.conn.lock().unwrap();
+        let mut stmt = conn_lock.prepare(sql)?;
+        let exists = stmt.exists(p)?;
+        let mut cumulative_expenses: Vec<Expenditure> = Vec::new();
+        match exists {
+            true => {
+                stmt = conn_lock.prepare(sql)?;
+                let rows = stmt
+                    .query_map(p, |row| {
+                        Ok(Expenditure {
+                            category: row.get(0)?,
+                            amount: row.get(1)?,
+                        })
+                    })
+                    .unwrap()
+                    .collect::<Vec<_>>();
+
+                for row in rows {
+                    cumulative_expenses.push(row.unwrap());
+                }
+                return Ok(Some(cumulative_expenses));
+            }
+            false => {
+                return Ok(None);
+            }
+        }
     }
 }

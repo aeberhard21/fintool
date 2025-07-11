@@ -8,11 +8,12 @@ use inquire::Text;
 use ratatui::{
     buffer::Buffer,
     layout::{self, Constraint, Direction, Layout, Rect},
-    style::{palette, Color, Style, Stylize},
+    style::{palette, palette::tailwind, Color, Modifier, Style, Stylize},
+    symbols::{self, Marker},
     text::{Line, Span, Text as ratatuiText},
     widgets::{
-        Bar, BarChart, BarGroup, Block, Borders, Cell, Clear, HighlightSpacing, List, ListItem,
-        Paragraph, Row, Table, Tabs, Widget, Wrap,
+        Axis, Bar, BarChart, BarGroup, Block, Borders, Cell, Chart, Clear, Dataset, GraphType,
+        HighlightSpacing, List, ListItem, Paragraph, Row, Table, Tabs, Widget, Wrap,
     },
     Frame,
 };
@@ -41,6 +42,7 @@ use crate::app::app::App;
 use crate::app::screen::ledger_table_constraint_len_calculator;
 use crate::database::DbConn;
 use crate::tui::query_user_for_analysis_period;
+use crate::tui::get_analysis_period_dates;
 use crate::types::accounts::AccountInfo;
 use crate::types::accounts::AccountRecord;
 use crate::types::accounts::AccountTransaction;
@@ -58,6 +60,8 @@ use super::base::AccountData;
 use super::base::AccountOperations;
 #[cfg(feature = "ratatui_support")]
 use super::base::AccountUI;
+use crate::accounts::float_range;
+use crate::types::ledger::Expenditure;
 
 pub struct Wallet {
     uid: u32,
@@ -99,7 +103,7 @@ impl AccountCreation for Wallet {
         let has_budget = false;
 
         let account: AccountInfo = AccountInfo {
-            atype: AccountType::Bank,
+            atype: AccountType::Wallet,
             name: name,
             has_stocks: has_stocks,
             has_bank: has_bank,
@@ -643,6 +647,81 @@ impl AccountData for Wallet {
     }
 }
 
+#[cfg (feature = "ratatui_support")]
+impl Wallet { 
+    fn render_spend_chart(&self, frame: &mut Frame, area: Rect, app: &App) {
+        let (start, end) = get_analysis_period_dates(self, app.analysis_period.clone());
+        if let Some(mut entries)= self.db.get_expenditures_between_dates(self.uid, self.id, start, end).unwrap() {
+            entries.sort_by(|x, y| { (x.amount).partial_cmp(&y.amount).unwrap_or(std::cmp::Ordering::Equal) });
+            let grouped_others : Option<Expenditure> = if entries.len() > 10 {
+                let misc = entries.drain(10..entries.len()-1).collect::<Vec<Expenditure>>();
+                let amount = misc.into_iter().map(|x| x.amount).sum();
+                Some(Expenditure { category : "Misc".to_string(), amount : amount })
+            } else { 
+                None
+            };
+
+            let mut data : Vec<(f64, f64)> = entries.iter().enumerate().map(|x| { ((x.0 as f64 / (entries.len()-1) as f64) * 100. as f64, x.1.amount as f64)}).collect::<Vec<(f64, f64)>>();
+            data.sort_by(|x,y| { (x.1).partial_cmp(&y.1).unwrap_or(std::cmp::Ordering::Equal) });
+            if grouped_others.is_some() { 
+                let grouped = grouped_others.unwrap();
+                data.push((1. + 1. / entries.len() as f64, grouped.amount as f64));
+            }
+
+            let max_amount = entries[entries.len()-1].amount;
+            let max_range = (max_amount) as f64;
+            let dataset = Dataset::default()
+                .marker(symbols::Marker::HalfBlock)
+                .style(Style::new().fg(tailwind::EMERALD.c500))
+                .graph_type(GraphType::Bar)
+                .data(&data);
+
+            let chart = Chart::new(vec![dataset])
+                .block(Block::bordered().title_top(Line::from("Spend Analyzer").cyan().bold().centered()))
+                .style(Style::new().bg(tailwind::SLATE.c900))
+                .x_axis(
+                    Axis::default()
+                        .style(Style::default().gray())
+                        .bounds([0., 100.])
+                        .labels(entries.iter().map(|x| { x.category.clone().drain(0..(if (x.category.len() > 10) { 10} else {x.category.len()})).collect::<String>() } ).collect::<Vec<String>>())
+                        .labels_alignment(layout::Alignment::Right)
+                )
+                .y_axis(
+                    Axis::default()
+                        .style(Style::default().gray())
+                        .bounds([0.0, max_range])
+                        .labels(
+                            float_range(0., max_range, (max_range) / 5.0)
+                                .into_iter()
+                                .map(|x| format!("{:.2}", x)),
+                        ),
+                )
+                .hidden_legend_constraints((Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)));
+            frame.render_widget(chart, area);
+        } else { 
+
+            let value = ratatuiText::styled(
+                "No data to display!",
+                Style::default().fg(tailwind::ROSE.c400).bold(),
+            );
+
+            let display = Paragraph::new(value)
+                .centered()
+                .alignment(layout::Alignment::Center)
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title("Current Balance")
+                        .title_alignment(layout::Alignment::Center),
+                )
+                .bg(tailwind::SLATE.c900);
+
+            frame.render_widget(display, area);
+        }
+    }
+
+}
+
 #[cfg(feature = "ratatui_support")]
 impl AccountUI for Wallet {
     fn render(&self, frame: &mut Frame, area: Rect, app: &mut App) {
@@ -653,14 +732,19 @@ impl AccountUI for Wallet {
 
         let graphs_reports = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .constraints([Constraint::Percentage(33), Constraint::Percentage(67)])
             .split(chunk[0]);
+        let report_area = graphs_reports[0];
+        let chart_area = graphs_reports[1];
 
-        let reports_chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(graphs_reports[0]);
+        // let reports_chunks = Layout::default()
+        //     .direction(Direction::Vertical)
+        //     .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        //     .split(graphs_reports[0]);
+
+        self.render_current_value(frame, report_area, app);
         self.render_ledger_table(frame, chunk[1], app);
+        self.render_spend_chart(frame, chart_area, app);
     }
 
     fn render_ledger_table(&self, frame: &mut Frame, area: Rect, app: &mut App) {
@@ -740,7 +824,7 @@ impl AccountUI for Wallet {
         frame.render_stateful_widget(t, area, &mut app.ledger_table_state);
     }
 
-    fn render_current_value(&self, frame: &mut Frame, area: Rect, app: &mut App) {}
+    // fn render_current_value(&self, frame: &mut Frame, area: Rect, app: &mut App) {}
 }
 
 impl Account for Wallet {}

@@ -21,12 +21,6 @@ pub struct CreditCardInfo {
     pub statement_due_date: u32,
 }
 
-#[derive(Debug, Clone)]
-pub struct CreditCardExpense {
-    pub category: String,
-    pub amount: f32,
-}
-
 impl DbConn {
     pub fn create_credit_card_accounts_table(&self) -> Result<()> {
         let sql: &str = "CREATE TABLE IF NOT EXISTS credit_cards ( 
@@ -129,106 +123,4 @@ impl DbConn {
         }
     }
 
-    pub fn get_credit_expenditures_between_dates(
-        &self,
-        uid: u32,
-        aid: u32,
-        start_date : NaiveDate, 
-        end_date : NaiveDate
-    ) -> Result<Option<Vec<CreditCardExpense>>, rusqlite::Error> {
-        let p = rusqlite::params![uid, aid, start_date.to_string(), end_date.to_string()];
-        let sql = "
-            SELECT 
-                c.category, SUM(l.amount)
-            FROM ledgers AS l 
-            INNER JOIN categories AS C ON 
-                l.cid = c.id and
-                l.aid = c.aid and
-                l.uid = c.uid
-            WHERE 
-                (l.transfer_type = 0 OR l.transfer_type = 2) AND
-                l.date >= (?3) and l.date <= (?4) AND
-                l.uid = (?1) AND
-                l.aid = (?2)
-            GROUP BY
-                c.category;
-        ";
-
-        let conn_lock = self.conn.lock().unwrap();
-        let mut stmt = conn_lock.prepare(sql)?;
-        let exists = stmt.exists(p)?;
-        let mut cumulative_expenses: Vec<CreditCardExpense> = Vec::new();
-        match exists {
-            true => {
-                stmt = conn_lock.prepare(sql)?;
-                let rows = stmt
-                    .query_map(p, |row| {
-                        Ok(CreditCardExpense {
-                            category: row.get(0)?,
-                            amount: row.get(1)?,
-                        })
-                    })
-                    .unwrap()
-                    .collect::<Vec<_>>();
-
-                for row in rows {
-                    cumulative_expenses.push(row.unwrap());
-                }
-                return Ok(Some(cumulative_expenses));
-            }
-            false => {
-                return Ok(None);
-            }
-        }
-    }
-
-        pub fn get_credit_expenditures(
-        &self,
-        uid: u32,
-        aid: u32,
-    ) -> Result<Option<Vec<CreditCardExpense>>, rusqlite::Error> {
-        let p = rusqlite::params![uid, aid];
-        let sql = "
-            SELECT 
-                c.category, SUM(l.amount)
-            FROM ledgers AS l 
-            INNER JOIN categories AS C ON 
-                l.cid = c.id and
-                l.aid = c.aid and
-                l.uid = c.uid
-            WHERE 
-                (l.transfer_type = 0 OR l.transfer_type = 2) AND
-                l.uid = (?1) AND
-                l.aid = (?2)
-            GROUP BY
-                c.category;
-        ";
-
-        let conn_lock = self.conn.lock().unwrap();
-        let mut stmt = conn_lock.prepare(sql)?;
-        let exists = stmt.exists(p)?;
-        let mut cumulative_expenses: Vec<CreditCardExpense> = Vec::new();
-        match exists {
-            true => {
-                stmt = conn_lock.prepare(sql)?;
-                let rows = stmt
-                    .query_map(p, |row| {
-                        Ok(CreditCardExpense {
-                            category: row.get(0)?,
-                            amount: row.get(1)?,
-                        })
-                    })
-                    .unwrap()
-                    .collect::<Vec<_>>();
-
-                for row in rows {
-                    cumulative_expenses.push(row.unwrap());
-                }
-                return Ok(Some(cumulative_expenses));
-            }
-            false => {
-                return Ok(None);
-            }
-        }
-    }
 }

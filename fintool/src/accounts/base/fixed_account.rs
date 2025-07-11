@@ -782,28 +782,52 @@ impl FixedAccount {
 
     pub fn simple_rate_of_return(&self, start_date: NaiveDate, end_date: NaiveDate) -> f32 {
         let mut rate: f32 = 0.0;
-        let starting_amount = self
+        let starting_amount;
+        let ending_amount;
+        let starting_amount_opt = self
             .db
             .get_cumulative_total_of_ledger_before_date(self.uid, self.id, start_date)
             .unwrap();
-        let ending_amount: f32 = self
+        if starting_amount_opt.is_some() { 
+            starting_amount = starting_amount_opt.unwrap();
+        } else { 
+            return f32::NAN;
+        }
+        let ending_amount_opt = self
             .db
             .get_cumulative_total_of_ledger_before_date(self.uid, self.id, end_date)
             .unwrap();
+        if ending_amount_opt.is_some() { 
+            ending_amount = ending_amount_opt.unwrap();
+        } else { 
+            return f32::NAN;
+        }
         rate = (ending_amount - starting_amount) / (starting_amount);
         return rate;
     }
 
     pub fn compound_annual_growth_rate(&self, start_date: NaiveDate, end_date: NaiveDate) -> f32 {
         let mut rate: f32 = 0.0;
-        let starting_amount: f32 = self
+        let starting_amount;
+        let ending_amount;
+        let starting_amount_opt = self
             .db
             .get_cumulative_total_of_ledger_before_date(self.uid, self.id, start_date)
             .unwrap();
-        let ending_amount: f32 = self
+        if starting_amount_opt.is_some() { 
+            starting_amount = starting_amount_opt.unwrap();
+        } else { 
+            return f32::NAN;
+        }
+        let ending_amount_opt = self
             .db
             .get_cumulative_total_of_ledger_before_date(self.uid, self.id, end_date)
             .unwrap();
+        if ending_amount_opt.is_some() { 
+            ending_amount = ending_amount_opt.unwrap();
+        } else { 
+            return f32::NAN;
+        }
         let date_diff: i32 = end_date.num_days_from_ce() - start_date.num_days_from_ce();
         let year_diff: f32 = date_diff as f32 / 365.0;
 

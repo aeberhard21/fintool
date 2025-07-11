@@ -1,5 +1,4 @@
-use chrono::Months;
-use chrono::{Local, NaiveDate, NaiveTime};
+use chrono::{Local, NaiveDate, NaiveTime, Days, Months};
 use csv::ReaderBuilder;
 use inquire::Confirm;
 use inquire::CustomType;
@@ -858,7 +857,7 @@ impl AccountUI for CertificateOfDepositAccount {
 
         let graphs_reports = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .constraints([Constraint::Percentage(33), Constraint::Percentage(67)])
             .split(chunk[0]);
 
         let report_area = graphs_reports[0];
@@ -972,89 +971,117 @@ impl CertificateOfDepositAccount {
 
     fn render_growth_chart(&self, frame: &mut Frame, area: Rect, app: &mut App) {
         let (start, end) = get_analysis_period_dates(self, app.analysis_period.clone());
-        let mut entries = self.get_ledger_within_dates(start, end);
-        entries.reverse();
-        let last = entries.pop().unwrap();
+        let starting_amount_opt = self.db.get_cumulative_total_of_ledger_before_date(self.uid, self.id, start).unwrap();
+        let mut entries : Vec<LedgerRecord> = 
+        if starting_amount_opt.is_some() { 
+            let starting_amount = starting_amount_opt.unwrap();
+            vec![LedgerRecord{ id : 0, info : LedgerInfo { date: start.checked_add_days(Days::new(1)).unwrap().to_string(), amount: starting_amount, transfer_type: TransferType::ZeroSumChange, participant: 0, category_id: 0, description: "initial".to_string(), ancillary_f32data: 0.0 }}]
+        } else {
+            vec![LedgerRecord{ id : 0, info : LedgerInfo { date: start.checked_add_days(Days::new(1)).unwrap().to_string(), amount: 0.0, transfer_type: TransferType::ZeroSumChange, participant: 0, category_id: 0, description: "initial".to_string(), ancillary_f32data: 0.0 }}]
+        };
+        entries.append(&mut self.get_ledger_within_dates(start, end));
+        if !(entries.len() == 1) {
+            entries.reverse();
+            let last = entries.pop().unwrap();
 
-        let mut aggregate: f64 = last.info.amount as f64;
-        let starting_date = NaiveDate::parse_from_str(&last.info.date, "%Y-%m-%d").unwrap();
-        let mut min_total = aggregate;
-        let mut max_total = aggregate;
-        let tstamp_min = starting_date
-            .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
-            .and_utc()
-            .timestamp_millis() as f64;
-        let mut tstamp_max = tstamp_min;
+            let mut aggregate: f64 = last.info.amount as f64;
+            let starting_date = NaiveDate::parse_from_str(&last.info.date, "%Y-%m-%d").unwrap();
+            let mut min_total = aggregate;
+            let mut max_total = aggregate;
+            let tstamp_min = starting_date
+                .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
+                .and_utc()
+                .timestamp_millis() as f64;
+            let mut tstamp_max = tstamp_min;
 
-        let data: Vec<(f64, f64)> = entries
-            .iter()
-            .rev()
-            .map(|record| {
-                let date = NaiveDate::parse_from_str(&record.info.date, "%Y-%m-%d").unwrap();
-                let dt = date.and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap());
-                let tstamp = dt.and_utc().timestamp_millis() as f64;
-                aggregate = match record.info.transfer_type {
-                    TransferType::DepositFromExternalAccount
-                    | TransferType::DepositFromInternalAccount => {
-                        aggregate + record.info.amount as f64
-                    }
-                    TransferType::WithdrawalToExternalAccount
-                    | TransferType::WithdrawalToInternalAccount => {
-                        aggregate - record.info.amount as f64
-                    }
-                    TransferType::ZeroSumChange => aggregate,
-                };
-                max_total = if aggregate > max_total {
-                    aggregate
-                } else {
-                    max_total
-                };
-                min_total = if aggregate < min_total {
-                    aggregate
-                } else {
-                    min_total
-                };
-                tstamp_max = if tstamp > tstamp_max {
-                    tstamp
-                } else {
-                    tstamp_max
-                };
-                (tstamp, aggregate)
-            })
-            .collect();
+            let data: Vec<(f64, f64)> = entries
+                .iter()
+                .rev()
+                .map(|record| {
+                    let date = NaiveDate::parse_from_str(&record.info.date, "%Y-%m-%d").unwrap();
+                    let dt = date.and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap());
+                    let tstamp = dt.and_utc().timestamp_millis() as f64;
+                    aggregate = match record.info.transfer_type {
+                        TransferType::DepositFromExternalAccount
+                        | TransferType::DepositFromInternalAccount => {
+                            aggregate + record.info.amount as f64
+                        }
+                        TransferType::WithdrawalToExternalAccount
+                        | TransferType::WithdrawalToInternalAccount => {
+                            aggregate - record.info.amount as f64
+                        }
+                        TransferType::ZeroSumChange => aggregate,
+                    };
+                    max_total = if aggregate > max_total {
+                        aggregate
+                    } else {
+                        max_total
+                    };
+                    min_total = if aggregate < min_total {
+                        aggregate
+                    } else {
+                        min_total
+                    };
+                    tstamp_max = if tstamp > tstamp_max {
+                        tstamp
+                    } else {
+                        tstamp_max
+                    };
+                    (tstamp, aggregate)
+                })
+                .collect();
 
-        let datasets = vec![Dataset::default()
-            .name("History")
-            .marker(symbols::Marker::Braille)
-            .style(Style::default().fg(tailwind::LIME.c400))
-            .graph_type(GraphType::Line)
-            .data(&data)];
+            let datasets = vec![Dataset::default()
+                .name("History")
+                .marker(symbols::Marker::Braille)
+                .style(Style::default().fg(tailwind::LIME.c400))
+                .graph_type(GraphType::Line)
+                .data(&data)];
 
-        let chart = Chart::new(datasets)
-            .block(
-                Block::bordered().title(Line::from(" Value Over Time ").cyan().bold().centered()),
-            )
-            .x_axis(
-                Axis::default()
-                    .title("Time")
-                    .style(Style::default().gray())
-                    .bounds([tstamp_min, tstamp_max])
-                    .labels([last.info.date.as_str(), entries[0].info.date.as_str()]),
-            )
-            .y_axis(
-                Axis::default()
-                    .title("Value (💰)")
-                    .style(Style::default().gray())
-                    .bounds([min_total, max_total])
-                    // .labels([format!("{:.2}", min_total), format!("{:.2}", max_total)]),
-                    .labels(
-                        float_range(min_total, max_total, (max_total - min_total) / 5.0)
-                            .into_iter()
-                            .map(|x| format!("{:.2}", x)),
-                    ),
+            let chart = Chart::new(datasets)
+                .block(
+                    Block::bordered().title(Line::from(" Value Over Time ").cyan().bold().centered()),
+                )
+                .x_axis(
+                    Axis::default()
+                        .title("Time")
+                        .style(Style::default().gray())
+                        .bounds([tstamp_min, tstamp_max])
+                        .labels([last.info.date.as_str(), entries[0].info.date.as_str()]),
+                )
+                .y_axis(
+                    Axis::default()
+                        .title("Value (💰)")
+                        .style(Style::default().gray())
+                        .bounds([min_total, max_total])
+                        // .labels([format!("{:.2}", min_total), format!("{:.2}", max_total)]),
+                        .labels(
+                            float_range(min_total, max_total, (max_total - min_total) / 5.0)
+                                .into_iter()
+                                .map(|x| format!("{:.2}", x)),
+                        ),
+                );
+
+            frame.render_widget(chart, area);
+        } else { 
+            let value = ratatuiText::styled(
+                "No data to display!",
+                Style::default().fg(tailwind::ROSE.c400).bold(),
             );
 
-        frame.render_widget(chart, area);
+            let display = Paragraph::new(value)
+                .centered()
+                .alignment(layout::Alignment::Center)
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title("Value Over Time")
+                        .title_alignment(layout::Alignment::Center),
+                )
+                .bg(tailwind::SLATE.c900);
+
+            frame.render_widget(display, area);
+        }
     }
 }
 

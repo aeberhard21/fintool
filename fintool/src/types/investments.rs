@@ -1480,7 +1480,7 @@ impl DbConn {
         uid: u32,
         aid: u32,
         date: NaiveDate,
-    ) -> rusqlite::Result<f32, rusqlite::Error> {
+    ) -> rusqlite::Result<Option<f32>, rusqlite::Error> {
         let mut sum: f32 = 0.0;
         let p = rusqlite::params![aid, uid, date.format("%Y-%m-%d").to_string()];
         let sql =
@@ -1565,12 +1565,16 @@ impl DbConn {
 
         let conn_lock = self.conn.lock().unwrap();
         let mut stmt = conn_lock.prepare(sql)?;
-        if stmt.exists(p)? {
-            sum = stmt.query_row(p, |row| row.get(0)).unwrap();
-        } else {
-            panic!("Not found!");
+        let exists = stmt.exists(p)?; 
+        match exists { 
+            true => {
+                sum = stmt.query_row(p, |row| row.get(0))?;
+                return Ok(Some(sum));
+            }
+            false => { 
+                return Ok(None);
+            }
         }
-        Ok(sum)
     }
 
     pub fn get_positions(

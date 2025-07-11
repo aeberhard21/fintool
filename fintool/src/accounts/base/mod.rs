@@ -198,3 +198,63 @@ impl AnalysisPeriod {
         format!("{value}")
     }
 }
+
+// fn render_pi_chart(&self, frame: &mut Frame, area: Rect, app: &App) {
+
+//     // Simulated pie chart using lines (segments)
+//     let canvas = Canvas::default()
+//         .block(Block::default().title("Simulated Pie Chart").borders(Borders::ALL))
+//         .paint(|ctx| {
+//             let center = (50.0, 25.0); // x, y
+//             let radius = 10.0;
+
+//             // Draw the full circle
+//             ctx.draw(&Circle {
+//                 x: center.0,
+//                 y: center.1,
+//                 radius,
+//                 color: ratatui::style::Color::White,
+//             });
+
+//             // Draw pie segments (example: 3 segments)
+//             let segments = vec![
+//                 (0.0, 120.0, Color::Yellow),   // degrees
+//                 (120.0, 240.0, Color::Blue),
+//                 // (240.0, 360.0, Color::Green),
+//             ];
+
+//             let mut last: f64 = 0.0;
+//             for &(start, end, color) in &segments {
+
+//                 // let mid_angle: f64 = (start + end) / 2.0;
+//                 let rads = (last + end).to_radians();
+//                 for i in 0..360 {
+//                     let rad = rads * (f64::from(i) * (1./360.));
+//                 let x = center.0 + radius * rad.cos();
+//                 let y = center.1 + radius * rad.sin();
+//                 if x < center.0 { 
+//                 ctx.draw(&CanvasLine {
+//                     x2: center.0,
+//                     y2: center.1,
+//                     x1: x,
+//                     y1: y,
+//                     color: color,
+//                 })} else { 
+//                 ctx.draw(&CanvasLine {
+//                     x1: center.0,
+//                     y1: center.1,
+//                     x2: x,
+//                     y2: y,
+//                     color: color,
+//                 })}
+//                 }
+
+//                 last = end;
+//             }
+//         })
+//         .x_bounds([0.0, 100.0])
+//         .y_bounds([0.0, 50.0]);
+
+//     frame.render_widget(canvas, area);
+
+// }

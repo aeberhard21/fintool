@@ -1013,7 +1013,7 @@ impl VariableAccount {
         let mut iter = fixed_transactions.iter().peekable();
 
         // calculate value before date
-        let fixed_value = self
+        let fixed_value_opt = self
             .db
             .get_cumulative_total_of_ledger_before_date(
                 self.uid,
@@ -1023,23 +1023,48 @@ impl VariableAccount {
                     .expect("Invalid date!"),
             )
             .unwrap();
-        let variable_value = self
+        let fixed_value;
+        if fixed_value_opt.is_some() { 
+            fixed_value = fixed_value_opt.unwrap();
+        } else { 
+            return f32::NAN;
+        }
+        let variable_value_opt = self
             .db
             .get_portfolio_value_before_date(self.uid, self.id, period_start)
             .unwrap();
+        let variable_value;
+        if variable_value_opt.is_some() { 
+            variable_value = variable_value_opt.unwrap();
+        } else { 
+            return f32::NAN;
+        }
         let mut vi = fixed_value + variable_value;
         let mut vf_variable: f32 = 0.0;
         let mut vf: f32;
 
-        let final_fixed_value = self
+        let final_fixed_value_opt = self
             .db
             .get_cumulative_total_of_ledger_before_date(self.uid, self.id, period_end)
             .unwrap();
-        let final_portfolio_value = self
+        let final_fixed_value;
+        if final_fixed_value_opt.is_some() { 
+            final_fixed_value = final_fixed_value_opt.unwrap();
+        } else { 
+            return f32::NAN;
+        }
+        let final_portfolio_value_opt = self
             .db
             .get_portfolio_value_before_date(self.uid, self.id, period_end)
             .unwrap();
+        let final_portfolio_value;
+        if final_portfolio_value_opt.is_some() { 
+            final_portfolio_value = final_portfolio_value_opt.unwrap();
+        } else { 
+            return f32::NAN;
+        }
         let final_vf = final_fixed_value + final_portfolio_value;
+        
 
         if iter.peek().is_none() {
             // no transactions during analyzed period, so
@@ -1079,15 +1104,22 @@ impl VariableAccount {
                 let end_of_period: NaiveDate =
                     NaiveDate::parse_from_str(&txn.info.date.as_str(), "%Y-%m-%d")
                         .expect("Invalid date!");
-                let vf_fixed = self
+                let vf_fixed;
+                let vf_fixed_opt = self
                     .db
                     .get_cumulative_total_of_ledger_before_date(self.uid, self.id, end_of_period)
-                    .unwrap();
+                    .unwrap(); 
+                if vf_fixed_opt.is_some() { 
+                    vf_fixed = vf_fixed_opt.unwrap();
+                } else { 
+                    return f32::NAN;
+                }
                 let vf_variable_wrap =
                     self.db
                         .get_portfolio_value_before_date(self.uid, self.id, end_of_period);
                 vf_variable = match vf_variable_wrap {
-                    Ok(amt) => amt,
+                    Ok(Some(amt)) => amt,
+                    Ok(None) => {return f32::NAN;}
                     Err(error) => {
                         // if an error was returned we will just skip this day and move on
                         vf_variable
