@@ -1,8 +1,9 @@
-use chrono::{Datelike, Days, NaiveDate, NaiveTime, Weekday};
+use chrono::{Datelike, Days, Duration, NaiveDate, NaiveTime, Weekday};
 use time::OffsetDateTime;
 use tokio_test;
 use yahoo::{YahooConnector, YahooError};
 use yahoo_finance_api::{self as yahoo, Quote};
+use std::time::Instant;
 
 use crate::types::investments::StockInfo;
 
@@ -38,7 +39,10 @@ pub fn get_stock_history(
     )
     .unwrap();
 
+    // let starter = Instant::now();
     let rs = tokio_test::block_on(provider.get_quote_history(&ticker, start, end))?;
+    // let duration = starter.elapsed();
+    // println!("Duration is {:?}!", duration);
     return rs.quotes();
 }
 

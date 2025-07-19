@@ -17,7 +17,7 @@ pub struct LedgerInfo {
     pub ancillary_f32data: f32,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct LedgerRecord {
     pub id: u32,
     pub info: LedgerInfo,

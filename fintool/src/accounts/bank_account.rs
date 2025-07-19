@@ -662,7 +662,6 @@ impl BankAccount {
 
     fn render_growth_chart(&self, frame: &mut Frame, area: Rect, app: &mut App) {
         let (start, end) = get_analysis_period_dates(self, app.analysis_period.clone());
-        let mut entries = self.get_ledger_within_dates(start, end);
         let starting_amount_opt = self.db.get_cumulative_total_of_ledger_before_date(self.uid, self.id, start).unwrap();
         let mut entries : Vec<LedgerRecord> = 
         if starting_amount_opt.is_some() { 

@@ -1624,4 +1624,93 @@ impl DbConn {
             }
         }
     }
+
+    pub fn get_positions_by_ledger(&self, aid : u32, uid : u32) -> Result<Option<Vec<(String, String, f32)>>, rusqlite::Error> { 
+        let p = rusqlite::params![uid, aid];
+        let sql = "
+            WITH stock_ledger AS (
+                SELECT *
+                FROM ledgers l
+                WHERE EXISTS (
+                    SELECT 1 
+                    FROM stock_purchases sp 
+                    WHERE sp.lid = l.id 
+                    AND sp.uid = l.uid 
+                    AND sp.aid = l.aid
+                    AND l.uid = (?1)
+                    AND l.aid = (?2)
+                )
+                OR EXISTS (
+                    SELECT 1 
+                    FROM stock_sales ss 
+                    WHERE ss.lid = l.id 
+                    AND ss.uid = l.uid 
+                    AND ss.aid = l.aid
+                    AND l.uid = (?1)
+                    AND l.aid = (?2)
+                )
+            ),
+            ledger_changes AS (
+                SELECT
+                    sl.date,
+                    p.name AS ticker,
+                    COALESCE(
+                        CASE
+                            WHEN sl.transfer_type IN (0, 2) THEN sp.shares
+                            WHEN sl.transfer_type IN (1, 3) THEN -ss.shares
+                            ELSE 0
+                        END,
+                        0
+                    ) AS share_change
+                FROM stock_ledger sl
+                JOIN people p 
+                ON p.id = sl.pid 
+                AND p.uid = sl.uid 
+                AND p.aid = sl.aid
+                LEFT JOIN stock_purchases sp 
+                ON sp.lid = sl.id 
+                AND sp.uid = sl.uid 
+                AND sp.aid = sl.aid
+                LEFT JOIN stock_sales ss 
+                ON ss.lid = sl.id 
+                AND ss.uid = sl.uid 
+                AND ss.aid = sl.aid
+            ),
+            running_total AS (
+                SELECT
+                    lc.ticker,
+                    lc.date,
+                    lc.share_change,
+                    SUM(lc.share_change) OVER (
+                        PARTITION BY lc.ticker ORDER BY lc.date
+                        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                    ) AS shares_owned
+                FROM ledger_changes lc
+            )
+            SELECT *
+            FROM running_total
+            ORDER BY ticker, date;
+        ";
+        let conn_lock = self.conn.lock().unwrap();
+        let mut stmt = conn_lock.prepare(sql)?;
+        let exists = stmt.exists(p)?;
+        let mut positions: Vec<(String, String, f32)> = Vec::new();
+        match exists {
+            true => {
+                stmt = conn_lock.prepare(sql)?;
+                let rows = stmt
+                    .query_map(p, |row| Ok((row.get(0)?, row.get(1)?, row.get(3)?)))
+                    .unwrap()
+                    .collect::<Vec<_>>();
+
+                for row in rows {
+                    positions.push(row.unwrap());
+                }
+                return Ok(Some(positions));
+            }
+            false => {
+                return Ok(None);
+            }
+        }
+    }
 }

@@ -8,6 +8,7 @@ use crate::types::ledger::{DisplayableLedgerRecord, LedgerRecord};
 #[cfg(feature = "ratatui_support")]
 use crate::ui::centered_rect;
 use chrono::{NaiveDate, NaiveDateTime};
+use yahoo_finance_api::Quote;
 #[cfg(feature = "ratatui_support")]
 use ratatui::{
     buffer::Buffer,
@@ -258,3 +259,17 @@ impl AnalysisPeriod {
 //     frame.render_widget(canvas, area);
 
 // }
+
+
+#[derive(Debug)]
+struct StockData {
+    ticker: String, 
+    quotes : Vec<Quote>,
+    history : Vec<SharesOwned>
+}
+
+#[derive(Debug)]
+struct SharesOwned { 
+    date : NaiveDate, 
+    shares : f32
+}

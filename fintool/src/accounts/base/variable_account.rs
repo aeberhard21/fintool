@@ -1,15 +1,18 @@
 use core::alloc;
 use std::backtrace;
+use std::collections::HashMap;
 use std::io::Read;
 use std::sync::Arc;
 
-use chrono::{Date, Days, NaiveDate};
+use chrono::{Date, Days, Local, NaiveDate, NaiveDateTime};
 use csv::DeserializeError;
 use inquire::*;
+use time::OffsetDateTime;
 use yahoo_finance_api::YahooError;
 
+use crate::accounts::base::{SharesOwned, StockData};
 use crate::database::DbConn;
-use crate::stocks;
+use crate::stocks::{self, get_stock_history};
 use crate::types::investments::{
     SaleAllocationInfo, SaleAllocationRecord, StockInfo, StockRecord, StockSplitAllocationInfo,
     StockSplitInfo, StockSplitRecord,
@@ -25,16 +28,39 @@ pub struct VariableAccount {
     pub uid: u32,
     pub db: DbConn,
     pub fixed: FixedAccount,
+    pub buffer : Option<Vec<StockData>>,
 }
 
 impl VariableAccount {
     pub fn new(uid: u32, id: u32, db: &DbConn) -> Self {
-        let acct: VariableAccount = Self {
+        let mut acct: VariableAccount = Self {
             id: id,
             uid: uid,
             db: db.clone(),
             fixed: FixedAccount::new(uid, id, db.clone()),
+            buffer : None
         };
+
+        let mut ledger = acct.db.get_ledger(acct.uid, acct.id).unwrap();
+        ledger.sort_by(|l1, l2| (&l1.info.date).cmp(&l2.info.date));
+        let earliest_date = NaiveDate::parse_from_str(&ledger[0].info.date, "%Y-%m-%d").unwrap();
+        let latest_date = Local::now().date_naive();
+
+        let x = acct.db.get_positions_by_ledger(id, uid).unwrap();
+        if x.is_some() { 
+             let x = x.unwrap();
+             let mut tickers = x.iter().map(|x| x.0.clone()).collect::<Vec<String>>();
+             tickers.dedup();
+             let mut data : Vec<StockData> = Vec::new();
+             for ticker in tickers { 
+                let date_shares = x.iter().filter(|data| data.0 == ticker).map(|x: &(String, String, f32)| (SharesOwned { date : NaiveDate::parse_from_str(&&x.1, "%Y-%m-%d").expect(format!("Unable to decode {}", &x.1).as_str()), shares :  x.2.clone()})).collect::<Vec<SharesOwned>>();
+                let quotes = get_stock_history(ticker.clone(), earliest_date, latest_date).unwrap();
+                data.push(StockData { ticker: ticker.clone(), quotes: quotes, history: date_shares });
+
+             }
+             acct.buffer = Some(data);
+        }
+
         acct
     }
 
@@ -1142,5 +1168,30 @@ impl VariableAccount {
 
     pub fn get_positions(&self) -> Option<Vec<(String, f32)>> {
         return self.db.get_positions(self.uid, self.id).unwrap();
+    }
+
+    pub fn get_value_of_positions_on_day(&self, day : &String) -> f32 { 
+        let mut value: f32 = 0.0;
+        if let Some(buffer) = self.buffer.as_ref() { 
+            for e in buffer { 
+                // println!("Ticker: {}", e.ticker);
+                let mut owned_shares = e.history.iter().filter(|x| { x.date <= NaiveDate::parse_from_str(day, "%Y-%m-%d").unwrap() }).collect::<Vec<&SharesOwned>>(); 
+                if owned_shares.is_empty() { 
+                    // if no shares owned before date, then just continue 0
+                    continue;
+                }
+                // println!("Unsorted ---- {:?}", owned_shares);
+                owned_shares.sort_by(|x,y| { (x.date).cmp(&y.date) });
+                // println!("Sorted ---- {:?}", owned_shares);
+                let most_recently_owned = owned_shares.last().unwrap();
+                let quote = e.quotes.iter().find(|x| {
+                    let date = OffsetDateTime::from_unix_timestamp(x.timestamp as i64).unwrap().date();
+                    let ndate = NaiveDate::from_ymd_opt(date.year(), date.month() as u32, date.day() as u32).unwrap();
+                    ndate == most_recently_owned.date
+                }).expect(format!("No quote matching date {}", most_recently_owned.date).as_str());
+                value = value + (quote.close * most_recently_owned.shares as f64) as f32;
+            }
+        }
+        return value;
     }
 }
