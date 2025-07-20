@@ -7,8 +7,10 @@ use std::sync::Arc;
 use chrono::{Date, Days, Local, NaiveDate, NaiveDateTime};
 use csv::DeserializeError;
 use inquire::*;
+use rusqlite::types::Value;
 use time::OffsetDateTime;
 use yahoo_finance_api::YahooError;
+use yahoo_finance_api::Quote;
 
 use crate::accounts::base::{SharesOwned, StockData};
 use crate::database::DbConn;
@@ -42,25 +44,26 @@ impl VariableAccount {
         };
 
         let mut ledger = acct.db.get_ledger(acct.uid, acct.id).unwrap();
-        ledger.sort_by(|l1, l2| (&l1.info.date).cmp(&l2.info.date));
-        let earliest_date = NaiveDate::parse_from_str(&ledger[0].info.date, "%Y-%m-%d").unwrap();
-        let latest_date = Local::now().date_naive();
+        if !ledger.is_empty() {
+            ledger.sort_by(|l1, l2| (&l1.info.date).cmp(&l2.info.date));
+            let earliest_date = NaiveDate::parse_from_str(&ledger[0].info.date, "%Y-%m-%d").unwrap();
+            let latest_date = Local::now().date_naive();
 
-        let x = acct.db.get_positions_by_ledger(id, uid).unwrap();
-        if x.is_some() { 
-             let x = x.unwrap();
-             let mut tickers = x.iter().map(|x| x.0.clone()).collect::<Vec<String>>();
-             tickers.dedup();
-             let mut data : Vec<StockData> = Vec::new();
-             for ticker in tickers { 
-                let date_shares = x.iter().filter(|data| data.0 == ticker).map(|x: &(String, String, f32)| (SharesOwned { date : NaiveDate::parse_from_str(&&x.1, "%Y-%m-%d").expect(format!("Unable to decode {}", &x.1).as_str()), shares :  x.2.clone()})).collect::<Vec<SharesOwned>>();
-                let quotes = get_stock_history(ticker.clone(), earliest_date, latest_date).unwrap();
-                data.push(StockData { ticker: ticker.clone(), quotes: quotes, history: date_shares });
+            let x = acct.db.get_positions_by_ledger(id, uid).unwrap();
+            if x.is_some() { 
+                let x = x.unwrap();
+                let mut tickers = x.iter().map(|x| x.0.clone()).collect::<Vec<String>>();
+                tickers.dedup();
+                let mut data : Vec<StockData> = Vec::new();
+                for ticker in tickers { 
+                    let date_shares = x.iter().filter(|data| data.0 == ticker).map(|x: &(String, String, f32)| (SharesOwned { date : NaiveDate::parse_from_str(&&x.1, "%Y-%m-%d").expect(format!("Unable to decode {}", &x.1).as_str()), shares :  x.2.clone()})).collect::<Vec<SharesOwned>>();
+                    let quotes = get_stock_history(ticker.clone(), earliest_date, latest_date).unwrap();
+                    data.push(StockData { ticker: ticker.clone(), quotes: quotes, history: date_shares });
 
-             }
-             acct.buffer = Some(data);
+                }
+                acct.buffer = Some(data);
+            }
         }
-
         acct
     }
 
@@ -223,6 +226,39 @@ impl VariableAccount {
             remaining: shares,
             ledger_id: ledger_id,
         };
+
+
+        // TODO: Eventually update buffer with purchase/sale/split of stock
+
+        // let mut ledger = self.db.get_ledger(self.uid, self.id).unwrap();
+        // let earliest_date = if !ledger.is_empty() {
+        //     ledger.sort_by(|l1, l2| (&l1.info.date).cmp(&l2.info.date));
+        //     NaiveDate::parse_from_str(&ledger[0].info.date, "%Y-%m-%d").unwrap()
+        // } else { 
+        //     NaiveDate::parse_from_str(&date_input, "%Y-%m-%d").unwrap()
+        // };
+
+        // if let Some(mut buffer) = &self.buffer {
+        //     let x = buffer.iter().find(|x| x.ticker == ticker);
+        //     let date_naive = NaiveDate::parse_from_str(&date_input, "%Y-%m-%d").unwrap();
+        //     if x.is_none() {
+        //         // ticker doesn't exis
+        //         buffer.push(StockData { 
+        //                 ticker : ticker, 
+        //                 quotes : get_stock_history(ticker, earliest_date, Local::now().date_naive()).unwrap(), 
+        //                 history : vec![SharesOwned { date : date_naive, shares : shares }]});
+        //         self.buffer = Some(buffer);
+        //     }
+        // } else { 
+        //     let date_naive = NaiveDate::parse_from_str(&date_input, "%Y-%m-%d").unwrap();
+        //     // buffer doesn't exist
+        //     let buffer = vec![StockData { 
+        //                 ticker : ticker, 
+        //                 quotes : get_stock_history(ticker, earliest_date, Local::now().date_naive()).unwrap(), 
+        //                 history : vec![SharesOwned { date : date_naive, shares : shares }]}];
+
+        //     self.buffer = Some(buffer);    
+        // }
 
         self.db
             .add_stock_purchase(self.uid, self.id, stock_record)
@@ -1021,177 +1057,159 @@ impl VariableAccount {
         }
     }
 
-    pub fn get_current_value(&self) -> f32 {
-        let fixed_value = self.fixed.get_current_value();
-        let variable_value = self.db.get_stock_current_value(self.uid, self.id).unwrap();
-        return fixed_value + variable_value;
+    pub fn get_current_value(&self) -> f32 { 
+        let today = Local::now().date_naive();
+        return self.db.get_cumulative_total_of_ledger_on_date(self.uid, self.id, today).unwrap().unwrap() + self.get_value_of_positions_on_day(&today);
     }
 
     pub fn time_weighted_return(&self, period_start: NaiveDate, period_end: NaiveDate) -> f32 {
         let mut cf: f32 = 0.0;
         let mut hps: Vec<f32> = Vec::new();
         let mut hp: f32;
+        let mut vf; 
+        let mut vi;
+        let mut rate  = 0.0;
 
-        let fixed_transactions = self
-            .db
-            .get_ledger_entries_within_timestamps(self.uid, self.id, period_start, period_end)
-            .unwrap();
-        let mut iter = fixed_transactions.iter().peekable();
+        // println!("Beginning of analysis: {} - {}", period_start, period_end);
 
-        // calculate value before date
-        let fixed_value_opt = self
-            .db
-            .get_cumulative_total_of_ledger_before_date(
-                self.uid,
-                self.id,
-                period_start
-                    .checked_sub_days(Days::new(1))
-                    .expect("Invalid date!"),
-            )
-            .unwrap();
-        let fixed_value;
-        if fixed_value_opt.is_some() { 
-            fixed_value = fixed_value_opt.unwrap();
+        let starting_fixed_value_opt = self.db
+        .get_cumulative_total_of_ledger_on_date(
+            self.uid,
+            self.id,
+            period_start).unwrap();
+        
+        let starting_fixed_value;
+        if starting_fixed_value_opt.is_some() { 
+            starting_fixed_value = starting_fixed_value_opt.unwrap();
         } else { 
             return f32::NAN;
         }
-        let variable_value_opt = self
-            .db
-            .get_portfolio_value_before_date(self.uid, self.id, period_start)
-            .unwrap();
-        let variable_value;
-        if variable_value_opt.is_some() { 
-            variable_value = variable_value_opt.unwrap();
-        } else { 
-            return f32::NAN;
-        }
-        let mut vi = fixed_value + variable_value;
-        let mut vf_variable: f32 = 0.0;
-        let mut vf: f32;
 
-        let final_fixed_value_opt = self
-            .db
-            .get_cumulative_total_of_ledger_before_date(self.uid, self.id, period_end)
-            .unwrap();
+        let starting_variable_value = self.get_value_of_positions_on_day(&period_start
+                .checked_sub_days(Days::new(1))
+                .expect("Invalid date!"));
+
+        vi = starting_fixed_value + starting_variable_value;
+
+        // println!("Day: {}, Fixed: {}, Variable: {}", period_start.to_string(), starting_fixed_value, starting_variable_value);
+        
+        let external_transactions = Some(self.db.get_ledger_entries_within_timestamps(self.uid, self.id, period_start, period_end).unwrap());
+        if let Some(transactions) = external_transactions {
+            if !transactions.is_empty() {  
+                vf = 0.0;
+                for txn in transactions { 
+                    let end_period = NaiveDate::parse_from_str(&txn.info.date, "%Y-%m-%d").expect(format!("Invalid date format: {}", txn.info.date).as_str());
+                    cf = match txn.info.transfer_type { 
+                        TransferType::DepositFromExternalAccount => txn.info.amount, 
+                        TransferType::WithdrawalToExternalAccount => -txn.info.amount,
+                        _ => 0.0
+                    };
+                    let final_fixed_value_opt = self.db
+                    .get_cumulative_total_of_ledger_on_date(
+                        self.uid,
+                        self.id,
+                        end_period).unwrap();
+                    let final_fixed_value;
+                    if final_fixed_value_opt.is_some() {
+                        final_fixed_value = final_fixed_value_opt.unwrap();
+                    } else { 
+                        return f32::NAN;
+                    }
+
+                    let final_variable_value = self.get_value_of_positions_on_day(&end_period);
+                    // println!("Day: {}, Fixed: {}, Variable: {}", end_period.to_string(), final_fixed_value, final_variable_value);
+                    vf = final_fixed_value + final_variable_value;
+                    hp = (vf - (cf + vi) ) / (cf + vi);
+                    hps.push(hp);
+
+                    vi = vf;
+                }
+            }
+        }
+
+        let final_fixed_value_opt = self.db
+        .get_cumulative_total_of_ledger_on_date(
+            self.uid,
+            self.id,
+            period_end).unwrap();
         let final_fixed_value;
-        if final_fixed_value_opt.is_some() { 
+        if final_fixed_value_opt.is_some() {
             final_fixed_value = final_fixed_value_opt.unwrap();
         } else { 
             return f32::NAN;
         }
-        let final_portfolio_value_opt = self
-            .db
-            .get_portfolio_value_before_date(self.uid, self.id, period_end)
-            .unwrap();
-        let final_portfolio_value;
-        if final_portfolio_value_opt.is_some() { 
-            final_portfolio_value = final_portfolio_value_opt.unwrap();
-        } else { 
-            return f32::NAN;
-        }
-        let final_vf = final_fixed_value + final_portfolio_value;
         
+        let final_variable_value = self.get_value_of_positions_on_day(&period_end);
+        // println!("Day: {}, Fixed: {}, Variable: {}", period_end.to_string(), final_fixed_value, final_variable_value);
+        vf = final_fixed_value + final_variable_value;
+        hp = (vf - vi)/vi;
+        hps.push(hp);
 
-        if iter.peek().is_none() {
-            // no transactions during analyzed period, so
-            // calculate regular growth rate
-            hp = (final_vf - vi) / (vi);
-            return ((1.0 + hp) - 1.0) * 100 as f32;
-        }
-
-        while let Some(txn) = iter.next() {
-            let tt: &TransferType = &txn.info.transfer_type;
-            cf += match tt {
-                // positive cash flow
-                TransferType::DepositFromExternalAccount => txn.info.amount,
-                // all cash stays within account so cash flow is 0
-                TransferType::DepositFromInternalAccount => 0.0,
-                // withdrawing from account to cash flow is negative
-                TransferType::WithdrawalToExternalAccount => -txn.info.amount,
-                // all cash stays within account so cash flow is 0
-                TransferType::WithdrawalToInternalAccount => 0.0,
-                // Cash flow is zero on zero-sum change
-                TransferType::ZeroSumChange => 0.0,
-            };
-
-            if iter.peek().is_none() {
-                // no more left so calculate with account value at end of analysis period
-                vf = final_vf;
-                hp = (vf - (cf + vi)) / (cf + vi);
-                hps.push(hp);
-            } else {
-                let nxt = iter.peek().expect("Item found, but not available");
-                // in the event that there is a second transaction in this period, we will add this all to the cash flow
-                if nxt.info.date == txn.info.date {
-                    continue;
-                };
-
-                // next transaction is for a new period, so we can calculate the Hp and reset
-                let end_of_period: NaiveDate =
-                    NaiveDate::parse_from_str(&txn.info.date.as_str(), "%Y-%m-%d")
-                        .expect("Invalid date!");
-                let vf_fixed;
-                let vf_fixed_opt = self
-                    .db
-                    .get_cumulative_total_of_ledger_before_date(self.uid, self.id, end_of_period)
-                    .unwrap(); 
-                if vf_fixed_opt.is_some() { 
-                    vf_fixed = vf_fixed_opt.unwrap();
-                } else { 
-                    return f32::NAN;
-                }
-                let vf_variable_wrap =
-                    self.db
-                        .get_portfolio_value_before_date(self.uid, self.id, end_of_period);
-                vf_variable = match vf_variable_wrap {
-                    Ok(Some(amt)) => amt,
-                    Ok(None) => {return f32::NAN;}
-                    Err(error) => {
-                        // if an error was returned we will just skip this day and move on
-                        vf_variable
-                    }
-                };
-                vf = vf_fixed + vf_variable;
-
-                hp = (vf - (cf + vi)) / (cf + vi);
-                hps.push(hp);
-
-                cf = 0.0;
-            }
-
-            vi = vf;
-        }
         let hp1 = hps.pop().expect("No valid cash flow periods!");
         let twr = hps.iter().fold(1.0 + hp1, |acc, hp| acc * (1.0 + hp)) - 1.0;
-        return twr * 100.0;
+        rate = twr * 100.0;
+
+        return rate;
     }
 
     pub fn get_positions(&self) -> Option<Vec<(String, f32)>> {
         return self.db.get_positions(self.uid, self.id).unwrap();
     }
 
-    pub fn get_value_of_positions_on_day(&self, day : &String) -> f32 { 
+    pub fn get_value_of_positions_on_day(&self, day : &NaiveDate) -> f32 { 
         let mut value: f32 = 0.0;
         if let Some(buffer) = self.buffer.as_ref() { 
             for e in buffer { 
-                // println!("Ticker: {}", e.ticker);
-                let mut owned_shares = e.history.iter().filter(|x| { x.date <= NaiveDate::parse_from_str(day, "%Y-%m-%d").unwrap() }).collect::<Vec<&SharesOwned>>(); 
+                let mut owned_shares = e.history.iter().filter(|x| { x.date <= *day }).collect::<Vec<&SharesOwned>>(); 
                 if owned_shares.is_empty() { 
                     // if no shares owned before date, then just continue 0
                     continue;
                 }
-                // println!("Unsorted ---- {:?}", owned_shares);
                 owned_shares.sort_by(|x,y| { (x.date).cmp(&y.date) });
-                // println!("Sorted ---- {:?}", owned_shares);
                 let most_recently_owned = owned_shares.last().unwrap();
-                let quote = e.quotes.iter().find(|x| {
+                let quote = e.quotes.iter().filter(|x| { 
                     let date = OffsetDateTime::from_unix_timestamp(x.timestamp as i64).unwrap().date();
                     let ndate = NaiveDate::from_ymd_opt(date.year(), date.month() as u32, date.day() as u32).unwrap();
-                    ndate == most_recently_owned.date
-                }).expect(format!("No quote matching date {}", most_recently_owned.date).as_str());
-                value = value + (quote.close * most_recently_owned.shares as f64) as f32;
+                    ndate < *day
+                }).last().expect(format!("No quote matching date {}", most_recently_owned.date).as_str());
+                let partial_value = (quote.close * most_recently_owned.shares as f64) as f32;
+                // println!("\tTicker: {}, Shares: {}, Price: {}, Total : {}", e.ticker, most_recently_owned.shares, quote.close, partial_value);
+                // println!("\t\tMost recent date: {}", OffsetDateTime::from_unix_timestamp(quote.timestamp as i64).unwrap().date());
+                value = value + partial_value
             }
         }
         return value;
     }
+
+    pub fn get_account_value_on_day(&self, day : &NaiveDate) -> Option<f32> { 
+        let mut value: f32 = 0.0;
+        if let Some(buffer) = self.buffer.as_ref() { 
+            for e in buffer { 
+                let mut owned_shares = e.history.iter().filter(|x| { x.date <= *day }).collect::<Vec<&SharesOwned>>(); 
+                if owned_shares.is_empty() { 
+                    // if no shares owned before date, then just continue 0
+                    continue;
+                }
+                owned_shares.sort_by(|x,y| { (x.date).cmp(&y.date) });
+                let most_recently_owned = owned_shares.last().unwrap();
+                let quote = e.quotes.iter().filter(|x| { 
+                    let date = OffsetDateTime::from_unix_timestamp(x.timestamp as i64).unwrap().date();
+                    let ndate = NaiveDate::from_ymd_opt(date.year(), date.month() as u32, date.day() as u32).unwrap();
+                    ndate < *day
+                }).last().expect(format!("No quote matching date {}", most_recently_owned.date).as_str());
+                let partial_value = (quote.close * most_recently_owned.shares as f64) as f32;
+                // println!("\tTicker: {}, Shares: {}, Price: {}, Total : {}", e.ticker, most_recently_owned.shares, quote.close, partial_value);
+                // println!("\t\tMost recent date: {}", OffsetDateTime::from_unix_timestamp(quote.timestamp as i64).unwrap().date());
+                value = value + partial_value
+            }
+        }
+        let fixed_value = self.db.get_cumulative_total_of_ledger_on_date(self.uid, self.id, *day).unwrap();
+        if let Some(fixed) = fixed_value { 
+            value = value + fixed;
+        } else { 
+            return None;
+        }
+        return Some(value);
+    }
+
 }

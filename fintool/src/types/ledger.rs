@@ -549,6 +549,34 @@ impl DbConn {
             WHEN transfer_type == 0 or transfer_type = 2 THEN -amount    -- withdrawal
             WHEN transfer_type == 1 or transfer_type = 3 THEN amount     -- deposit from external account
             ELSE 0 
+        END), 0) as total_balance FROM ledgers WHERE aid = (?1) and date < (?2) and uid = (?3);";
+
+        let conn_lock = self.conn.lock().unwrap();
+        let mut stmt = conn_lock.prepare(sql)?;
+        let exists = stmt.exists(p)?; 
+        match exists { 
+            true => {
+                sum = stmt.query_row(p, |row| row.get(0))?;
+                return Ok(Some(sum));
+            }
+            false => { 
+                return Ok(None);
+            }
+        }
+    }
+
+    pub fn get_cumulative_total_of_ledger_on_date(
+        &self,
+        uid: u32,
+        aid: u32,
+        end: NaiveDate,
+    ) -> rusqlite::Result<Option<f32>, rusqlite::Error> {
+        let p = rusqlite::params![aid, end.format("%Y-%m-%d").to_string(), uid];
+        let mut sum: f32 = 0.0;
+        let sql = "SELECT COALESCE(SUM(CASE
+            WHEN transfer_type == 0 or transfer_type = 2 THEN -amount    -- withdrawal
+            WHEN transfer_type == 1 or transfer_type = 3 THEN amount     -- deposit from external account
+            ELSE 0 
         END), 0) as total_balance FROM ledgers WHERE aid = (?1) and date <= (?2) and uid = (?3);";
 
         let conn_lock = self.conn.lock().unwrap();
@@ -560,6 +588,50 @@ impl DbConn {
                 return Ok(Some(sum));
             }
             false => { 
+                return Ok(None);
+            }
+        }
+    }
+
+    pub fn get_external_transactions_between_timestamps(&self, uid : u32, aid : u32, start : NaiveDate, end : NaiveDate) -> Result<Option<Vec<LedgerRecord>>, rusqlite::Error> {
+        let p = rusqlite::params![
+            aid,
+            start.format("%Y-%m-%d").to_string(),
+            end.format("%Y-%m-%d").to_string(),
+            uid
+        ];
+        let sql = "SELECT * FROM ledgers WHERE (transfer_type = 0 OR transfer_type = 1) AND aid = (?1) and date >= (?2) and date <= (?3) and uid = (?4) ORDER by date ASC";
+
+        let conn_lock = self.conn.lock().unwrap();
+        let mut stmt = conn_lock.prepare(sql)?;
+        let exists = stmt.exists(p)?;
+        let mut entries: Vec<LedgerRecord> = Vec::new();
+        match exists {
+            true => {
+                let found_entries = stmt
+                    .query_map(p, |row| {
+                        Ok(LedgerRecord {
+                            id: row.get(0)?,
+                            info: LedgerInfo {
+                                date: row.get(1)?,
+                                amount: row.get(2)?,
+                                transfer_type: TransferType::from(row.get::<_, u32>(3)? as u32),
+                                participant: row.get(4)?,
+                                category_id: row.get(5)?,
+                                description: row.get(6)?,
+                                ancillary_f32data: row.get(7)?,
+                            },
+                        })
+                    })
+                    .unwrap()
+                    .collect::<Vec<_>>();
+
+                for entry in found_entries {
+                    entries.push(entry.unwrap());
+                }
+                Ok(Some(entries))
+            }
+            false => {
                 return Ok(None);
             }
         }
@@ -613,6 +685,34 @@ impl DbConn {
                 return Ok(Some(cumulative_expenses));
             }
             false => {
+                return Ok(None);
+            }
+        }
+    }
+
+    pub fn get_cumulative_total_of_ledger_of_external_transactions_on_date(
+        &self,
+        uid: u32,
+        aid: u32,
+        end: NaiveDate,
+    ) -> rusqlite::Result<Option<f32>, rusqlite::Error> {
+        let p = rusqlite::params![aid, end.format("%Y-%m-%d").to_string(), uid];
+        let mut sum: f32 = 0.0;
+        let sql = "SELECT COALESCE(SUM(CASE
+            WHEN transfer_type == 0 THEN -amount    -- withdrawal
+            WHEN transfer_type == 1 THEN amount     -- deposit from external account
+            ELSE 0 
+        END), 0) as total_balance FROM ledgers WHERE aid = (?1) and date <=(?2) and uid = (?3);";
+
+        let conn_lock = self.conn.lock().unwrap();
+        let mut stmt = conn_lock.prepare(sql)?;
+        let exists = stmt.exists(p)?; 
+        match exists { 
+            true => {
+                sum = stmt.query_row(p, |row| row.get(0))?;
+                return Ok(Some(sum));
+            }
+            false => { 
                 return Ok(None);
             }
         }

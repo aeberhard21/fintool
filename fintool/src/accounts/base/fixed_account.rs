@@ -780,6 +780,15 @@ impl FixedAccount {
         return self.db.get_current_value(self.uid, self.id).unwrap();
     }
 
+    pub fn get_value_on_day(&self, day : NaiveDate) -> f32 {
+        let value_opt = self.db.get_cumulative_total_of_ledger_before_date(self.uid, self.id, day).unwrap();
+        if let Some(value) = value_opt { 
+            return value;
+        } else { 
+            return 0.0;
+        }
+    }
+
     pub fn simple_rate_of_return(&self, start_date: NaiveDate, end_date: NaiveDate) -> f32 {
         let mut rate: f32 = 0.0;
         let starting_amount;

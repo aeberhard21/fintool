@@ -1,6 +1,6 @@
 use std::path::Path;
-
-use chrono::{NaiveDate, NaiveTime, Days};
+use core::f64;
+use chrono::{NaiveDate, NaiveTime, Local};
 use inquire::Confirm;
 use inquire::Select;
 use inquire::Text;
@@ -14,6 +14,7 @@ use ratatui::{
     widgets::{
         Axis, Bar, BarChart, BarGroup, Block, Borders, Cell, Chart, Clear, Dataset, GraphType,
         HighlightSpacing, List, ListItem, Paragraph, Row, Table, Tabs, Widget, Wrap,
+        LegendPosition
     },
     Frame,
 };
@@ -860,7 +861,7 @@ impl AccountData for InvestmentAccountManager {
         return self.db.get_displayable_ledger(self.uid, self.id).unwrap();
     }
     fn get_value(&self) -> f32 {
-        return self.variable.fixed.get_current_value() + self.variable.get_current_value();
+        return self.variable.get_current_value();
     }
 }
 
@@ -868,126 +869,157 @@ impl AccountData for InvestmentAccountManager {
 impl InvestmentAccountManager {
     fn render_growth_chart(&self, frame: &mut Frame, area: Rect, app: &mut App) {
         let (start, end) = get_analysis_period_dates(self, app.analysis_period.clone());
-        let ledger = self.get_ledger();
-        let starting_amount_opt = if !ledger.is_empty() { 
-            let total = Some(ledger.iter().filter(|x| x.info.date < start.to_string())
-                    .map(|x| {x})
-                    .collect::<Vec<&LedgerRecord>>()
-                    .iter().filter(|x| {
-                        x.info.transfer_type == TransferType::DepositFromExternalAccount || 
-                        x.info.transfer_type == TransferType::WithdrawalToExternalAccount
-                    }).map(|x| x.info.amount).collect::<Vec<f32>>().iter().sum());
-            total
+        let mut ledger = self.get_ledger_within_dates(start, end);
+        ledger.push(LedgerRecord { id : 0 , info : LedgerInfo { date: Local::now().date_naive().to_string(), amount: 0.0, transfer_type: TransferType::ZeroSumChange, participant: 0, category_id: 0, description: "".to_string(), ancillary_f32data: 0.0 }});
+        let external_transfers = self.variable.db.get_external_transactions_between_timestamps(self.uid, self.id, start, end).unwrap();
+
+        let mut tstamp_min =  f64::MAX;
+        let mut tstamp_max = f64::MIN;
+        let mut min_total = f64::MAX;
+        let mut max_total = f64::MIN;
+        
+        // time period starting amount
+        let time_period_investments_opt = if let Some(mut transactions) = external_transfers {
+            if !transactions.is_empty() { 
+                // this has to return a value because it will be inclusive of first entry
+                let tpi_starting_amount = self.db.get_cumulative_total_of_ledger_of_external_transactions_on_date(self.uid, self.id, start).unwrap().unwrap();
+                let initial = transactions.remove(0);
+                let timestamp = NaiveDate::parse_from_str(&initial.info.date, "%Y-%m-%d").expect(format!("Unexpected data: {}", initial.info.date).as_str())
+                    .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
+                    .and_utc()
+                    .timestamp_millis() as f64;
+                let mut aggregate = tpi_starting_amount as f64;
+                let mut dataset = vec![(timestamp, aggregate)];
+                transactions.push(LedgerRecord { id : 0 , info : LedgerInfo { date: Local::now().date_naive().to_string(), amount: 0.0, transfer_type: TransferType::ZeroSumChange, participant: 0, category_id: 0, description: "".to_string(), ancillary_f32data: 0.0 }});
+                min_total = aggregate;
+                max_total = aggregate;
+                tstamp_min = timestamp;
+                tstamp_max = tstamp_min;
+
+                dataset.append(&mut
+                    transactions.iter().map(|record| {
+                        let date = NaiveDate::parse_from_str(&record.info.date, "%Y-%m-%d").unwrap();
+                        let dt = date.and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap());
+                        let tstamp = dt.and_utc().timestamp_millis() as f64;
+                        aggregate = match record.info.transfer_type {
+                            TransferType::DepositFromExternalAccount => {
+                                aggregate + record.info.amount as f64
+                            }
+                            TransferType::WithdrawalToExternalAccount => {
+                                aggregate - record.info.amount as f64
+                            }
+                            _ => aggregate,
+                        };
+                        max_total = if aggregate > max_total {
+                            aggregate
+                        } else {
+                            max_total
+                        };
+                        min_total = if aggregate < min_total {
+                            aggregate
+                        } else {
+                            min_total
+                        };
+                        tstamp_max = if tstamp > tstamp_max {
+                            tstamp
+                        } else {
+                            tstamp_max
+                        };
+                        (tstamp, aggregate)
+                    }).collect()
+                );
+                Some(dataset)
+            } else { 
+                None
+            }
         } else { 
             None
         };
 
-        let mut external_transfers : Vec<LedgerRecord> = 
-        if starting_amount_opt.is_some() { 
-            let starting_amount = starting_amount_opt.unwrap();
-            vec![LedgerRecord{ id : 0, info : LedgerInfo { date: start.checked_add_days(Days::new(1)).unwrap().to_string(), amount: starting_amount, transfer_type: TransferType::ZeroSumChange, participant: 0, category_id: 0, description: "initial".to_string(), ancillary_f32data: 0.0 }}]
-        } else {
-            vec![LedgerRecord{ id : 0, info : LedgerInfo { date: start.checked_add_days(Days::new(1)).unwrap().to_string(), amount: 0.0, transfer_type: TransferType::ZeroSumChange, participant: 0, category_id: 0, description: "initial".to_string(), ancillary_f32data: 0.0 }}]
-        };
-        let entries = self.get_ledger_within_dates(start, end);
-        if !entries.is_empty() { 
-            // get time period investments
-            external_transfers.append(&mut entries
-                .iter()
-                .filter(|x| {
-                    x.info.transfer_type == TransferType::DepositFromExternalAccount || 
-                    x.info.transfer_type == TransferType::WithdrawalToExternalAccount
-                }).map(|x| x.clone()).collect::<Vec<LedgerRecord>>());
-
-            external_transfers.reverse();
-            let last = external_transfers.pop().unwrap();
-
-            // this gets the cumulative amount before the analysis period.
-            let mut aggregate: f64 = last.info.amount as f64;
-            let starting_date = NaiveDate::parse_from_str(&last.info.date, "%Y-%m-%d").unwrap();
-            let mut min_total = aggregate;
-            let mut max_total = aggregate;
-            let tstamp_min = starting_date
+        let total_value_opt = if !ledger.is_empty() { 
+            // this has to return a value because it will be inclusive of first entry
+            let total_value_starting_amount = self.db.get_cumulative_total_of_ledger_on_date(self.uid, self.id, start).unwrap().unwrap();
+            let initial = ledger.remove(0);
+            let timestamp = NaiveDate::parse_from_str(&initial.info.date, "%Y-%m-%d").expect(format!("Unexpected data: {}", initial.info.date).as_str())
                 .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
                 .and_utc()
                 .timestamp_millis() as f64;
-            let mut tstamp_max = tstamp_min;
-
-            let time_period_investments: Vec<(f64, f64)> = external_transfers.iter().rev().map(|record| {
-                let date = NaiveDate::parse_from_str(&record.info.date, "%Y-%m-%d").unwrap();
-                let dt = date.and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap());
-                let tstamp = dt.and_utc().timestamp_millis() as f64;
-                aggregate = match record.info.transfer_type {
-                    TransferType::DepositFromExternalAccount => {
-                        aggregate + record.info.amount as f64
+            let mut aggregate = total_value_starting_amount as f64;
+            let mut dataset = vec![(timestamp, aggregate)];
+            dataset.append(&mut
+                ledger.iter().map(|record| {
+                    let date = NaiveDate::parse_from_str(&record.info.date, "%Y-%m-%d").unwrap();
+                    let dt = date.and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap());
+                    let tstamp = dt.and_utc().timestamp_millis() as f64;
+                    let partial_value = self.variable.get_account_value_on_day(&date);
+                    if partial_value.is_none() { 
+                        aggregate = aggregate;
+                    } else {
+                        aggregate = partial_value.unwrap() as f64;
                     }
-                    TransferType::WithdrawalToExternalAccount => {
-                        aggregate - record.info.amount as f64
-                    }
-                    _ => aggregate,
-                };
-                max_total = if aggregate > max_total {
-                    aggregate
-                } else {
-                    max_total
-                };
-                min_total = if aggregate < min_total {
-                    aggregate
-                } else {
-                    min_total
-                };
-                tstamp_max = if tstamp > tstamp_max {
-                    tstamp
-                } else {
-                    tstamp_max
-                };
-                (tstamp, aggregate )
-            }).collect();
+                    max_total = if aggregate > max_total {
+                        aggregate
+                    } else {
+                        max_total
+                    };
+                    min_total = if aggregate < min_total {
+                        aggregate
+                    } else {
+                        min_total
+                    };
+                    tstamp_max = if tstamp > tstamp_max {
+                        tstamp
+                    } else {
+                        tstamp_max
+                    };
+                    (tstamp, aggregate)
+                }).collect()
+            );
+            Some(dataset)
+        } else { 
+            None
+        };
 
-            // get stock value on each day
-            // let mut dates = vec![last.clone().info.date];
-            let mut dates = Vec::new();
-            dates.append(&mut external_transfers.iter().map(|x| {x.info.date.clone()}).collect::<Vec<String>>());
-            let mut variable_value : Vec<(f64, f64)> = Vec::new();
-            for e in dates.iter().enumerate() { 
-                variable_value.push((time_period_investments[e.0].0, (self.variable.get_value_of_positions_on_day(&e.1) as f64) + time_period_investments[e.0].1));
-
-            }
-
-            let datasets = vec![
+        if let Some(time_period_investments) = time_period_investments_opt { 
+            let mut datasets = vec![               
                 Dataset::default()
                 .name("Time Period Investment")
                 .marker(symbols::Marker::Braille)
                 .style(Style::default().fg(tailwind::LIME.c400))
                 .graph_type(GraphType::Line)
-                .data(&time_period_investments),
-                
-                Dataset::default()
-                .name("Value")
-                .marker(symbols::Marker::Braille)
-                .style(Style::default().fg(tailwind::LIME.c400))
-                .graph_type(GraphType::Line)
-                .data((&variable_value))
-            ];
+                .data(&time_period_investments)];
+            let total_account_values;
+            if let Some(total_value) = total_value_opt { 
+                total_account_values = total_value;
+                datasets.push(                
+                    Dataset::default()
+                    .name("Total Value")
+                    .marker(symbols::Marker::Braille)
+                    .style(Style::default().fg(tailwind::BLUE.c400))
+                    .graph_type(GraphType::Line)
+                    .data(&total_account_values)
+                );
+            }
 
             let chart = Chart::new(datasets)
                 .block(
                     Block::bordered().title(Line::from(" Value Over Time ").cyan().bold().centered()),
                 )
+                .legend_position(Some(LegendPosition::TopLeft))
                 .x_axis(
                     Axis::default()
                         .title("Time")
                         .style(Style::default().gray())
                         .bounds([tstamp_min, tstamp_max])
-                        .labels([last.info.date.as_str(), external_transfers[0].info.date.as_str()]),
+                        .labels([start.to_string(), end.to_string()]),
                 )
                 .y_axis(
                     Axis::default()
                         .title("Value (💰)")
                         .style(Style::default().gray())
-                        .bounds([min_total, max_total + 50000.])
+                        .bounds([min_total, max_total])
                         .labels(
-                            float_range(min_total, max_total + 50000., (max_total - min_total + 50000.) / 5.0)
+                            float_range(min_total, max_total, (max_total - min_total) / 5.0)
                                 .into_iter()
                                 .map(|x| format!("{:.2}", x)),
                         ),
@@ -1014,6 +1046,36 @@ impl InvestmentAccountManager {
             frame.render_widget(display, area);
         }
     }
+
+    fn render_time_weighted_rate_of_return(&self, frame: &mut Frame, area: Rect, app: &mut App) {
+        let (start, end) = get_analysis_period_dates(self, app.analysis_period.clone());
+        let value = self.variable.time_weighted_return(start, end);
+        let fg_color = if value < 0.0 {
+            tailwind::ROSE.c200
+        } else {
+            tailwind::EMERALD.c400
+        };
+        let value = ratatuiText::styled(
+            format!("{:.2}%", value).to_string(),
+            Style::default().fg(fg_color).bold(),
+        );
+
+        let display = Paragraph::new(value)
+            .centered()
+            .alignment(layout::Alignment::Center)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(format!(" Time-Weighted Rate of Return - {} ", app.analysis_period))
+                    .title_alignment(layout::Alignment::Center),
+            )
+            .bg(tailwind::SLATE.c900);
+        // let centered_area = centered_rect(10, 10, area);
+        // let growth = Paragraph::new(value);
+        // frame.render_widget(growth, centered_area);
+        frame.render_widget(display, area);
+    }
+
 }
 
 #[cfg(feature = "ratatui_support")]
@@ -1024,17 +1086,29 @@ impl AccountUI for InvestmentAccountManager {
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
             .split(area);
 
-        let graphs_reports = Layout::default()
+        let data_area = chunk[0];
+        let ledger_area = chunk[1];
+
+        let reports_graphs = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(33), Constraint::Percentage(67)])
             .split(chunk[0]);
 
+        let report_area = reports_graphs[0];
+        let graph_area = reports_graphs[1];
+
         let reports_chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(graphs_reports[0]);
-        self.render_ledger_table(frame, chunk[1], app);
-        self.render_growth_chart(frame, graphs_reports[1], app);
+            .split(report_area);
+        
+        let value_area = reports_chunks[0];
+        let twrr_area = reports_chunks[1];
+
+        self.render_ledger_table(frame, ledger_area, app);
+        self.render_growth_chart(frame, graph_area, app);
+        self.render_current_value(frame, value_area, app);
+        self.render_time_weighted_rate_of_return(frame, twrr_area, app);
     }
 
     fn render_ledger_table(&self, frame: &mut Frame, area: Rect, app: &mut App) {
@@ -1113,6 +1187,7 @@ impl AccountUI for InvestmentAccountManager {
         .highlight_spacing(HighlightSpacing::Always);
         frame.render_stateful_widget(t, area, &mut app.ledger_table_state);
     }
+
 }
 
 impl Account for InvestmentAccountManager {}
