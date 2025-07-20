@@ -92,7 +92,7 @@ impl App {
         if self.accounts_for_type.is_none() {
             return;
         }
-        self.selected_account_tab = self.selected_account_tab.saturating_sub(1).min(0)
+        self.selected_account_tab = self.selected_account_tab.saturating_sub(1).max(0)
     }
 
     pub fn skip_to_last_account(&mut self) {

@@ -1,6 +1,6 @@
 use std::path::Path;
 use core::f64;
-use chrono::{NaiveDate, NaiveTime, Local, Days};
+use chrono::{NaiveDate, NaiveTime, Local, Days, Datelike};
 use inquire::Confirm;
 use inquire::Select;
 use inquire::Text;
@@ -947,50 +947,6 @@ impl InvestmentAccountManager {
             None
         };
 
-        // let total_value_opt = if !ledger.is_empty() { 
-        //     // this has to return a value because it will be inclusive of first entry
-        //     let total_value_starting_amount = self.db.get_cumulative_total_of_ledger_on_date(self.uid, self.id, start).unwrap().unwrap();
-        //     let initial = ledger.remove(0);
-        //     let timestamp = NaiveDate::parse_from_str(&initial.info.date, "%Y-%m-%d").expect(format!("Unexpected data: {}", initial.info.date).as_str())
-        //         .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
-        //         .and_utc()
-        //         .timestamp_millis() as f64;
-        //     let mut aggregate = total_value_starting_amount as f64;
-        //     let mut dataset = vec![(timestamp, aggregate)];
-        //     dataset.append(&mut
-        //         ledger.iter().map(|record| {
-        //             let date = NaiveDate::parse_from_str(&record.info.date, "%Y-%m-%d").unwrap();
-        //             let dt = date.and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap());
-        //             let tstamp = dt.and_utc().timestamp_millis() as f64;
-        //             let partial_value = self.variable.get_account_value_on_day(&date);
-        //             if partial_value.is_none() { 
-        //                 aggregate = aggregate;
-        //             } else {
-        //                 aggregate = partial_value.unwrap() as f64;
-        //             }
-        //             max_total = if aggregate > max_total {
-        //                 aggregate
-        //             } else {
-        //                 max_total
-        //             };
-        //             min_total = if aggregate < min_total {
-        //                 aggregate
-        //             } else {
-        //                 min_total
-        //             };
-        //             tstamp_max = if tstamp > tstamp_max {
-        //                 tstamp
-        //             } else {
-        //                 tstamp_max
-        //             };
-        //             (tstamp, aggregate)
-        //         }).collect()
-        //     );
-        //     Some(dataset)
-        // } else { 
-        //     None
-        // };
-
         if let Some(time_period_investments) = time_period_investments_opt { 
             let mut datasets = vec![               
                 Dataset::default()
@@ -1003,11 +959,13 @@ impl InvestmentAccountManager {
                 
             let mut date = start;
             let mut total_account_values = Vec::new();
-            while date != end { 
+            while date < end { 
                 let value = self.variable.get_account_value_on_day(&date.clone());
                 if value.is_none() { 
                     break;
                 } else {
+                    use crate::accounts::base::AnalysisPeriod;
+
                     let tstamp = NaiveDate::parse_from_str(&date.to_string(), "%Y-%m-%d").expect(format!("Unexpected data: {}", date).as_str())
                     .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
                     .and_utc()
@@ -1036,7 +994,42 @@ impl InvestmentAccountManager {
                         tstamp_max
                     };
                     total_account_values.push((tstamp, aggregate));
-                    date = date.checked_add_days(Days::new(1)).unwrap();
+
+
+                    date = match app.analysis_period {
+                        AnalysisPeriod::OneDay|AnalysisPeriod::OneWeek => { 
+                            date.checked_add_days(Days::new(1)).unwrap()
+                        }
+                        AnalysisPeriod::OneMonth => { 
+                            date.checked_add_days(Days::new(2)).unwrap()
+                        }
+                        AnalysisPeriod::OneYear|AnalysisPeriod::ThreeMonths|AnalysisPeriod::SixMonths|AnalysisPeriod::YTD => { 
+                            date.checked_add_days(Days::new(7)).unwrap()
+                        }
+                        AnalysisPeriod::TwoYears => { 
+                            date.checked_add_days(Days::new(20)).unwrap()
+                        }
+                        AnalysisPeriod::FiveYears => { 
+                            date.checked_add_days(Days::new(50)).unwrap()
+                        }
+                        AnalysisPeriod::TenYears => { 
+                            date.checked_add_days(Days::new(100)).unwrap()
+                        }
+                        AnalysisPeriod::Custom|AnalysisPeriod::AllTime => {
+                            let diff = (end.num_days_from_ce() - start.num_days_from_ce()) as u32;
+                            let days_to_add: u32 = if diff <= 365 {
+                                1
+                            } else if diff <= (365 * 2) {
+                                2
+                            } else if diff <= (365 * 5) { 
+                                5
+                            } else { 
+                                10
+                            };
+                            date.checked_add_days(Days::new(days_to_add as u64)).unwrap()
+                        }
+                    };
+                    // date = date.checked_add_days(Days::new(10)).unwrap();
                 }
             }
 
@@ -1048,7 +1041,6 @@ impl InvestmentAccountManager {
                 .graph_type(GraphType::Line)
                 .data(&total_account_values)
             );
-            // }
 
             let chart = Chart::new(datasets)
                 .block(
