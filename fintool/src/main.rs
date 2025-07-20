@@ -413,7 +413,10 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                             MoveTo(0, 0)
                         )
                         .unwrap();
-                        app.analysis_period = select_analysis_period();
+                        // app.analysis_period = select_analysis_period();
+                        if let Some(acct) = &app.account {
+                            (app.analysis_start, app.analysis_end, app.analysis_period) = query_user_for_analysis_period(acct.get_open_date());
+                        }
                         enable_raw_mode()?;
                         terminal.clear().unwrap();
                     }

@@ -68,6 +68,7 @@ pub struct InvestmentAccountManager {
     id: u32,
     db: DbConn,
     variable: VariableAccount,
+    open_date : NaiveDate
 }
 
 #[derive(Helper, Completer, Hinter, Highlighter, Validator)]
@@ -110,12 +111,19 @@ impl AccountCreation for InvestmentAccountManager {
 
 impl InvestmentAccountManager {
     pub fn new(uid: u32, id: u32, db: &DbConn) -> Self {
-        let acct = Self {
+        let mut acct = Self {
             uid: uid,
             id: id,
             db: db.clone(),
             variable: VariableAccount::new(uid, id, db),
+            open_date : Local::now().date_naive(),
         };
+
+        let mut ledger = acct.get_ledger();
+        if !ledger.is_empty() { 
+            ledger.sort_by(|l1, l2| (&l1.info.date).cmp(&l2.info.date));
+            acct.open_date = NaiveDate::parse_from_str(&ledger[0].info.date, "%Y-%m-%d").unwrap();
+        }
 
         acct
     }
@@ -714,7 +722,7 @@ impl AccountOperations for InvestmentAccountManager {
                 );
             }
             "Time-Weighted Rate of Return" => {
-                let (period_start, period_end) = query_user_for_analysis_period(self);
+                let (period_start, period_end, _) = query_user_for_analysis_period(self.get_open_date());
                 let twr = self.variable.time_weighted_return(period_start, period_end);
                 println!("\tRate of return: {}%", twr);
             }
@@ -863,12 +871,15 @@ impl AccountData for InvestmentAccountManager {
     fn get_value(&self) -> f32 {
         return self.variable.get_current_value();
     }
+    fn get_open_date(&self) -> NaiveDate {
+        return self.open_date
+    }
 }
 
 #[cfg(feature = "ratatui_support")]
 impl InvestmentAccountManager {
     fn render_growth_chart(&self, frame: &mut Frame, area: Rect, app: &mut App) {
-        let (start, end) = get_analysis_period_dates(self, app.analysis_period.clone());
+        let (start, end) = (app.analysis_start, app.analysis_end);
         let mut ledger = self.get_ledger_within_dates(start, end);
         ledger.push(LedgerRecord { id : 0 , info : LedgerInfo { date: Local::now().date_naive().to_string(), amount: 0.0, transfer_type: TransferType::ZeroSumChange, participant: 0, category_id: 0, description: "".to_string(), ancillary_f32data: 0.0 }});
         let external_transfers = self.variable.db.get_external_transactions_between_timestamps(self.uid, self.id, start, end).unwrap();
@@ -1086,7 +1097,7 @@ impl InvestmentAccountManager {
     }
 
     fn render_time_weighted_rate_of_return(&self, frame: &mut Frame, area: Rect, app: &mut App) {
-        let (start, end) = get_analysis_period_dates(self, app.analysis_period.clone());
+        let (start, end) = (app.analysis_start, app.analysis_end);
         let value = self.variable.time_weighted_return(start, end);
         let fg_color = if value < 0.0 {
             tailwind::ROSE.c200
@@ -1130,7 +1141,7 @@ impl AccountUI for InvestmentAccountManager {
         let reports_graphs = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(33), Constraint::Percentage(67)])
-            .split(chunk[0]);
+            .split(data_area);
 
         let report_area = reports_graphs[0];
         let graph_area = reports_graphs[1];

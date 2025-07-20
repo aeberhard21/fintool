@@ -69,6 +69,7 @@ pub struct CertificateOfDepositAccount {
     id: u32,
     db: DbConn,
     fixed: FixedAccount,
+    open_date : NaiveDate,
 }
 
 #[derive(Helper, Completer, Hinter, Highlighter, Validator)]
@@ -86,12 +87,18 @@ struct FilePathHelper {
 
 impl CertificateOfDepositAccount {
     pub fn new(uid: u32, id: u32, db: &DbConn) -> Self {
-        let acct: CertificateOfDepositAccount = Self {
+        let mut acct: CertificateOfDepositAccount = Self {
             uid: uid,
             id: id,
             db: db.clone(),
             fixed: FixedAccount::new(uid, id, db.clone()),
+            open_date : Local::now().date_naive(),
         };
+        let mut ledger = acct.get_ledger();
+        if !ledger.is_empty() { 
+            ledger.sort_by(|l1, l2| (&l1.info.date).cmp(&l2.info.date));
+            acct.open_date = NaiveDate::parse_from_str(&ledger[0].info.date, "%Y-%m-%d").unwrap();
+        }
         acct
     }
 }
@@ -698,7 +705,7 @@ impl AccountOperations for CertificateOfDepositAccount {
                 println!("\tTotal Account Value: {}", value);
             }
             "Simple Growth Rate" => {
-                let (period_start, period_end) = query_user_for_analysis_period(self);
+                let (period_start, period_end,_) = query_user_for_analysis_period(self.get_open_date());
                 let rate = self.fixed.simple_rate_of_return(period_start, period_end);
                 println!("\tRate of return: {}%", rate);
             }
@@ -845,6 +852,9 @@ impl AccountData for CertificateOfDepositAccount {
     fn get_value(&self) -> f32 {
         return self.fixed.get_current_value();
     }
+    fn get_open_date(&self) -> NaiveDate {
+        return self.open_date
+    }
 }
 
 #[cfg(feature = "ratatui_support")]
@@ -886,8 +896,7 @@ impl AccountUI for CertificateOfDepositAccount {
 
 #[cfg(feature = "ratatui_support")]
 impl CertificateOfDepositAccount {
-    fn get_growth(&self, duration: AnalysisPeriod) -> f32 {
-        let (start, end) = get_analysis_period_dates(self, duration);
+    fn get_growth(&self, start : NaiveDate, end : NaiveDate) -> f32 {
         return self.fixed.simple_rate_of_return(start, end);
     }
 
@@ -942,7 +951,7 @@ impl CertificateOfDepositAccount {
     }
 
     fn render_simple_growth(&self, frame: &mut Frame, area: Rect, app: &mut App) {
-        let value = self.get_growth(app.analysis_period.clone()) * 100.0;
+        let value = self.get_growth(app.analysis_start, app.analysis_end);
         let fg_color = if value < 0.0 {
             tailwind::ROSE.c200
         } else {
@@ -970,7 +979,7 @@ impl CertificateOfDepositAccount {
     }
 
     fn render_growth_chart(&self, frame: &mut Frame, area: Rect, app: &mut App) {
-        let (start, end) = get_analysis_period_dates(self, app.analysis_period.clone());
+        let (start, end) = (app.analysis_start, app.analysis_end);
         let starting_amount_opt = self.db.get_cumulative_total_of_ledger_before_date(self.uid, self.id, start).unwrap();
         let mut entries : Vec<LedgerRecord> = 
         if starting_amount_opt.is_some() { 

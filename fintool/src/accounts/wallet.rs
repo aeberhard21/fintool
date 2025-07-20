@@ -1,4 +1,5 @@
 use chrono::Date;
+use chrono::Local;
 use chrono::NaiveDate;
 use csv::ReaderBuilder;
 use inquire::Confirm;
@@ -68,6 +69,7 @@ pub struct Wallet {
     id: u32,
     db: DbConn,
     fixed: FixedAccount,
+    open_date : NaiveDate,
 }
 
 #[derive(Helper, Completer, Hinter, Highlighter, Validator)]
@@ -85,12 +87,20 @@ struct FilePathHelper {
 
 impl Wallet {
     pub fn new(uid: u32, id: u32, db: &DbConn) -> Self {
-        let acct: Wallet = Self {
+        let mut acct: Wallet = Self {
             uid: uid,
             id: id,
             db: db.clone(),
             fixed: FixedAccount::new(uid, id, db.clone()),
+            open_date : Local::now().date_naive()
         };
+
+        let mut ledger = acct.get_ledger();
+        if !ledger.is_empty() { 
+            ledger.sort_by(|l1, l2| (&l1.info.date).cmp(&l2.info.date));
+            acct.open_date = NaiveDate::parse_from_str(&ledger[0].info.date, "%Y-%m-%d").unwrap();
+        }
+
         acct
     }
 }
@@ -497,7 +507,7 @@ impl AccountOperations for Wallet {
                 println!("\tTotal Account Value: {}", value);
             }
             "Simple Growth Rate" => {
-                let (period_start, period_end) = query_user_for_analysis_period(self);
+                let (period_start, period_end, _) = query_user_for_analysis_period(self.get_open_date());
                 let rate = self.fixed.simple_rate_of_return(period_start, period_end);
                 println!("\tRate of return: {}%", rate);
             }
@@ -645,12 +655,15 @@ impl AccountData for Wallet {
     fn get_value(&self) -> f32 {
         return self.fixed.get_current_value();
     }
+    fn get_open_date(&self) -> NaiveDate {
+        return self.open_date
+    }
 }
 
 #[cfg (feature = "ratatui_support")]
 impl Wallet { 
     fn render_spend_chart(&self, frame: &mut Frame, area: Rect, app: &App) {
-        let (start, end) = get_analysis_period_dates(self, app.analysis_period.clone());
+        let (start, end) = (app.analysis_start, app.analysis_end);
         if let Some(mut entries)= self.db.get_expenditures_between_dates(self.uid, self.id, start, end).unwrap() {
             entries.sort_by(|x, y| { (x.amount).partial_cmp(&y.amount).unwrap_or(std::cmp::Ordering::Equal) });
             let grouped_others : Option<Expenditure> = if entries.len() > 10 {

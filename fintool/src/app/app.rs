@@ -1,3 +1,4 @@
+use chrono::{Datelike, Local, NaiveDate};
 use ratatui::widgets::{ScrollbarState, TableState};
 
 use crate::accounts::base::AnalysisPeriod;
@@ -27,6 +28,8 @@ pub struct App {
     pub ledger_table_colors: LedgerColors,
     pub ledger_entries: Option<Vec<DisplayableLedgerRecord>>,
     pub analysis_period: AnalysisPeriod,
+    pub analysis_start : NaiveDate, 
+    pub analysis_end : NaiveDate
 }
 
 impl App {
@@ -46,6 +49,8 @@ impl App {
             ledger_table_colors: LedgerColors::new(&PALETTES[1]),
             ledger_entries: None,
             analysis_period: AnalysisPeriod::YTD,
+            analysis_start : NaiveDate::from_ymd_opt(Local::now().year(), 1, 1).unwrap(),
+            analysis_end : Local::now().date_naive()
         }
     }
 

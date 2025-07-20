@@ -273,22 +273,26 @@ pub fn select_analysis_period() -> AnalysisPeriod {
     return duration;
 }
 
-pub fn query_user_for_analysis_period(acct: &impl Account) -> (NaiveDate, NaiveDate) {
+pub fn query_user_for_analysis_period(open_date : NaiveDate) -> (NaiveDate, NaiveDate, AnalysisPeriod) {
     let duration = select_analysis_period();
-    match duration {
+    let period_start;
+    let period_end;
+    match &duration {
         AnalysisPeriod::Custom => {
-            let period_end = DateSelect::new("Enter ending date").prompt().unwrap();
-            let period_start = DateSelect::new("Enter starting date").prompt().unwrap();
-            return (period_start, period_end);
+            period_start = DateSelect::new("Enter starting date").prompt().unwrap();
+            period_end = DateSelect::new("Enter ending date").prompt().unwrap();
+            // return (period_start, period_end, duration);
         }
-        _ => {}
+        _ => {
+            (period_start, period_end) = get_analysis_period_dates(open_date, &duration);
+        }
     }
-    return get_analysis_period_dates(acct, duration);
+    return (period_start, period_end, duration);
 }
 
 pub fn get_analysis_period_dates(
-    acct: &impl Account,
-    duration: AnalysisPeriod,
+    open_date : NaiveDate,
+    duration: &AnalysisPeriod,
 ) -> (NaiveDate, NaiveDate) {
     let period_end = Local::now().date_naive();
     let mut period_start = period_end;
@@ -328,13 +332,7 @@ pub fn get_analysis_period_dates(
             period_start = period_start.with_month(1).unwrap();
         }
         AnalysisPeriod::AllTime => {
-            let mut ledger_entries = acct.get_ledger();
-            ledger_entries.sort_by(|x, y| {
-                (NaiveDate::parse_from_str(&x.info.date, "%Y-%m-%d").unwrap())
-                    .cmp(&NaiveDate::parse_from_str(&y.info.date, "%Y-%m-%d").unwrap())
-            });
-            period_start =
-                NaiveDate::parse_from_str(&ledger_entries[0].info.date, "%Y-%m-%d").unwrap();
+            period_start = open_date
         }
         _ => {
             panic!("Not found!");

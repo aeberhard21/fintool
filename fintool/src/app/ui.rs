@@ -60,8 +60,6 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
             CurrentScreen::Main => Span::styled("Main", Style::default().fg(Color::Yellow)),
         }
         .to_owned(),
-        // A white divider bar to separate the two sections
-        Span::styled(" | ", Style::default().fg(Color::White)),
     ];
 
     let mode_footer = Paragraph::new(Line::from(current_navigation_text))
@@ -98,7 +96,7 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
 
     let footer_chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(20), Constraint::Percentage(80)])
+        .constraints([Constraint::Percentage(10), Constraint::Percentage(90)])
         .split(chunks[chunks.len() - 1]);
 
     frame.render_widget(mode_footer, footer_chunks[0]);

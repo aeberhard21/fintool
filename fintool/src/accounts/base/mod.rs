@@ -7,7 +7,7 @@ use crate::types::accounts::AccountRecord;
 use crate::types::ledger::{DisplayableLedgerRecord, LedgerRecord};
 #[cfg(feature = "ratatui_support")]
 use crate::ui::centered_rect;
-use chrono::{NaiveDate, NaiveDateTime};
+use chrono::{naive, NaiveDate, NaiveDateTime};
 use yahoo_finance_api::Quote;
 #[cfg(feature = "ratatui_support")]
 use ratatui::{
@@ -50,6 +50,7 @@ pub trait AccountData {
     fn get_ledger_within_dates(&self, start: NaiveDate, end: NaiveDate) -> Vec<LedgerRecord>;
     fn get_displayable_ledger(&self) -> Vec<DisplayableLedgerRecord>;
     fn get_value(&self) -> f32;
+    fn get_open_date(&self) -> NaiveDate;
 }
 #[cfg(feature = "ratatui_support")]
 pub trait AccountUI: AccountData {
