@@ -1,6 +1,6 @@
 use std::path::Path;
 use core::f64;
-use chrono::{NaiveDate, NaiveTime, Local};
+use chrono::{NaiveDate, NaiveTime, Local, Days};
 use inquire::Confirm;
 use inquire::Select;
 use inquire::Text;
@@ -936,22 +936,74 @@ impl InvestmentAccountManager {
             None
         };
 
-        let total_value_opt = if !ledger.is_empty() { 
-            // this has to return a value because it will be inclusive of first entry
-            let total_value_starting_amount = self.db.get_cumulative_total_of_ledger_on_date(self.uid, self.id, start).unwrap().unwrap();
-            let initial = ledger.remove(0);
-            let timestamp = NaiveDate::parse_from_str(&initial.info.date, "%Y-%m-%d").expect(format!("Unexpected data: {}", initial.info.date).as_str())
-                .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
-                .and_utc()
-                .timestamp_millis() as f64;
-            let mut aggregate = total_value_starting_amount as f64;
-            let mut dataset = vec![(timestamp, aggregate)];
-            dataset.append(&mut
-                ledger.iter().map(|record| {
-                    let date = NaiveDate::parse_from_str(&record.info.date, "%Y-%m-%d").unwrap();
-                    let dt = date.and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap());
-                    let tstamp = dt.and_utc().timestamp_millis() as f64;
+        // let total_value_opt = if !ledger.is_empty() { 
+        //     // this has to return a value because it will be inclusive of first entry
+        //     let total_value_starting_amount = self.db.get_cumulative_total_of_ledger_on_date(self.uid, self.id, start).unwrap().unwrap();
+        //     let initial = ledger.remove(0);
+        //     let timestamp = NaiveDate::parse_from_str(&initial.info.date, "%Y-%m-%d").expect(format!("Unexpected data: {}", initial.info.date).as_str())
+        //         .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
+        //         .and_utc()
+        //         .timestamp_millis() as f64;
+        //     let mut aggregate = total_value_starting_amount as f64;
+        //     let mut dataset = vec![(timestamp, aggregate)];
+        //     dataset.append(&mut
+        //         ledger.iter().map(|record| {
+        //             let date = NaiveDate::parse_from_str(&record.info.date, "%Y-%m-%d").unwrap();
+        //             let dt = date.and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap());
+        //             let tstamp = dt.and_utc().timestamp_millis() as f64;
+        //             let partial_value = self.variable.get_account_value_on_day(&date);
+        //             if partial_value.is_none() { 
+        //                 aggregate = aggregate;
+        //             } else {
+        //                 aggregate = partial_value.unwrap() as f64;
+        //             }
+        //             max_total = if aggregate > max_total {
+        //                 aggregate
+        //             } else {
+        //                 max_total
+        //             };
+        //             min_total = if aggregate < min_total {
+        //                 aggregate
+        //             } else {
+        //                 min_total
+        //             };
+        //             tstamp_max = if tstamp > tstamp_max {
+        //                 tstamp
+        //             } else {
+        //                 tstamp_max
+        //             };
+        //             (tstamp, aggregate)
+        //         }).collect()
+        //     );
+        //     Some(dataset)
+        // } else { 
+        //     None
+        // };
+
+        if let Some(time_period_investments) = time_period_investments_opt { 
+            let mut datasets = vec![               
+                Dataset::default()
+                .name("Time Period Investment")
+                .marker(symbols::Marker::Braille)
+                .style(Style::default().fg(tailwind::LIME.c400))
+                .graph_type(GraphType::Line)
+                .data(&time_period_investments)];
+
+                
+            let mut date = start;
+            let mut total_account_values = Vec::new();
+            while date != end { 
+                let value = self.variable.get_account_value_on_day(&date.clone());
+                if value.is_none() { 
+                    break;
+                } else {
+                    let tstamp = NaiveDate::parse_from_str(&date.to_string(), "%Y-%m-%d").expect(format!("Unexpected data: {}", date).as_str())
+                    .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
+                    .and_utc()
+                    .timestamp_millis() as f64;
+
                     let partial_value = self.variable.get_account_value_on_day(&date);
+                    let mut aggregate = 0.0;
                     if partial_value.is_none() { 
                         aggregate = aggregate;
                     } else {
@@ -972,34 +1024,20 @@ impl InvestmentAccountManager {
                     } else {
                         tstamp_max
                     };
-                    (tstamp, aggregate)
-                }).collect()
-            );
-            Some(dataset)
-        } else { 
-            None
-        };
-
-        if let Some(time_period_investments) = time_period_investments_opt { 
-            let mut datasets = vec![               
-                Dataset::default()
-                .name("Time Period Investment")
-                .marker(symbols::Marker::Braille)
-                .style(Style::default().fg(tailwind::LIME.c400))
-                .graph_type(GraphType::Line)
-                .data(&time_period_investments)];
-            let total_account_values;
-            if let Some(total_value) = total_value_opt { 
-                total_account_values = total_value;
-                datasets.push(                
-                    Dataset::default()
-                    .name("Total Value")
-                    .marker(symbols::Marker::Braille)
-                    .style(Style::default().fg(tailwind::BLUE.c400))
-                    .graph_type(GraphType::Line)
-                    .data(&total_account_values)
-                );
+                    total_account_values.push((tstamp, aggregate));
+                    date = date.checked_add_days(Days::new(1)).unwrap();
+                }
             }
+
+            datasets.push(                
+                Dataset::default()
+                .name("Total Value")
+                .marker(symbols::Marker::Braille)
+                .style(Style::default().fg(tailwind::BLUE.c400))
+                .graph_type(GraphType::Line)
+                .data(&total_account_values)
+            );
+            // }
 
             let chart = Chart::new(datasets)
                 .block(
