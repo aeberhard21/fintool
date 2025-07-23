@@ -24,7 +24,7 @@ use std::result;
 #[cfg(feature = "ratatui_support")]
 use crate::app::app::App;
 #[cfg(feature = "ratatui_support")]
-use crate::app::screen::{CurrentScreen, CurrentlySelecting};
+use crate::app::screen::{CurrentScreen, CurrentlySelecting, UserLoadedState};
 #[cfg(feature = "ratatui_support")]
 use crate::app::ui;
 use crate::database::DbConn;
@@ -112,6 +112,34 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
         app.invalid_input = false;
         terminal.draw(|f| ui::ui(f, app))?;
 
+        if let UserLoadedState::Loading = app.user_load_state {
+            while app.user_load_state != UserLoadedState::Loaded {
+                let mut profiles_loaded = 0;
+                let account_records = app.db.get_user_accounts(app.user_id.unwrap()).unwrap();
+                let number_of_accounts = account_records.len();
+                let mut accounts = Vec::new();
+                for record in account_records { 
+                    let acct = decode_and_init_account_type(app.user_id.unwrap(), &app.db, &record);
+                    profiles_loaded = profiles_loaded + 1;
+                    app.load_profile_progress = (profiles_loaded as f64 / number_of_accounts as f64);
+                    
+                    // force update to progress bar
+                    terminal.draw(|f| ui::ui(f, app))?;
+                    accounts.push(acct);
+                }
+                app.accounts = Some(accounts);
+
+                terminal.draw(|f: &mut ratatui::Frame<'_>| ui::ui(f, app))?;
+
+                if profiles_loaded == number_of_accounts { 
+                    app.current_screen = CurrentScreen::Main;
+                    app.user_load_state = UserLoadedState::Loaded;
+                }
+            }
+            // force quick turnaround
+            continue;
+        }
+
         if let Event::Key(key) = event::read()? {
             if key.kind == event::KeyEventKind::Release {
                 // Skip events that are not KeyEventKind::Press
@@ -122,11 +150,8 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                     (_, KeyCode::Enter) => {
                         if let Some(id) = app.validate_user(app.key_input.to_string()) {
                             app.user_id = Some(id);
-                            app.current_screen = CurrentScreen::Main;
-                            app.accounts = Some(app.db.get_user_accounts(app.user_id.unwrap()).unwrap()
-                                .iter().map(|record| {
-                                    decode_and_init_account_type(app.user_id.unwrap(), &app.db, record)
-                                }).collect::<Vec<Box<dyn Account>>>());
+                            app.user_load_state = UserLoadedState::Loading;
+                            // app.current_screen = CurrentScreen::Loading;
                         } else {
                             app.invalid_input = true;
                         }
@@ -195,13 +220,6 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                             Some(CurrentlySelecting::AccountTypeTabs) => {
                                 // get accounts for filter
                                 app.advance_account_type();
-                                // app.accounts_for_type = app
-                                //     .db
-                                //     .get_user_accounts_by_type(
-                                //         app.user_id.unwrap(),
-                                //         app.selected_atype_tab,
-                                //     )
-                                //     .unwrap();
                                 app.accounts_for_type = if let Some(accounts) = &app.accounts {
                                     let filtered_accounts = accounts.iter().filter(|x| {
                                             is_account_type(x, app.selected_atype_tab)
@@ -257,13 +275,6 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                                     } else { 
                                         None
                                     };
-                                    // app.accounts_for_type = app
-                                    //     .db
-                                    //     .get_user_accounts_by_type(
-                                    //         app.user_id.unwrap(),
-                                    //         app.selected_atype_tab,
-                                    //     )
-                                    //     .unwrap();
                                     if app.accounts_for_type.is_some() {
                                         app.get_account();
                                     }
@@ -321,15 +332,6 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
 
                                     enable_raw_mode()?;
                                     terminal.clear().unwrap();
-
-                                    // update accounts for type
-                                    // app.accounts_for_type = app
-                                    //     .db
-                                    //     .get_user_accounts_by_type(
-                                    //         app.user_id.unwrap(),
-                                    //         app.selected_atype_tab,
-                                    //     )
-                                    //     .unwrap();
 
                                     app.accounts_for_type = if let Some(accounts) = &app.accounts {
                                         let filtered_accounts = accounts.iter().filter(|x| {
@@ -518,6 +520,16 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                             match select_mode {
                                 CurrentlySelecting::Account => {
                                     app.go_to_first_ledger_table_row();
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    (_, KeyCode::Esc) => { 
+                        if let Some(select_mode) = &app.currently_selected {
+                            match select_mode { 
+                                CurrentlySelecting::AccountTypeTabs => {
+                                    app.current_screen = CurrentScreen::Main;
                                 }
                                 _ => {}
                             }

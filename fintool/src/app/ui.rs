@@ -7,7 +7,7 @@ use ratatui::{
     },
     text::{Line, Span, Text},
     widgets::{
-        Bar, BarChart, BarGroup, Block, Borders, Clear, List, ListItem, Paragraph, Tabs, Widget,
+        Bar, BarChart, BarGroup, Block, Borders, Clear, List, ListItem, LineGauge, Paragraph, Tabs, Widget,
         Wrap,
     },
     Frame,
@@ -15,7 +15,7 @@ use ratatui::{
 
 use super::app::App;
 use super::screen::{CurrentScreen, TabMenu};
-use crate::types::accounts::AccountType;
+use crate::{app::screen::UserLoadedState, types::accounts::AccountType};
 use crate::{accounts::base::Account, app::screen::CurrentlySelecting};
 
 pub fn ui(frame: &mut Frame, app: &mut App) {
@@ -75,7 +75,7 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
                 match app.currently_selected.unwrap() { 
                     CurrentlySelecting::AccountTypeTabs|CurrentlySelecting::AccountTabs => {
                         Span::styled (
-                        "(q) to quit / (◀︎) Move Tab Left / (▶︎) Move Tab Right / (⏎) Select / (⌫) Deselect / (c) Create Account",
+                        "(q) to quit / (◀︎) Move Tab Left / (▶︎) Move Tab Right / (⏎) Select / (⌫) Deselect / (c) Create Account / (esc) Exit to Main",
                         Style::default().fg(Color::LightBlue),
                         )
                     }
@@ -87,7 +87,7 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
                     }
                 }
             },
-            CurrentScreen::Main => Span::styled("(q, Ctrl-c) to quit", Style::default().fg(Color::LightBlue))
+            CurrentScreen::Main => Span::styled("(q, Ctrl-c) to quit / (a) Open Accounts", Style::default().fg(Color::LightBlue)),
         }
     };
 
@@ -103,31 +103,51 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
     frame.render_widget(key_notes_footer, footer_chunks[1]);
 
     if let CurrentScreen::Login = app.current_screen {
-        let popup_block = Block::default()
-            .title(" Login ")
-            .borders(Borders::ALL)
-            .style(Style::default().bg(tailwind::EMERALD.c950));
 
-        // prompt for user name
-        let mut content = "Username: ".to_string();
-        content.push_str(&app.key_input.as_str());
-        let username_text = Text::styled(content, Style::default().fg(tailwind::EMERALD.c50));
+        let centered_area = centered_rect(60, 25, frame.area());
 
-        let login_paragraph = Paragraph::new(username_text)
-            .block(popup_block)
-            .wrap(Wrap { trim: false });
-        let area = centered_rect(60, 25, frame.area());
-        frame.render_widget(login_paragraph, area);
+        if let UserLoadedState::NotLoaded = app.user_load_state {
+            // println!("HERE AT ALL TIMES!: {}", app.user);
+            let popup_block = Block::default()
+                .title(" Login ")
+                .borders(Borders::ALL)
+                .style(Style::default().bg(tailwind::EMERALD.c950));
 
-        // display error message when user does not exist
-        if app.invalid_input {
-            let error_footer = Paragraph::new(Line::from("Unrecognized user id!")).block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .style(tailwind::RED.c500),
-            );
-            frame.render_widget(error_footer, footer_chunks[0]);
+            // prompt for user name
+            let mut content = "Username: ".to_string();
+            content.push_str(&app.key_input.as_str());
+            let username_text = Text::styled(content, Style::default().fg(tailwind::EMERALD.c50));
+
+            let login_paragraph = Paragraph::new(username_text)
+                .block(popup_block)
+                .wrap(Wrap { trim: false });
+            frame.render_widget(login_paragraph, centered_area);
+
+            // display error message when user does not exist
+            if app.invalid_input {
+                let error_footer = Paragraph::new(Line::from("Unrecognized user id!")).block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .style(tailwind::RED.c500),
+                );
+                frame.render_widget(error_footer, footer_chunks[0]);
+            }
         }
+
+        if let UserLoadedState::Loading = app.user_load_state { 
+            let title = Block::default()
+                .title(" Loading... ")
+                .borders(Borders::ALL)
+                .style(Style::default().bg(tailwind::EMERALD.c950));
+            let lg = LineGauge::default()
+                .block(title)
+                .filled_style(Style::default().fg(Color::Blue).bg(tailwind::EMERALD.c400))
+                .unfilled_style(Style::default().fg(Color::Red).bg(tailwind::SLATE.c700))
+                .label("Background:")
+                .ratio(app.load_profile_progress);
+                // .render(area, buf);
+            frame.render_widget(lg, centered_area);
+        } 
     }
 
     if let CurrentScreen::Accounts = app.current_screen {
@@ -189,7 +209,7 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
                     frame.render_widget(error_footer, footer_chunks[0]);
                 }
             } else {
-                let mut content = "No Accounts found!".to_string();
+                let content = "No Accounts found!".to_string();
                 let display_text = Text::styled(content, Style::default().fg(tailwind::RED.c500));
 
                 let login_paragraph = Paragraph::new(display_text).wrap(Wrap { trim: false });
@@ -199,7 +219,7 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
         }
 
         if app.invalid_input {
-            let mut content = "Account operation invalid!".to_string();
+            let content = "Account operation invalid!".to_string();
             let display_text = Text::styled(content, Style::default().fg(tailwind::RED.c500));
 
             let login_paragraph = Paragraph::new(display_text).wrap(Wrap { trim: false });

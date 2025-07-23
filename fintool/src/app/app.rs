@@ -10,7 +10,7 @@ use crate::types::accounts::AccountType;
 use crate::types::ledger::{DisplayableLedgerRecord, LedgerRecord};
 use crate::{accounts::base::Account, app::screen::TabMenu};
 
-use super::screen::{CurrentScreen, CurrentlySelecting, LedgerColors};
+use super::screen::{CurrentScreen, CurrentlySelecting, LedgerColors, UserLoadedState};
 
 const ITEM_HEIGHT: usize = 2;
 
@@ -32,7 +32,9 @@ pub struct App {
     pub ledger_entries: Option<Vec<DisplayableLedgerRecord>>,
     pub analysis_period: AnalysisPeriod,
     pub analysis_start : NaiveDate, 
-    pub analysis_end : NaiveDate
+    pub analysis_end : NaiveDate,
+    pub user_load_state : UserLoadedState,
+    pub load_profile_progress : f64,
 }
 
 impl App {
@@ -55,7 +57,9 @@ impl App {
             ledger_entries: None,
             analysis_period: AnalysisPeriod::YTD,
             analysis_start : NaiveDate::from_ymd_opt(Local::now().year(), 1, 1).unwrap(),
-            analysis_end : Local::now().date_naive()
+            analysis_end : Local::now().date_naive(),
+            user_load_state : UserLoadedState::NotLoaded,
+            load_profile_progress : 0.0,
         }
     }
 
@@ -153,29 +157,6 @@ impl App {
                 self.accounts = None
             }
         }
-
-        // self.accounts = if let Some(mut accounts) = self.accounts.take() { 
-        //     let matching_indexes : Vec<usize> = accounts
-        //         .iter()
-        //         .enumerate()
-        //         .filter(|(_, acc)| is_account_type(acc, self.selected_atype_tab))
-        //         .map(|(i, _)| i)
-        //         .collect();
-        //     let pos = matching_indexes.get( self.selected_account_tab )
-        //         .unwrap_or_else(|| matching_indexes.iter().max().unwrap());
-        //     if let Some(account) = self.account.take() {
-        //         if *pos >= accounts.len() {
-        //             accounts.push(account);
-        //         } else { 
-        //             accounts.insert((*pos as i32 -1).max(0) as usize, account);
-        //         }
-        //     }
-        //     // let x = accounts;
-        //     Some(accounts)
-        // } else { 
-        //     None
-        // };
-
     }
 
     pub fn advance_ledger_table_row(&mut self) {

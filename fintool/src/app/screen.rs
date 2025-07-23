@@ -25,6 +25,13 @@ pub enum CurrentlySelecting {
     Account,
 }
 
+#[derive(Debug, Clone, Copy, FromRepr, PartialEq, Eq)]
+pub enum UserLoadedState {
+    NotLoaded,
+    Loading,
+    Loaded,
+}
+
 pub trait TabMenu {
     fn previous(self) -> Self;
     fn next(self) -> Self;
