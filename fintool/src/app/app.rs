@@ -1,6 +1,7 @@
 use chrono::{Datelike, Local, NaiveDate};
 use ratatui::widgets::{ScrollbarState, TableState};
 
+use crate::{accounts, is_account_type};
 use crate::accounts::base::AnalysisPeriod;
 use crate::app::screen::PALETTES;
 use crate::database::DbConn;
@@ -20,10 +21,12 @@ pub struct App {
     pub selected_atype_tab: AccountType,
     pub accounts_for_type: Option<Vec<String>>,
     pub selected_account_tab: usize,
+    pub account_index_to_restore : usize,
     pub currently_selected: Option<CurrentlySelecting>,
     pub db: DbConn,
     pub user_id: Option<u32>,
     pub account: Option<Box<dyn Account>>,
+    pub accounts: Option<Vec<Box<dyn Account>>>,
     pub ledger_table_state: TableState,
     pub ledger_table_colors: LedgerColors,
     pub ledger_entries: Option<Vec<DisplayableLedgerRecord>>,
@@ -41,10 +44,12 @@ impl App {
             selected_atype_tab: AccountType::Bank,
             accounts_for_type: None,
             selected_account_tab: 0,
+            account_index_to_restore: 0,
             currently_selected: Some(CurrentlySelecting::AccountTypeTabs),
             db: db.clone(),
             user_id: None,
             account: None,
+            accounts : None,
             ledger_table_state: TableState::default().with_selected(0),
             ledger_table_colors: LedgerColors::new(&PALETTES[1]),
             ledger_entries: None,
@@ -55,6 +60,7 @@ impl App {
     }
 
     pub fn advance_currently_selecting(&mut self) {
+        // self.restore_account();
         if let Some(selecting) = &self.currently_selected {
             self.currently_selected = Some(selecting.next());
         } else {
@@ -63,6 +69,7 @@ impl App {
     }
 
     pub fn retreat_currently_selecting(&mut self) {
+        self.restore_account();
         if let Some(selecting) = &self.currently_selected {
             self.currently_selected = Some(selecting.previous());
         } else {
@@ -71,14 +78,17 @@ impl App {
     }
 
     pub fn advance_account_type(&mut self) {
+        self.restore_account();
         self.selected_atype_tab = self.selected_atype_tab.next();
     }
 
     pub fn retreat_account_type(&mut self) {
+        self.restore_account();
         self.selected_atype_tab = self.selected_atype_tab.previous();
     }
 
     pub fn advance_account(&mut self) {
+        self.restore_account();
         if self.accounts_for_type.is_none() {
             return;
         }
@@ -89,6 +99,7 @@ impl App {
     }
 
     pub fn retreat_account(&mut self) {
+        self.restore_account();
         if self.accounts_for_type.is_none() {
             return;
         }
@@ -96,6 +107,7 @@ impl App {
     }
 
     pub fn skip_to_last_account(&mut self) {
+        self.restore_account();
         if self.accounts_for_type.is_none() {
             return;
         }
@@ -112,19 +124,58 @@ impl App {
     }
 
     pub fn get_account(&mut self) {
-        let account_id = self
-            .db
-            .get_account_id(
-                self.user_id.unwrap(),
-                self.accounts_for_type.clone().unwrap()[self.selected_account_tab].clone(),
-            )
-            .unwrap();
-        let acct = self
-            .db
-            .get_account(self.user_id.unwrap(), account_id)
-            .unwrap();
-        let account = decode_and_init_account_type(self.user_id.unwrap(), &self.db, &acct);
-        self.account = Some(account);
+        self.account = if let Some(accounts) = &mut self.accounts { 
+            let matching_indexes : Vec<usize> = accounts
+                .iter()
+                .enumerate()
+                .filter(|(_, acc)| is_account_type(acc, self.selected_atype_tab))
+                .map(|(i, _)| i)
+                .collect();
+            if let Some(&original_index) = matching_indexes.get(self.selected_account_tab) {
+                let account = accounts.remove(original_index);
+                self.account_index_to_restore = original_index;
+                Some(account)
+            } else {
+                None
+            }
+        } else { 
+            None
+        };
+    }
+
+    pub fn restore_account(&mut self) {
+        if let (Some(account), index) = (self.account.take(), self.account_index_to_restore) {
+            // self.accounts.insert(index, account); // ✅ restores order
+            if let Some(mut accounts) = self.accounts.take() { 
+                accounts.insert(index, account);
+                self.accounts = Some(accounts);
+            } else { 
+                self.accounts = None
+            }
+        }
+
+        // self.accounts = if let Some(mut accounts) = self.accounts.take() { 
+        //     let matching_indexes : Vec<usize> = accounts
+        //         .iter()
+        //         .enumerate()
+        //         .filter(|(_, acc)| is_account_type(acc, self.selected_atype_tab))
+        //         .map(|(i, _)| i)
+        //         .collect();
+        //     let pos = matching_indexes.get( self.selected_account_tab )
+        //         .unwrap_or_else(|| matching_indexes.iter().max().unwrap());
+        //     if let Some(account) = self.account.take() {
+        //         if *pos >= accounts.len() {
+        //             accounts.push(account);
+        //         } else { 
+        //             accounts.insert((*pos as i32 -1).max(0) as usize, account);
+        //         }
+        //     }
+        //     // let x = accounts;
+        //     Some(accounts)
+        // } else { 
+        //     None
+        // };
+
     }
 
     pub fn advance_ledger_table_row(&mut self) {

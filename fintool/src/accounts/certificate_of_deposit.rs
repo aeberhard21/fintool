@@ -1094,4 +1094,8 @@ impl CertificateOfDepositAccount {
     }
 }
 
-impl Account for CertificateOfDepositAccount {}
+impl Account for CertificateOfDepositAccount {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}

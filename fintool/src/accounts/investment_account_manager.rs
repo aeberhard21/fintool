@@ -1231,4 +1231,8 @@ impl AccountUI for InvestmentAccountManager {
 
 }
 
-impl Account for InvestmentAccountManager {}
+impl Account for InvestmentAccountManager {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}

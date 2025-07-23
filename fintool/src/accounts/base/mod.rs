@@ -1,3 +1,4 @@
+use std::any::Any;
 #[cfg(feature = "ratatui_support")]
 use crate::app::app::App;
 #[cfg(feature = "ratatui_support")]
@@ -165,7 +166,9 @@ pub trait AccountUI: AccountData {
 pub trait Account: AccountData + AccountOperations {}
 
 #[cfg(feature = "ratatui_support")]
-pub trait Account: AccountData + AccountOperations + AccountUI {}
+pub trait Account: AccountData + AccountOperations + AccountUI + Any {
+    fn as_any(&self) -> &dyn Any;
+}
 
 #[derive(Clone, Display, Debug, FromRepr, EnumIter, EnumString)]
 pub enum AnalysisPeriod {

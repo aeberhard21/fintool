@@ -30,6 +30,8 @@ use crate::app::ui;
 use crate::database::DbConn;
 use crate::tui::tui_user::create_user;
 use crate::tui::*;
+use crate::accounts::base::Account;
+use crate::types::accounts::AccountType;
 
 mod accounts;
 #[cfg(feature = "ratatui_support")]
@@ -120,17 +122,11 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                     (_, KeyCode::Enter) => {
                         if let Some(id) = app.validate_user(app.key_input.to_string()) {
                             app.user_id = Some(id);
-                            app.current_screen = CurrentScreen::Accounts;
-                            app.accounts_for_type = app
-                                .db
-                                .get_user_accounts_by_type(
-                                    app.user_id.unwrap(),
-                                    app.selected_atype_tab,
-                                )
-                                .unwrap();
-                            if app.accounts_for_type.is_some() {
-                                app.get_account();
-                            }
+                            app.current_screen = CurrentScreen::Main;
+                            app.accounts = Some(app.db.get_user_accounts(app.user_id.unwrap()).unwrap()
+                                .iter().map(|record| {
+                                    decode_and_init_account_type(app.user_id.unwrap(), &app.db, record)
+                                }).collect::<Vec<Box<dyn Account>>>());
                         } else {
                             app.invalid_input = true;
                         }
@@ -160,6 +156,28 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                     }
                     _ => {}
                 },
+                CurrentScreen::Main => match (key.modifiers, key.code) { 
+                    (_, KeyCode::Char('q'))
+                    | (KeyModifiers::CONTROL, KeyCode::Char('c') | KeyCode::Char('C')) => {
+                        return Ok(true)
+                    }
+                    (_, KeyCode::Char('a')) => { 
+                        app.current_screen = CurrentScreen::Accounts;
+                        app.accounts_for_type = if let Some(accounts) = &app.accounts {
+                            let filtered_accounts = accounts.iter().filter(|x| {
+                                    is_account_type(x, app.selected_atype_tab)
+                            }).collect::<Vec<&Box<dyn Account>>>();
+                            let names = filtered_accounts.iter().map(|x| x.get_name()).collect::<Vec<String>>();
+                            Some(names)
+                        } else { 
+                            None
+                        };
+                        if app.accounts_for_type.is_some() {
+                            app.get_account();
+                        }
+                    }
+                    _ => {}
+                }
                 CurrentScreen::Accounts => match (key.modifiers, key.code) {
                     (_, KeyCode::Char('q'))
                     | (KeyModifiers::CONTROL, KeyCode::Char('c') | KeyCode::Char('C')) => {
@@ -168,6 +186,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                     (_, KeyCode::Right | KeyCode::Char('l')) => {
                         match app.currently_selected {
                             Some(CurrentlySelecting::AccountTabs) => {
+                                // app.restore_account();
                                 app.advance_account();
                                 if app.accounts_for_type.is_some() {
                                     app.get_account();
@@ -176,13 +195,22 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                             Some(CurrentlySelecting::AccountTypeTabs) => {
                                 // get accounts for filter
                                 app.advance_account_type();
-                                app.accounts_for_type = app
-                                    .db
-                                    .get_user_accounts_by_type(
-                                        app.user_id.unwrap(),
-                                        app.selected_atype_tab,
-                                    )
-                                    .unwrap();
+                                // app.accounts_for_type = app
+                                //     .db
+                                //     .get_user_accounts_by_type(
+                                //         app.user_id.unwrap(),
+                                //         app.selected_atype_tab,
+                                //     )
+                                //     .unwrap();
+                                app.accounts_for_type = if let Some(accounts) = &app.accounts {
+                                    let filtered_accounts = accounts.iter().filter(|x| {
+                                            is_account_type(x, app.selected_atype_tab)
+                                    }).collect::<Vec<&Box<dyn Account>>>();
+                                    let names = filtered_accounts.iter().map(|x| x.get_name()).collect::<Vec<String>>();
+                                    Some(names)
+                                } else { 
+                                    None
+                                };
                                 if app.accounts_for_type.is_some() {
                                     app.get_account();
                                 }
@@ -192,6 +220,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                     }
                     (_, KeyCode::Left | KeyCode::Char('h')) => match app.currently_selected {
                         Some(CurrentlySelecting::AccountTabs) => {
+                            // app.restore_account();
                             app.retreat_account();
                             if app.accounts_for_type.is_some() {
                                 app.get_account();
@@ -199,13 +228,15 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                         }
                         Some(CurrentlySelecting::AccountTypeTabs) => {
                             app.retreat_account_type();
-                            app.accounts_for_type = app
-                                .db
-                                .get_user_accounts_by_type(
-                                    app.user_id.unwrap(),
-                                    app.selected_atype_tab,
-                                )
-                                .unwrap();
+                            app.accounts_for_type = if let Some(accounts) = &app.accounts {
+                                let filtered_accounts = accounts.iter().filter(|x| {
+                                    is_account_type(x, app.selected_atype_tab)
+                                }).collect::<Vec<&Box<dyn Account>>>();
+                                let names = filtered_accounts.iter().map(|x| x.get_name()).collect::<Vec<String>>();
+                                Some(names)
+                            } else { 
+                                None
+                            };
                             if app.accounts_for_type.is_some() {
                                 app.get_account();
                             }
@@ -217,13 +248,22 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                             match select_mode {
                                 CurrentlySelecting::AccountTabs => {
                                     app.retreat_currently_selecting();
-                                    app.accounts_for_type = app
-                                        .db
-                                        .get_user_accounts_by_type(
-                                            app.user_id.unwrap(),
-                                            app.selected_atype_tab,
-                                        )
-                                        .unwrap();
+                                    app.accounts_for_type = if let Some(accounts) = &app.accounts {
+                                        let filtered_accounts = accounts.iter().filter(|x| {
+                                            is_account_type(x, app.selected_atype_tab)
+                                        }).collect::<Vec<&Box<dyn Account>>>();
+                                        let names = filtered_accounts.iter().map(|x| x.get_name()).collect::<Vec<String>>();
+                                        Some(names)
+                                    } else { 
+                                        None
+                                    };
+                                    // app.accounts_for_type = app
+                                    //     .db
+                                    //     .get_user_accounts_by_type(
+                                    //         app.user_id.unwrap(),
+                                    //         app.selected_atype_tab,
+                                    //     )
+                                    //     .unwrap();
                                     if app.accounts_for_type.is_some() {
                                         app.get_account();
                                     }
@@ -266,23 +306,42 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                                     )
                                     .unwrap();
 
-                                    create_account(
+                                    let new_account = create_account(
                                         app.user_id.unwrap(),
                                         app.selected_atype_tab,
                                         &app.db,
                                     );
 
+                                    if let Some(account) = new_account { 
+                                        if let Some(mut accounts) = app.accounts.take() { 
+                                            accounts.push(account.0);
+                                            app.accounts = Some(accounts);
+                                        }
+                                    }
+
                                     enable_raw_mode()?;
                                     terminal.clear().unwrap();
 
                                     // update accounts for type
-                                    app.accounts_for_type = app
-                                        .db
-                                        .get_user_accounts_by_type(
-                                            app.user_id.unwrap(),
-                                            app.selected_atype_tab,
-                                        )
-                                        .unwrap();
+                                    // app.accounts_for_type = app
+                                    //     .db
+                                    //     .get_user_accounts_by_type(
+                                    //         app.user_id.unwrap(),
+                                    //         app.selected_atype_tab,
+                                    //     )
+                                    //     .unwrap();
+
+                                    app.accounts_for_type = if let Some(accounts) = &app.accounts {
+                                        let filtered_accounts = accounts.iter().filter(|x| {
+                                                is_account_type(x, app.selected_atype_tab)
+                                        }).collect::<Vec<&Box<dyn Account>>>();
+                                        let names = filtered_accounts.iter().map(|x| x.get_name()).collect::<Vec<String>>();
+                                        Some(names)
+                                    } else { 
+                                        None
+                                    };
+
+                                    // app.restore_account();
                                     app.skip_to_last_account();
                                     app.get_account();
                                 }
@@ -469,5 +528,21 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                 _ => {}
             }
         }
+    }
+}
+
+pub fn is_account_type( x : &Box<dyn Account>, atype : AccountType) -> bool { 
+    use crate::accounts::bank_account::BankAccount;
+    use crate::accounts::certificate_of_deposit::CertificateOfDepositAccount;
+    use crate::accounts::credit_card_account::CreditCardAccount;
+    use crate::accounts::investment_account_manager::InvestmentAccountManager;
+    use crate::accounts::wallet::Wallet;
+    use crate::types::accounts::AccountType;
+    match atype { 
+        AccountType::Bank => x.as_any().is::<BankAccount>(),                                    
+        AccountType::Investment => x.as_any().is::<InvestmentAccountManager>(),
+        AccountType::Wallet => x.as_any().is::<Wallet>(),
+        AccountType::CD => x.as_any().is::<CertificateOfDepositAccount>(),
+        AccountType::CreditCard => x.as_any().is::<CreditCardAccount>(),
     }
 }

@@ -833,4 +833,8 @@ impl AccountUI for BankAccount {
     }
 }
 
-impl Account for BankAccount {}
+impl Account for BankAccount {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}

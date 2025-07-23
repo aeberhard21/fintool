@@ -1038,4 +1038,8 @@ impl CreditCardAccount {
     }
 }
 
-impl Account for CreditCardAccount {}
+impl Account for CreditCardAccount {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}

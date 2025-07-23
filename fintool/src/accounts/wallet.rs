@@ -840,4 +840,8 @@ impl AccountUI for Wallet {
     // fn render_current_value(&self, frame: &mut Frame, area: Rect, app: &mut App) {}
 }
 
-impl Account for Wallet {}
+impl Account for Wallet {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
