@@ -223,7 +223,7 @@ impl AccountCreation for CertificateOfDepositAccount {
 }
 
 impl AccountOperations for CertificateOfDepositAccount {
-    fn record(&self) {
+    fn record(&mut self) {
         const RECORD_OPTIONS: [&'static str; 3] = ["Deposit", "Withdrawal", "None"];
         loop {
             let action = Select::new(
@@ -256,7 +256,7 @@ impl AccountOperations for CertificateOfDepositAccount {
         }
     }
 
-    fn import(&self) {
+    fn import(&mut self) {
         let g = FilePathHelper {
             completer: FilenameCompleter::new(),
             highlighter: MatchingBracketHighlighter::new(),
@@ -348,7 +348,7 @@ impl AccountOperations for CertificateOfDepositAccount {
         }
     }
 
-    fn modify(&self) {
+    fn modify(&mut self) {
         const MODIFY_OPTIONS: [&'static str; 7] = [
             "APY",
             "Ledger",
@@ -1095,6 +1095,7 @@ impl CertificateOfDepositAccount {
 }
 
 impl Account for CertificateOfDepositAccount {
+    #[cfg(feature = "ratatui_support")]
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }

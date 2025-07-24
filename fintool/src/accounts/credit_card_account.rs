@@ -152,7 +152,7 @@ impl AccountCreation for CreditCardAccount {
 }
 
 impl AccountOperations for CreditCardAccount {
-    fn record(&self) {
+    fn record(&mut self) {
         const RECORD_OPTIONS: [&'static str; 3] = ["Charge", "Payment", "None"];
         loop {
             let action = Select::new(
@@ -185,7 +185,7 @@ impl AccountOperations for CreditCardAccount {
         }
     }
 
-    fn import(&self) {
+    fn import(&mut self) {
         let g = FilePathHelper {
             completer: FilenameCompleter::new(),
             highlighter: MatchingBracketHighlighter::new(),
@@ -277,7 +277,7 @@ impl AccountOperations for CreditCardAccount {
         }
     }
 
-    fn modify(&self) {
+    fn modify(&mut self) {
         const MODIFY_OPTIONS: [&'static str; 6] = [
             "Ledger",
             "Credit Line",
@@ -1039,6 +1039,7 @@ impl CreditCardAccount {
 }
 
 impl Account for CreditCardAccount {
+    #[cfg(feature = "ratatui_support")]
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }

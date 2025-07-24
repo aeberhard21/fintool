@@ -31,44 +31,54 @@ pub struct VariableAccount {
     pub db: DbConn,
     pub fixed: FixedAccount,
     pub buffer : Option<Vec<StockData>>,
+    pub open_date : NaiveDate,
 }
 
 impl VariableAccount {
-    pub fn new(uid: u32, id: u32, db: &DbConn) -> Self {
+    pub fn new(uid: u32, id: u32, db: &DbConn, open_date : NaiveDate) -> Self {
         let mut acct: VariableAccount = Self {
             id: id,
             uid: uid,
             db: db.clone(),
             fixed: FixedAccount::new(uid, id, db.clone()),
-            buffer : None
+            buffer : None,
+            open_date : open_date,
         };
-
-        let mut ledger = acct.db.get_ledger(acct.uid, acct.id).unwrap();
-        if !ledger.is_empty() {
-            ledger.sort_by(|l1, l2| (&l1.info.date).cmp(&l2.info.date));
-            let earliest_date = NaiveDate::parse_from_str(&ledger[0].info.date, "%Y-%m-%d").unwrap();
-            let latest_date = Local::now().date_naive();
-
-            let x = acct.db.get_positions_by_ledger(id, uid).unwrap();
-            if x.is_some() { 
-                let x = x.unwrap();
-                let mut tickers = x.iter().map(|x| x.0.clone()).collect::<Vec<String>>();
-                tickers.dedup();
-                let mut data : Vec<StockData> = Vec::new();
-                for ticker in tickers { 
-                    let date_shares = x.iter().filter(|data| data.0 == ticker).map(|x: &(String, String, f32)| (SharesOwned { date : NaiveDate::parse_from_str(&&x.1, "%Y-%m-%d").expect(format!("Unable to decode {}", &x.1).as_str()), shares :  x.2.clone()})).collect::<Vec<SharesOwned>>();
-                    let quotes = get_stock_history(ticker.clone(), earliest_date, latest_date).unwrap();
-                    data.push(StockData { ticker: ticker.clone(), quotes: quotes, history: date_shares });
-
-                }
-                acct.buffer = Some(data);
-            }
-        }
+        acct.initialize_buffer();
         acct
     }
 
+    pub fn initialize_buffer(&mut self) {
+        // this is a quick hack to update the buffer after a stock has been purchased, sold or split
+        let earliest_date = self.open_date;
+        let latest_date = Local::now().date_naive();
+
+        let x = self.db.get_positions_by_ledger(self.id, self.uid).unwrap();
+        if x.is_some() {
+            let x = x.unwrap();
+            let mut tickers = x.iter().map(|x| x.0.clone()).collect::<Vec<String>>();
+            tickers.dedup();
+            let mut data : Vec<StockData> = Vec::new();
+
+            let buffer = if let Some(buffer) = self.buffer.take() { 
+                buffer
+            } else { 
+                Vec::new()
+            };
+
+            for ticker in tickers { 
+                let date_shares = x.iter().filter(|data| data.0 == ticker).map(|x: &(String, String, f32)| (SharesOwned { date : NaiveDate::parse_from_str(&&x.1, "%Y-%m-%d").expect(format!("Unable to decode {}", &x.1).as_str()), shares :  x.2.clone()})).collect::<Vec<SharesOwned>>();
+                let quotes = buffer.iter().find(|x| { x.ticker == ticker }).and_then(|x| Some(x.quotes.clone()));
+                let quotes = quotes.or_else(|| {Some(get_stock_history(ticker.clone(), earliest_date, latest_date).unwrap())} ).unwrap();
+                data.push(StockData { ticker: ticker.clone(), quotes: quotes, history: date_shares });
+
+            }
+            self.buffer = Some(data);
+        }
+    }
+
     pub fn purchase_stock(
-        &self,
+        &mut self,
         initial_opt: Option<StockRecord>,
         overwrite_entry: bool,
     ) -> LedgerRecord {
@@ -229,32 +239,29 @@ impl VariableAccount {
 
 
         // TODO: Eventually update buffer with purchase/sale/split of stock
-
-        // let mut ledger = self.db.get_ledger(self.uid, self.id).unwrap();
-        // let earliest_date = if !ledger.is_empty() {
-        //     ledger.sort_by(|l1, l2| (&l1.info.date).cmp(&l2.info.date));
-        //     NaiveDate::parse_from_str(&ledger[0].info.date, "%Y-%m-%d").unwrap()
-        // } else { 
-        //     NaiveDate::parse_from_str(&date_input, "%Y-%m-%d").unwrap()
-        // };
-
-        // if let Some(mut buffer) = &self.buffer {
-        //     let x = buffer.iter().find(|x| x.ticker == ticker);
+        // if let Some(mut buffer) = self.buffer.take() {
+        //     let data = buffer.iter_mut().find(|x| x.ticker == ticker.clone());
         //     let date_naive = NaiveDate::parse_from_str(&date_input, "%Y-%m-%d").unwrap();
-        //     if x.is_none() {
-        //         // ticker doesn't exis
+        //     if let Some(stock_data) = data {
+        //         let tmp;
+        //         stock_data.history.push(SharesOwned { date : date_naive, shares: stock_data.history.last().unwrap_or( { 
+        //             tmp = SharesOwned { shares : 0.0 , date : Local::now().date_naive()};
+        //             &tmp
+        //         }).shares + shares});
+        //     } else { 
+        //         // ticker doesn't exist
         //         buffer.push(StockData { 
-        //                 ticker : ticker, 
-        //                 quotes : get_stock_history(ticker, earliest_date, Local::now().date_naive()).unwrap(), 
+        //                 ticker : ticker.clone(), 
+        //                 quotes : get_stock_history(ticker.clone(), self.open_date, Local::now().date_naive()).unwrap(), 
         //                 history : vec![SharesOwned { date : date_naive, shares : shares }]});
-        //         self.buffer = Some(buffer);
         //     }
+        //     self.buffer = Some(buffer);
         // } else { 
         //     let date_naive = NaiveDate::parse_from_str(&date_input, "%Y-%m-%d").unwrap();
         //     // buffer doesn't exist
         //     let buffer = vec![StockData { 
-        //                 ticker : ticker, 
-        //                 quotes : get_stock_history(ticker, earliest_date, Local::now().date_naive()).unwrap(), 
+        //                 ticker : ticker.clone(), 
+        //                 quotes : get_stock_history(ticker.clone(), self.open_date, Local::now().date_naive()).unwrap(), 
         //                 history : vec![SharesOwned { date : date_naive, shares : shares }]}];
 
         //     self.buffer = Some(buffer);    
@@ -264,6 +271,8 @@ impl VariableAccount {
             .add_stock_purchase(self.uid, self.id, stock_record)
             .unwrap();
 
+        self.initialize_buffer();
+
         return LedgerRecord {
             id: ledger_id,
             info: purchase.clone(),
@@ -271,7 +280,7 @@ impl VariableAccount {
     }
 
     pub fn sell_stock(
-        &self,
+        &mut self,
         initial_opt: Option<StockRecord>,
         overwrite_entry: bool,
     ) -> LedgerRecord {
@@ -446,6 +455,7 @@ impl VariableAccount {
                 .to_string();
 
         self.allocate_sale_stock(sale_info, sell_method);
+        self.initialize_buffer();
 
         return LedgerRecord {
             id: ledger_id,
@@ -454,7 +464,7 @@ impl VariableAccount {
     }
 
     pub fn split_stock(
-        &self,
+        &mut self,
         initial_opt: Option<StockSplitRecord>,
         overwrite_entry: bool,
     ) -> LedgerRecord {
@@ -605,6 +615,7 @@ impl VariableAccount {
         };
 
         self.allocate_stock_split(stock_split_record);
+        self.initialize_buffer();
 
         return LedgerRecord {
             id: lid,
@@ -612,7 +623,7 @@ impl VariableAccount {
         };
     }
 
-    pub fn modify(&self, record: LedgerRecord) -> LedgerRecord {
+    pub fn modify(&mut self, record: LedgerRecord) -> LedgerRecord {
         let was_stock_purchase_opt = self
             .db
             .check_and_get_stock_purchase_record_matching_from_ledger_id(

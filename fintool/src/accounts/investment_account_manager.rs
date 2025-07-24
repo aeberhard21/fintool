@@ -111,26 +111,29 @@ impl AccountCreation for InvestmentAccountManager {
 
 impl InvestmentAccountManager {
     pub fn new(uid: u32, id: u32, db: &DbConn) -> Self {
-        let mut acct = Self {
+
+        let mut ledger = db.get_ledger(uid, id).unwrap();
+        let open_date = if !ledger.is_empty() { 
+            ledger.sort_by(|l1, l2| (&l1.info.date).cmp(&l2.info.date));
+            NaiveDate::parse_from_str(&ledger[0].info.date, "%Y-%m-%d").unwrap()
+        } else { 
+            Local::now().date_naive()
+        };
+
+        let acct = Self {
             uid: uid,
             id: id,
             db: db.clone(),
-            variable: VariableAccount::new(uid, id, db),
-            open_date : Local::now().date_naive(),
+            variable: VariableAccount::new(uid, id, db, open_date),
+            open_date : open_date,
         };
-
-        let mut ledger = acct.get_ledger();
-        if !ledger.is_empty() { 
-            ledger.sort_by(|l1, l2| (&l1.info.date).cmp(&l2.info.date));
-            acct.open_date = NaiveDate::parse_from_str(&ledger[0].info.date, "%Y-%m-%d").unwrap();
-        }
 
         acct
     }
 }
 
 impl AccountOperations for InvestmentAccountManager {
-    fn record(&self) {
+    fn record(&mut self) {
         const RECORD_OPTIONS: [&'static str; 6] = [
             "Deposit",
             "Withdrawal",
@@ -180,7 +183,7 @@ impl AccountOperations for InvestmentAccountManager {
         }
     }
 
-    fn import(&self) {
+    fn import(&mut self) {
         let g = FilePathHelper {
             completer: FilenameCompleter::new(),
             highlighter: MatchingBracketHighlighter::new(),
@@ -442,9 +445,10 @@ impl AccountOperations for InvestmentAccountManager {
                 lid = self.db.add_ledger_entry(self.uid, self.id, txn).unwrap();
             }
         }
+        self.variable.initialize_buffer();
     }
 
-    fn modify(&self) {
+    fn modify(&mut self) {
         const MODIFY_OPTIONS: [&'static str; 4] = ["Ledger", "Categories", "Participant", "None"];
         let modify_choice =
             Select::new("\nWhat would you like to modify:", MODIFY_OPTIONS.to_vec())
@@ -1232,6 +1236,7 @@ impl AccountUI for InvestmentAccountManager {
 }
 
 impl Account for InvestmentAccountManager {
+    #[cfg(feature = "ratatui_support")]
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }

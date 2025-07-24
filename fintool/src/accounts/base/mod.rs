@@ -36,9 +36,9 @@ pub trait AccountCreation {
 
 pub trait AccountOperations {
     // fn create( account_id : u32, db : &mut DbConn );
-    fn import(&self);
-    fn record(&self);
-    fn modify(&self);
+    fn import(&mut self);
+    fn record(&mut self);
+    fn modify(&mut self);
     fn export(&self);
     fn report(&self);
     fn link(&self, transacting_account: u32, ledger: LedgerRecord) -> Option<u32>;
@@ -265,14 +265,14 @@ impl AnalysisPeriod {
 // }
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct StockData {
     ticker: String, 
     quotes : Vec<Quote>,
     history : Vec<SharesOwned>
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct SharesOwned { 
     date : NaiveDate, 
     shares : f32

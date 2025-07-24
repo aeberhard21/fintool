@@ -401,7 +401,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                                     )
                                     .unwrap();
 
-                                    if let Some(acct) = &app.account {
+                                    if let Some(acct) = &mut app.account {
                                         acct.modify();
                                     } else {
                                         app.invalid_input = true;
@@ -426,7 +426,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                                     )
                                     .unwrap();
 
-                                    if let Some(acct) = &app.account {
+                                    if let Some(acct) = &mut app.account {
                                         acct.record();
                                     } else {
                                         app.invalid_input = true;
@@ -452,7 +452,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                                     )
                                     .unwrap();
 
-                                    if let Some(acct) = &app.account {
+                                    if let Some(acct) = &mut app.account {
                                         acct.import();
                                     } else {
                                         app.invalid_input = true;
@@ -528,7 +528,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                     (_, KeyCode::Esc) => { 
                         if let Some(select_mode) = &app.currently_selected {
                             match select_mode { 
-                                CurrentlySelecting::AccountTypeTabs => {
+                                CurrentlySelecting::AccountTypeTabs|CurrentlySelecting::AccountTabs => {
                                     app.current_screen = CurrentScreen::Main;
                                 }
                                 _ => {}
@@ -543,6 +543,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
     }
 }
 
+#[cfg(feature = "ratatui_support")]
 pub fn is_account_type( x : &Box<dyn Account>, atype : AccountType) -> bool { 
     use crate::accounts::bank_account::BankAccount;
     use crate::accounts::certificate_of_deposit::CertificateOfDepositAccount;

@@ -131,7 +131,7 @@ impl AccountCreation for Wallet {
 }
 
 impl AccountOperations for Wallet {
-    fn record(&self) {
+    fn record(&mut self) {
         const RECORD_OPTIONS: [&'static str; 3] = ["Deposit", "Withdrawal", "None"];
         loop {
             let action = Select::new(
@@ -164,7 +164,7 @@ impl AccountOperations for Wallet {
         }
     }
 
-    fn import(&self) {
+    fn import(&mut self) {
         let g = FilePathHelper {
             completer: FilenameCompleter::new(),
             highlighter: MatchingBracketHighlighter::new(),
@@ -256,7 +256,7 @@ impl AccountOperations for Wallet {
         }
     }
 
-    fn modify(&self) {
+    fn modify(&mut self) {
         const MODIFY_OPTIONS: [&'static str; 4] = ["Ledger", "Categories", "People", "None"];
         let modify_choice =
             Select::new("\nWhat would you like to modify:", MODIFY_OPTIONS.to_vec())
@@ -841,6 +841,7 @@ impl AccountUI for Wallet {
 }
 
 impl Account for Wallet {
+    #[cfg(feature = "ratatui_support")]
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
