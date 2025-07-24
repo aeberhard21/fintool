@@ -237,36 +237,6 @@ impl VariableAccount {
             ledger_id: ledger_id,
         };
 
-
-        // TODO: Eventually update buffer with purchase/sale/split of stock
-        // if let Some(mut buffer) = self.buffer.take() {
-        //     let data = buffer.iter_mut().find(|x| x.ticker == ticker.clone());
-        //     let date_naive = NaiveDate::parse_from_str(&date_input, "%Y-%m-%d").unwrap();
-        //     if let Some(stock_data) = data {
-        //         let tmp;
-        //         stock_data.history.push(SharesOwned { date : date_naive, shares: stock_data.history.last().unwrap_or( { 
-        //             tmp = SharesOwned { shares : 0.0 , date : Local::now().date_naive()};
-        //             &tmp
-        //         }).shares + shares});
-        //     } else { 
-        //         // ticker doesn't exist
-        //         buffer.push(StockData { 
-        //                 ticker : ticker.clone(), 
-        //                 quotes : get_stock_history(ticker.clone(), self.open_date, Local::now().date_naive()).unwrap(), 
-        //                 history : vec![SharesOwned { date : date_naive, shares : shares }]});
-        //     }
-        //     self.buffer = Some(buffer);
-        // } else { 
-        //     let date_naive = NaiveDate::parse_from_str(&date_input, "%Y-%m-%d").unwrap();
-        //     // buffer doesn't exist
-        //     let buffer = vec![StockData { 
-        //                 ticker : ticker.clone(), 
-        //                 quotes : get_stock_history(ticker.clone(), self.open_date, Local::now().date_naive()).unwrap(), 
-        //                 history : vec![SharesOwned { date : date_naive, shares : shares }]}];
-
-        //     self.buffer = Some(buffer);    
-        // }
-
         self.db
             .add_stock_purchase(self.uid, self.id, stock_record)
             .unwrap();
