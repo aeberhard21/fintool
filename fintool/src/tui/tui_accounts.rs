@@ -3,7 +3,10 @@ use core::panic;
 use crate::database::{self, *};
 // use crate::tui::tui_budgets::create_budget;
 use crate::types::accounts::*;
+use crate::types::accounts::AccountType;
+use crate::tui::BankAccount;
 use inquire::*;
+use crate::Account;
 
 pub fn select_account_by_type(
     _uid: u32,
@@ -43,4 +46,31 @@ pub fn select_account_by_filter(_uid: u32, _db: &mut DbConn, filter: AccountFilt
     let account: String = Select::new(msg, accounts).prompt().unwrap().to_string();
     let aid = _db.get_account_id(_uid, account).unwrap();
     return aid;
+}
+
+#[cfg(feature = "ratatui_support")]
+pub fn get_total_assets(accounts : &Vec<Box<dyn Account>>) -> f32 {
+    let mut assets = 0.0;
+    for account in accounts {
+        match account.kind() { 
+            AccountType::Bank |
+            AccountType::Investment |
+            AccountType::CD |
+            AccountType::Wallet => { assets = assets + account.get_value() },
+            _ => { assets = assets }
+        }
+    }
+    return assets;
+}
+
+#[cfg(feature = "ratatui_support")]
+pub fn get_total_liabilities(accounts : &Vec<Box<dyn Account>>) -> f32 {
+    let mut liabilities = 0.0;
+    for account in accounts {
+        match account.kind() { 
+            AccountType::CreditCard => { liabilities = liabilities + account.get_value() },
+            _ => { liabilities = liabilities }
+        }
+    }
+    return liabilities;
 }

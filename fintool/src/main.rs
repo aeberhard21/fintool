@@ -529,6 +529,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                         if let Some(select_mode) = &app.currently_selected {
                             match select_mode { 
                                 CurrentlySelecting::AccountTypeTabs|CurrentlySelecting::AccountTabs => {
+                                    app.restore_account();
                                     app.current_screen = CurrentScreen::Main;
                                 }
                                 _ => {}

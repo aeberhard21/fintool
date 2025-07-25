@@ -61,7 +61,8 @@ use super::base::AccountData;
 use super::base::AccountOperations;
 #[cfg(feature = "ratatui_support")]
 use super::base::AccountUI;
-use crate::accounts::float_range;
+#[cfg(feature = "ratatui_support")]
+use crate::ui::{centered_rect, float_range};
 
 pub struct InvestmentAccountManager {
     uid: u32,
@@ -875,6 +876,13 @@ impl AccountData for InvestmentAccountManager {
     fn get_value(&self) -> f32 {
         return self.variable.get_current_value();
     }
+    fn get_value_on_day(&self, day : NaiveDate) -> f32 {
+        if let Some(value) = self.variable.get_account_value_on_day(&day) { 
+            value
+        } else { 
+            0.0
+        }
+    }
     fn get_open_date(&self) -> NaiveDate {
         return self.open_date
     }
@@ -1236,6 +1244,9 @@ impl AccountUI for InvestmentAccountManager {
 }
 
 impl Account for InvestmentAccountManager {
+    fn kind(&self) -> AccountType { 
+        return AccountType::Investment;
+    }
     #[cfg(feature = "ratatui_support")]
     fn as_any(&self) -> &dyn std::any::Any {
         self

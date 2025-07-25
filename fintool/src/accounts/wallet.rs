@@ -61,7 +61,8 @@ use super::base::AccountData;
 use super::base::AccountOperations;
 #[cfg(feature = "ratatui_support")]
 use super::base::AccountUI;
-use crate::accounts::float_range;
+#[cfg(feature = "ratatui_support")]
+use crate::ui::{centered_rect, float_range};
 use crate::types::ledger::Expenditure;
 
 pub struct Wallet {
@@ -655,6 +656,9 @@ impl AccountData for Wallet {
     fn get_value(&self) -> f32 {
         return self.fixed.get_current_value();
     }
+    fn get_value_on_day(&self, day : NaiveDate) -> f32 {
+        return self.fixed.get_value_on_day(day);
+    }
     fn get_open_date(&self) -> NaiveDate {
         return self.open_date
     }
@@ -750,11 +754,6 @@ impl AccountUI for Wallet {
         let report_area = graphs_reports[0];
         let chart_area = graphs_reports[1];
 
-        // let reports_chunks = Layout::default()
-        //     .direction(Direction::Vertical)
-        //     .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        //     .split(graphs_reports[0]);
-
         self.render_current_value(frame, report_area, app);
         self.render_ledger_table(frame, chunk[1], app);
         self.render_spend_chart(frame, chart_area, app);
@@ -837,10 +836,12 @@ impl AccountUI for Wallet {
         frame.render_stateful_widget(t, area, &mut app.ledger_table_state);
     }
 
-    // fn render_current_value(&self, frame: &mut Frame, area: Rect, app: &mut App) {}
-}
+ }
 
 impl Account for Wallet {
+    fn kind(&self) -> AccountType { 
+        return AccountType::Wallet;
+    }
     #[cfg(feature = "ratatui_support")]
     fn as_any(&self) -> &dyn std::any::Any {
         self

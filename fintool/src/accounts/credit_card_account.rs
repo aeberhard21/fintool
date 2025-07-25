@@ -63,7 +63,9 @@ use super::base::AccountData;
 use super::base::AccountOperations;
 #[cfg(feature = "ratatui_support")]
 use super::base::AccountUI;
-use crate::accounts::float_range;
+
+#[cfg(feature = "ratatui_support")]
+use crate::ui::{centered_rect, float_range};
 
 pub struct CreditCardAccount {
     uid: u32,
@@ -735,6 +737,9 @@ impl AccountData for CreditCardAccount {
     fn get_value(&self) -> f32 {
         return self.charge.get_current_balance();
     }
+    fn get_value_on_day(&self, day : NaiveDate) -> f32 {
+        return self.charge.get_balance_on_day(day);
+    }
     fn get_open_date(&self) -> NaiveDate {
         return self.open_date
     }
@@ -1039,6 +1044,9 @@ impl CreditCardAccount {
 }
 
 impl Account for CreditCardAccount {
+    fn kind(&self) -> AccountType { 
+        return AccountType::CreditCard;
+    }
     #[cfg(feature = "ratatui_support")]
     fn as_any(&self) -> &dyn std::any::Any {
         self

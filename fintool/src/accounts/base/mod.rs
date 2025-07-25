@@ -5,6 +5,7 @@ use crate::app::app::App;
 use crate::app::screen::ledger_table_constraint_len_calculator;
 use crate::database::DbConn;
 use crate::types::accounts::AccountRecord;
+use crate::types::accounts::AccountType;
 use crate::types::ledger::{DisplayableLedgerRecord, LedgerRecord};
 #[cfg(feature = "ratatui_support")]
 use crate::ui::centered_rect;
@@ -51,6 +52,7 @@ pub trait AccountData {
     fn get_ledger_within_dates(&self, start: NaiveDate, end: NaiveDate) -> Vec<LedgerRecord>;
     fn get_displayable_ledger(&self) -> Vec<DisplayableLedgerRecord>;
     fn get_value(&self) -> f32;
+    fn get_value_on_day(&self, day : NaiveDate) -> f32;
     fn get_open_date(&self) -> NaiveDate;
 }
 #[cfg(feature = "ratatui_support")]
@@ -163,10 +165,13 @@ pub trait AccountUI: AccountData {
 }
 
 #[cfg(not(feature = "ratatui_support"))]
-pub trait Account: AccountData + AccountOperations {}
+pub trait Account: AccountData + AccountOperations {
+    fn kind(&self) -> AccountType;
+}
 
 #[cfg(feature = "ratatui_support")]
 pub trait Account: AccountData + AccountOperations + AccountUI + Any {
+    fn kind(&self) -> AccountType;
     fn as_any(&self) -> &dyn Any;
 }
 

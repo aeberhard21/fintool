@@ -705,6 +705,14 @@ impl ChargeAccount {
         return -self.db.get_current_value(self.uid, self.id).unwrap();
     }
 
+    pub fn get_balance_on_day(&self, day : NaiveDate) -> f32 { 
+        if let Some(value) = self.db.get_cumulative_total_of_ledger_on_date(self.uid, self.id, day).unwrap() {
+            -value
+        } else { 
+            0.0
+        }
+    }
+
     pub fn get_credit_line(&self) -> f32 {
         let credit_card = self.db.get_credit_card(self.uid, self.id).unwrap();
         return credit_card.info.credit_line;

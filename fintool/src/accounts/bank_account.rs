@@ -55,7 +55,7 @@ use crate::types::ledger::LedgerRecord;
 use crate::types::participants;
 use crate::types::participants::ParticipantType;
 #[cfg(feature = "ratatui_support")]
-use crate::ui::centered_rect;
+use crate::ui::{centered_rect, float_range};
 use shared_lib::TransferType;
 
 use super::base::fixed_account::FixedAccount;
@@ -65,7 +65,6 @@ use super::base::AccountData;
 use super::base::AccountOperations;
 #[cfg(feature = "ratatui_support")]
 use super::base::AccountUI;
-use super::float_range;
 
 pub struct BankAccount {
     uid: u32,
@@ -803,6 +802,9 @@ impl AccountData for BankAccount {
     fn get_value(&self) -> f32 {
         return self.fixed.get_current_value();
     }
+    fn get_value_on_day(&self, day : NaiveDate) -> f32 {
+        return self.fixed.get_value_on_day(day);
+    }
     fn get_open_date(&self) -> NaiveDate {
         return self.open_date
     }
@@ -834,6 +836,9 @@ impl AccountUI for BankAccount {
 }
 
 impl Account for BankAccount {
+    fn kind(&self) -> AccountType { 
+        return AccountType::Bank;
+    }
     #[cfg(feature = "ratatui_support")]
     fn as_any(&self) -> &dyn std::any::Any {
         self
