@@ -974,6 +974,8 @@ impl CreditCardAccount {
     fn render_spend_chart(&self, frame: &mut Frame, area: Rect, app: &App) {
         let (start, end) = (app.analysis_start, app.analysis_end);
         if let Some(mut entries ) = self.charge.db.get_expenditures_between_dates(self.uid, self.id, start, end).unwrap() { 
+
+            // group anything less than the top 10 categories into a "miscellaneous" category
             entries.sort_by(|x, y| { (x.amount).partial_cmp(&y.amount).unwrap_or(std::cmp::Ordering::Equal) });
             let grouped_others : Option<Expenditure> = if entries.len() > 10 {
                 let misc = entries.drain(10..entries.len()-1).collect::<Vec<Expenditure>>();
@@ -983,42 +985,26 @@ impl CreditCardAccount {
                 None
             };
 
-            let mut data : Vec<(f64, f64)> = entries.iter().enumerate().map(|x| { ((x.0 as f64 / (entries.len()-1) as f64) * 100. as f64, x.1.amount as f64)}).collect::<Vec<(f64, f64)>>();
-            data.sort_by(|x,y| { (x.1).partial_cmp(&y.1).unwrap_or(std::cmp::Ordering::Equal) });
-            if grouped_others.is_some() { 
-                let grouped = grouped_others.unwrap();
-                data.push((1. + 1. / entries.len() as f64, grouped.amount as f64));
+            if let Some(grouped_others) = grouped_others { 
+                entries.push(grouped_others);
             }
 
-            let max_amount = entries[entries.len()-1].amount;
-            let max_range = (max_amount) as f64;
-            let dataset = Dataset::default()
-                .marker(symbols::Marker::HalfBlock)
-                .style(Style::new().fg(tailwind::EMERALD.c500))
-                .graph_type(GraphType::Bar)
-                .data(&data);
+            let bars = entries.iter().map(|x| {
+                Bar::default()
+                    .value(x.amount as u64)
+                    .label(Line::from(format!("{}", x.category)))
+                    .text_value(format!("${:2}", x.amount))
+                    .style(Style::new().fg(tailwind::AMBER.c500))
+                    .value_style((Style::new().fg(tailwind::AMBER.c500).reversed()))
+            }).collect::<Vec<Bar>>();
 
-            let chart = Chart::new(vec![dataset])
-                .block(Block::bordered().title_top(Line::from("Spend Analyzer").cyan().bold().centered()))
+            let chart =     BarChart::default()
+                .data(BarGroup::default().bars(&bars))
                 .style(Style::new().bg(tailwind::SLATE.c900))
-                .x_axis(
-                    Axis::default()
-                        .style(Style::default().gray())
-                        .bounds([0., 100.])
-                        .labels(entries.iter().map(|x| { x.category.clone().drain(0..(if (x.category.len() > 10) { 10} else {x.category.len()})).collect::<String>() } ).collect::<Vec<String>>())
-                        .labels_alignment(layout::Alignment::Right)
-                )
-                .y_axis(
-                    Axis::default()
-                        .style(Style::default().gray())
-                        .bounds([0.0, max_range])
-                        .labels(
-                            float_range(0., max_range, (max_range) / 5.0)
-                                .into_iter()
-                                .map(|x| format!("{:.2}", x)),
-                        ),
-                )
-                .hidden_legend_constraints((Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)));
+                .block(Block::bordered().title_top(Line::from("Spend Analyzer").centered()))
+                .bar_width(10)
+                .bar_gap(area.width / (bars.len() as u16 + 10));
+
             frame.render_widget(chart, area);
         } else { 
 
