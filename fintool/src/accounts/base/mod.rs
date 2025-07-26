@@ -20,7 +20,7 @@ use ratatui::{
     text::{Line, Span, Text as ratatuiText},
     widgets::{
         Axis, Bar, BarChart, BarGroup, Block, Borders, Cell, Chart, Clear, Dataset, GraphType,
-        HighlightSpacing, List, ListItem, Paragraph, Row, Table, Tabs, Widget, Wrap,
+        HighlightSpacing, List, ListItem, Padding, Paragraph, Row, Table, Tabs, Widget, Wrap,
     },
     Frame,
 };
@@ -153,7 +153,8 @@ pub trait AccountUI: AccountData {
                 Block::default()
                     .borders(Borders::ALL)
                     .title("Current Value")
-                    .title_alignment(layout::Alignment::Center),
+                    .title_alignment(layout::Alignment::Center)
+                    .padding(Padding::new(0,0, area.height/2-2, 0)),
             )
             .bg(tailwind::SLATE.c900);
 

@@ -14,7 +14,7 @@ use ratatui::{
     text::{Line, Span, Text as ratatuiText},
     widgets::{
         Axis, Bar, BarChart, BarGroup, Block, Borders, Cell, Chart, Clear, Dataset, GraphType,
-        HighlightSpacing, List, ListItem, Paragraph, Row, Table, Tabs, Widget, Wrap,
+        HighlightSpacing, List, ListItem, Padding, Paragraph, Row, Table, Tabs, Widget, Wrap,
     },
     Frame,
 };
@@ -946,7 +946,8 @@ impl CertificateOfDepositAccount {
                 Block::default()
                     .borders(Borders::ALL)
                     .title("Maturity Date Countdown")
-                    .title_alignment(layout::Alignment::Center),
+                    .title_alignment(layout::Alignment::Center)
+                    .padding(Padding::new(0,0, area.height/2-2, 0)),
             )
             .bg(tailwind::SLATE.c900);
         frame.render_widget(p, area);
@@ -971,7 +972,8 @@ impl CertificateOfDepositAccount {
                 Block::default()
                     .borders(Borders::ALL)
                     .title(format!(" Growth - {} ", app.analysis_period))
-                    .title_alignment(layout::Alignment::Center),
+                    .title_alignment(layout::Alignment::Center)
+                    .padding(Padding::new(0,0, area.height/2-2, 0)),
             )
             .bg(tailwind::SLATE.c900);
         let centered_area = centered_rect(10, 10, area);
@@ -1087,7 +1089,8 @@ impl CertificateOfDepositAccount {
                     Block::default()
                         .borders(Borders::ALL)
                         .title("Value Over Time")
-                        .title_alignment(layout::Alignment::Center),
+                        .title_alignment(layout::Alignment::Center)
+                        .padding(Padding::new(0,0, area.height/2-2, 0)),
                 )
                 .bg(tailwind::SLATE.c900);
 

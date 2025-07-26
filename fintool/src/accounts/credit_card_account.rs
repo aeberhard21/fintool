@@ -13,7 +13,7 @@ use ratatui::{
     text::{Line, Span, Text as ratatuiText},
     widgets::{
         Axis, Bar, BarChart, BarGroup, Block, Borders, canvas::{Canvas, Circle, Line as CanvasLine}, Cell, Chart, Clear, Dataset, GraphType,
-        HighlightSpacing, List, ListItem, Paragraph, Row, Table, Tabs, Widget, Wrap,
+        HighlightSpacing, List, ListItem, Padding, Paragraph, Row, Table, Tabs, Widget, Wrap,
     },
     Frame,
 };
@@ -863,7 +863,8 @@ impl AccountUI for CreditCardAccount {
                 Block::default()
                     .borders(Borders::ALL)
                     .title("Current Balance")
-                    .title_alignment(layout::Alignment::Center),
+                    .title_alignment(layout::Alignment::Center)
+                    .padding(Padding::new(0,0, area.height/2-2, 0)),
             )
             .bg(tailwind::SLATE.c900);
 
@@ -930,7 +931,8 @@ impl CreditCardAccount {
                 Block::default()
                     .borders(Borders::ALL)
                     .title("Statement Due Date Countdown")
-                    .title_alignment(layout::Alignment::Center),
+                    .title_alignment(layout::Alignment::Center)
+                    .padding(Padding::new(0,0, area.height/2-2, 0)),
             )
             .bg(tailwind::SLATE.c900);
         frame.render_widget(p, area);
@@ -964,7 +966,8 @@ impl CreditCardAccount {
                 Block::default()
                     .borders(Borders::ALL)
                     .title("Remaining Credit")
-                    .title_alignment(layout::Alignment::Center),
+                    .title_alignment(layout::Alignment::Center)
+                    .padding(Padding::new(0,0, area.height/2-2, 0)),
             )
             .bg(tailwind::SLATE.c900);
         frame.render_widget(p, area);
@@ -1020,7 +1023,8 @@ impl CreditCardAccount {
                     Block::default()
                         .borders(Borders::ALL)
                         .title("Current Balance")
-                        .title_alignment(layout::Alignment::Center),
+                        .title_alignment(layout::Alignment::Center)
+                        .padding(Padding::new(0,0, area.height/2-2, 0)),
                 )
                 .bg(tailwind::SLATE.c900);
 

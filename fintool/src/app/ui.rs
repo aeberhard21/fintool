@@ -6,7 +6,7 @@ use ratatui::{
     symbols::{self, bar, Marker},
     text::{Line, Span, Text},
     widgets::{
-        Axis, Bar, BarChart, BarGroup, Block, Borders, Cell, Chart, Clear, Dataset, GraphType, HighlightSpacing, LegendPosition, LineGauge, List, ListItem, Paragraph, Row, Table, Tabs, Widget, Wrap
+        Axis, Bar, BarChart, BarGroup, Block, Borders, Cell, Chart, Clear, Dataset, GraphType, HighlightSpacing, LegendPosition, LineGauge, List, ListItem, Padding, Paragraph, Row, Table, Tabs, Widget, Wrap
     },
     Frame,
 };
@@ -258,7 +258,7 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
         render_asset_investment_ratio_chart(app, frame, quadrant_2);
 
         let last_one = Paragraph::new(Text::styled("Hmmm....I guess!", Style::default().fg(Color::Green)))
-            .block(Block::default().borders(Borders::ALL).title("The Last One").style(Style::default()))
+            .block(Block::default().borders(Borders::ALL).title("The Last One").style(Style::default()).padding(Padding::new(0,0, quadrant_3.height/2-2, 0)))
             .centered()
             .bold();
 
@@ -327,15 +327,15 @@ fn render_net_worth( app: &App, frame : &mut Frame, area : Rect ) {
     let net_worth = assets - liabilities;
 
     let net_worth_widget = Paragraph::new(Text::styled(format!("$ {:.2}", net_worth), Style::default().fg(tailwind::EMERALD.c500)))
-        .block(Block::default().borders(Borders::ALL).title("Net Worth").style(Style::default()))
+        .block(Block::default().borders(Borders::ALL).title("Net Worth").style(Style::default()).padding(Padding::new(0,0, net_worth_area.height/2-2, 0)))
         .centered()
         .bold();
     let total_assets_widget = Paragraph::new(Text::styled(format!("$ {:.2}", assets), Style::default().fg(tailwind::EMERALD.c500)))
-        .block(Block::default().borders(Borders::ALL).title("Total Assets").style(Style::default()))
+        .block(Block::default().borders(Borders::ALL).title("Total Assets").style(Style::default()).padding(Padding::new(0,0, assets_area.height/2-2, 0)))
         .centered()
         .bold();
     let liabilities_widget = Paragraph::new(Text::styled(format!("$ {:.2}", liabilities), Style::default().fg(tailwind::ROSE.c500)))
-        .block(Block::default().borders(Borders::ALL).title("Total Liability").style(Style::default()))
+        .block(Block::default().borders(Borders::ALL).title("Total Liability").style(Style::default()).padding(Padding::new(0,0, liabilities_area.height/2-2, 0)))
         .centered()
         .bold();
 
@@ -420,7 +420,7 @@ fn render_net_worth_chart( app: &App, frame : &mut Frame, area : Rect) {
         frame.render_widget(net_worth_chart, area);
     } else { 
        let net_worth_chart = Paragraph::new(Text::styled(format!("No data to display!"), Style::default().fg(tailwind::ROSE.c500)))
-            .block(Block::default().borders(Borders::ALL).title("").style(Style::default()))
+            .block(Block::default().borders(Borders::ALL).title("").style(Style::default()).padding(Padding::new(0,0, area.height/2-2, 0)))
             .centered()
             .bold();
 
@@ -480,7 +480,7 @@ fn render_asset_investment_ratio_chart( app: &App, frame : &mut Frame, area : Re
         frame.render_widget(chart, area);
     } else { 
        let chart = Paragraph::new(Text::styled(format!("No data to display!"), Style::default().fg(tailwind::ROSE.c500)))
-            .block(Block::default().borders(Borders::ALL).title("").style(Style::default()))
+            .block(Block::default().borders(Borders::ALL).title("").style(Style::default()).padding(Padding::new(0,0, area.height/2-2, 0)))
             .centered()
             .bold();
 

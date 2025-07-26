@@ -13,7 +13,7 @@ use ratatui::{
     text::{Line, Span, Text as ratatuiText},
     widgets::{
         Axis, Bar, BarChart, BarGroup, Block, Borders, Cell, Chart, Clear, Dataset, GraphType,
-        HighlightSpacing, List, ListItem, Paragraph, Row, Table, Tabs, Widget, Wrap,
+        HighlightSpacing, List, ListItem, Padding, Paragraph, Row, Table, Tabs, Widget, Wrap,
         LegendPosition
     },
     Frame,
@@ -1092,7 +1092,8 @@ impl InvestmentAccountManager {
                     Block::default()
                         .borders(Borders::ALL)
                         .title("Current Balance")
-                        .title_alignment(layout::Alignment::Center),
+                        .title_alignment(layout::Alignment::Center)
+                        .padding(Padding::new(0,0, area.height/2-2, 0)),
                 )
                 .bg(tailwind::SLATE.c900);
 
@@ -1120,7 +1121,8 @@ impl InvestmentAccountManager {
                 Block::default()
                     .borders(Borders::ALL)
                     .title(format!(" Time-Weighted Rate of Return - {} ", app.analysis_period))
-                    .title_alignment(layout::Alignment::Center),
+                    .title_alignment(layout::Alignment::Center)
+                    .padding(Padding::new(0,0, area.height/2-2, 0)),
             )
             .bg(tailwind::SLATE.c900);
         // let centered_area = centered_rect(10, 10, area);
