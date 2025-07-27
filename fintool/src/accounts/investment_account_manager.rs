@@ -30,7 +30,7 @@ use rustyline::Helper;
 use rustyline::Highlighter;
 use rustyline::Hinter;
 use rustyline::Validator;
-use shared_lib::LedgerEntry;
+use shared_lib::{LedgerEntry, FlatLedgerEntry};
 
 #[cfg(feature = "ratatui_support")]
 use crate::app::app::App;
@@ -685,7 +685,93 @@ impl AccountOperations for InvestmentAccountManager {
         }
     }
 
-    fn export(&self) {}
+    fn export(&self) {
+        let g = FilePathHelper {
+            completer: FilenameCompleter::new(),
+            highlighter: MatchingBracketHighlighter::new(),
+            hinter: HistoryHinter::new(),
+            validator: MatchingBracketValidator::new(),
+            colored_prompt: "".to_owned(),
+        };
+        let config = Config::builder()
+            .history_ignore_space(true)
+            .completion_type(CompletionType::List)
+            .edit_mode(EditMode::Vi)
+            .build();
+        let mut rl = Editor::with_config(config).unwrap();
+        rl.set_helper(Some(g));
+
+        let mut wtr = csv::Writer::from_path(rl.readline("Enter path to CSV file: ").unwrap()).unwrap();
+        let ledger = self.get_ledger();
+        if !ledger.is_empty() {
+            for record in ledger {
+                let stock_record_opt = match record.info.transfer_type { 
+                    TransferType::ZeroSumChange => { 
+                        // this is a stock split
+                        let stock_split_opt = self.db.check_and_get_stock_split_record_matching_from_ledger_id(self.uid, self.id, record.id).unwrap();
+                        if let Some(ss_record) = stock_split_opt {
+                            Some(shared_lib::StockInfo {
+                                shares : 0.0, 
+                                costbasis : 0.0, 
+                                remaining : 0.0, 
+                                is_buy : true, 
+                                is_split : true
+                            })
+                        } else { 
+                            None
+                        }
+                    }
+                    TransferType::DepositFromInternalAccount => {
+                        // this could either be a sale or a dividend, if dividend than expect to return none
+                        let stock_sale_opt = self.db.check_and_get_stock_sale_record_matching_from_ledger_id(self.uid, self.id, record.id).unwrap();
+                        if let Some(stock_sale) = stock_sale_opt { 
+                            Some(shared_lib::StockInfo { 
+                                shares: stock_sale.info.shares, 
+                                costbasis: stock_sale.info.costbasis, 
+                                remaining: 0.0, 
+                                is_buy: false, 
+                                is_split: false 
+                            })
+                        } else { 
+                            None
+                        }
+                    }
+                    TransferType::WithdrawalToInternalAccount => { 
+                        // this is purchase
+                        let purchase_opt = self.db.check_and_get_stock_purchase_record_matching_from_ledger_id(self.uid, self.id, self.id).unwrap();
+                        if let Some(purchase) = purchase_opt { 
+                            Some(shared_lib::StockInfo { 
+                                shares: purchase.info.shares, 
+                                costbasis: purchase.info.costbasis, 
+                                remaining: 0.0, 
+                                is_buy: false, 
+                                is_split: false,
+                            })
+                        } else {
+                            None
+                        }
+                    }
+                    TransferType::DepositFromExternalAccount|TransferType::WithdrawalToExternalAccount => { 
+                        None
+                    }
+                    
+                };
+
+                let csv_ledger_record : shared_lib::LedgerEntry = LedgerEntry { 
+                    date: record.info.date, 
+                    amount: record.info.amount,
+                    transfer_type: record.info.transfer_type, 
+                    participant: self.db.get_participant(self.uid, self.id, record.info.participant).unwrap(), 
+                    category: self.db.get_category_name(self.uid, self.id, record.info.category_id).unwrap(), 
+                    description: record.info.description, 
+                    ancillary_f32: record.info.ancillary_f32data, 
+                    stock_info: stock_record_opt 
+                };
+                let flattened = FlatLedgerEntry::from(csv_ledger_record);
+                wtr.serialize(flattened).unwrap();
+            }
+        }
+    }
 
     fn report(&self) {
         const REPORT_OPTIONS: [&'static str; 4] = [

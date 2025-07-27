@@ -75,7 +75,7 @@ fn access_account(uid: u32, db: &mut DbConn) {
     let mut acct: Box<dyn Account>;
     let mut choice;
     let mut new_account;
-    const ACCT_ACTIONS: [&'static str; 5] = ["Import", "Modify", "Record", "Report", "None"];
+    const ACCT_ACTIONS: [&'static str; 6] = ["Import", "Export", "Modify", "Record", "Report", "None"];
 
     let mut accounts_is_empty = accounts.is_empty();
 
@@ -216,6 +216,9 @@ fn access_account(uid: u32, db: &mut DbConn) {
             match selected_menu_item.as_str() {
                 "Import" => {
                     acct.import();
+                }
+                "Export" => { 
+                    acct.export();
                 }
                 "Modify" => {
                     acct.modify();

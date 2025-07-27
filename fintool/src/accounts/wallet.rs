@@ -31,7 +31,7 @@ use rustyline::Helper;
 use rustyline::Highlighter;
 use rustyline::Hinter;
 use rustyline::Validator;
-use shared_lib::LedgerEntry;
+use shared_lib::{LedgerEntry, FlatLedgerEntry};
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::path::Path;
@@ -493,7 +493,41 @@ impl AccountOperations for Wallet {
         }
     }
 
-    fn export(&self) {}
+    fn export(&self) {
+        let g = FilePathHelper {
+            completer: FilenameCompleter::new(),
+            highlighter: MatchingBracketHighlighter::new(),
+            hinter: HistoryHinter::new(),
+            validator: MatchingBracketValidator::new(),
+            colored_prompt: "".to_owned(),
+        };
+        let config = Config::builder()
+            .history_ignore_space(true)
+            .completion_type(CompletionType::List)
+            .edit_mode(EditMode::Vi)
+            .build();
+        let mut rl = Editor::with_config(config).unwrap();
+        rl.set_helper(Some(g));
+
+        let mut wtr = csv::Writer::from_path(rl.readline("Enter path to CSV file: ").unwrap()).unwrap();
+        let ledger = self.get_ledger();
+        if !ledger.is_empty() {
+            for record in ledger { 
+                let csv_ledger_record : shared_lib::LedgerEntry = LedgerEntry { 
+                    date: record.info.date, 
+                    amount: record.info.amount,
+                    transfer_type: record.info.transfer_type, 
+                    participant: self.db.get_participant(self.uid, self.id, record.info.participant).unwrap(), 
+                    category: self.db.get_category_name(self.uid, self.id, record.info.category_id).unwrap(), 
+                    description: record.info.description, 
+                    ancillary_f32: record.info.ancillary_f32data, 
+                    stock_info: None 
+                };
+                let flattened = FlatLedgerEntry::from(csv_ledger_record);
+                wtr.serialize(flattened).unwrap();
+            }
+        }
+    }
 
     fn report(&self) {
         const REPORT_OPTIONS: [&'static str; 3] = ["Total Value", "Simple Growth Rate", "None"];
