@@ -28,6 +28,10 @@ pub enum AccountType {
     Wallet,
     #[strum(to_string = "Certificate of Deposit")]
     CD,
+    // #[strum(to_string = "401k Account")]
+    // Retirement401k,
+    #[strum(to_string = "Roth IRA Account")]
+    RetirementRothIra
 }
 
 impl AccountType {
@@ -69,36 +73,6 @@ pub enum AccountFilter {
     Wallet,
     Budget,
 }
-
-// impl From<u32> for AccountType {
-//     fn from(value: u32) -> Self {
-//         match value {
-//             0 => AccountType::Wallet,
-//             1 => AccountType::Investment,
-//             2 => AccountType::Bank,
-//             3 => AccountType::CD,
-//             4 => AccountType::CreditCard,
-//             5 => AccountType::Retirement,
-//             6 => AccountType::Health,
-//             7 => AccountType::Custom,
-//             _ => panic!("Invalid numberic value for AccountType!"),
-//         }
-//     }
-// }
-// impl From<String> for AccountType {
-//     fn from(value: String) -> Self {
-//         match value.as_str() {
-//             "Wallet" => AccountType::Wallet,
-//             "Investment" => AccountType::Investment,
-//             "Bank" => AccountType::Bank,
-//             "CD" => AccountType::CD,
-//             "Retirement" => AccountType::Retirement,
-//             "Health" => AccountType::Health,
-//             "Custom" => AccountType::Custom,
-//             _ => panic!("Invalid string type for AccountType!"),
-//         }
-//     }
-// }
 
 #[derive(Clone)]
 pub struct AccountInfo {

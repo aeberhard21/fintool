@@ -154,13 +154,10 @@ pub trait AccountUI: AccountData {
                     .borders(Borders::ALL)
                     .title("Current Value")
                     .title_alignment(layout::Alignment::Center)
-                    .padding(Padding::new(0,0, area.height/2-2, 0)),
+                    .padding(Padding::new(0,0, ((if area.height > 4 { area.height/2 -2 } else {0})), 0)),
             )
             .bg(tailwind::SLATE.c900);
 
-        // let centered = centered_rect(10, 10, area);
-        // let centered_display = Paragraph::new(value);
-        // frame.render_widget(centered_display, centered);
         frame.render_widget(display, area);
     }
 }

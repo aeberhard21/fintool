@@ -56,6 +56,7 @@ impl DbConn {
         Self::create_stock_split_allocation_table(self);
         Self::create_credit_card_accounts_table(self);
         Self::create_certificate_of_deposits_table(self);
+        Self::create_roth_ira_accounts_table(self);
 
         let conn_lock = &self.conn.lock().unwrap();
 

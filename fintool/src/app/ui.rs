@@ -105,7 +105,6 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
         let centered_area = centered_rect(60, 25, frame.area());
 
         if let UserLoadedState::NotLoaded = app.user_load_state {
-            // println!("HERE AT ALL TIMES!: {}", app.user);
             let popup_block = Block::default()
                 .title(" Login ")
                 .borders(Borders::ALL)
@@ -420,7 +419,7 @@ fn render_net_worth_chart( app: &App, frame : &mut Frame, area : Rect) {
         frame.render_widget(net_worth_chart, area);
     } else { 
        let net_worth_chart = Paragraph::new(Text::styled(format!("No data to display!"), Style::default().fg(tailwind::ROSE.c500)))
-            .block(Block::default().borders(Borders::ALL).title("").style(Style::default()).padding(Padding::new(0,0, area.height/2-2, 0)))
+            .block(Block::default().borders(Borders::ALL).title("").style(Style::default()).padding(Padding::new(0,0, (if area.height > 4 { area.height/2 -2 } else {0}), 0)))
             .centered()
             .bold();
 
@@ -451,6 +450,9 @@ fn render_asset_investment_ratio_chart( app: &App, frame : &mut Frame, area : Re
                 AccountType::Investment => {
                     long_term_investments = long_term_investments + account.get_value();
                 }
+                AccountType::RetirementRothIra =>  {
+                    retirement = retirement + account.get_value();
+                }
                 _ => {}
             }
         }
@@ -480,7 +482,7 @@ fn render_asset_investment_ratio_chart( app: &App, frame : &mut Frame, area : Re
         frame.render_widget(chart, area);
     } else { 
        let chart = Paragraph::new(Text::styled(format!("No data to display!"), Style::default().fg(tailwind::ROSE.c500)))
-            .block(Block::default().borders(Borders::ALL).title("").style(Style::default()).padding(Padding::new(0,0, area.height/2-2, 0)))
+            .block(Block::default().borders(Borders::ALL).title("").style(Style::default()).padding(Padding::new(0,0, (if area.height > 4 { area.height/2 -2 } else {0}), 0)))
             .centered()
             .bold();
 

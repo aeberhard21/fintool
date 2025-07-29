@@ -69,7 +69,9 @@ impl VariableAccount {
             for ticker in tickers { 
                 let date_shares = x.iter().filter(|data| data.0 == ticker).map(|x: &(String, String, f32)| (SharesOwned { date : NaiveDate::parse_from_str(&&x.1, "%Y-%m-%d").expect(format!("Unable to decode {}", &x.1).as_str()), shares :  x.2.clone()})).collect::<Vec<SharesOwned>>();
                 let quotes = buffer.iter().find(|x| { x.ticker == ticker }).and_then(|x| Some(x.quotes.clone()));
-                let quotes = quotes.or_else(|| {Some(get_stock_history(ticker.clone(), earliest_date, latest_date).unwrap())} ).unwrap();
+                let quotes = quotes.or_else(|| {Some({
+                    get_stock_history(ticker.clone(), earliest_date, latest_date).unwrap()
+                })} ).unwrap();
                 data.push(StockData { ticker: ticker.clone(), quotes: quotes, history: date_shares });
 
             }
@@ -1152,10 +1154,11 @@ impl VariableAccount {
                     let date = OffsetDateTime::from_unix_timestamp(x.timestamp as i64).unwrap().date();
                     let ndate = NaiveDate::from_ymd_opt(date.year(), date.month() as u32, date.day() as u32).unwrap();
                     ndate < *day
-                }).last().expect(format!("No quote matching date {}", most_recently_owned.date).as_str());
+                }).last()
+                .expect(
+                    format!("No quote matching date {}", most_recently_owned.date).as_str()
+                );
                 let partial_value = (quote.close * most_recently_owned.shares as f64) as f32;
-                // println!("\tTicker: {}, Shares: {}, Price: {}, Total : {}", e.ticker, most_recently_owned.shares, quote.close, partial_value);
-                // println!("\t\tMost recent date: {}", OffsetDateTime::from_unix_timestamp(quote.timestamp as i64).unwrap().date());
                 value = value + partial_value
             }
         }

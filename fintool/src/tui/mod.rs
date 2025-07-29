@@ -14,6 +14,7 @@ use crate::accounts::base::AnalysisPeriod;
 use crate::accounts::certificate_of_deposit::CertificateOfDepositAccount;
 use crate::accounts::credit_card_account::CreditCardAccount;
 use crate::accounts::investment_account_manager::InvestmentAccountManager;
+use crate::accounts::roth_ira::RothIraAccount;
 use crate::accounts::wallet::Wallet;
 use crate::database::DbConn;
 use crate::tui::tui_user::*;
@@ -257,6 +258,7 @@ pub fn decode_and_init_account_type(
         AccountType::CreditCard => Box::new(CreditCardAccount::new(uid, account.id, db)),
         AccountType::CD => Box::new(CertificateOfDepositAccount::new(uid, account.id, db)),
         AccountType::Wallet => Box::new(Wallet::new(uid, account.id, db)),
+        AccountType::RetirementRothIra => {Box::new(RothIraAccount::new(uid, account.id, db))}
         _ => {
             panic!("Invalid account type!");
         }
@@ -394,6 +396,9 @@ pub fn create_account(
         }
         AccountType::Wallet => {
             new_account = Wallet::create(uid, name, db);
+        }
+        AccountType::RetirementRothIra => { 
+            new_account = RothIraAccount::create(uid, name, db);
         }
         _ => {
             panic!("Unrecognized input!");

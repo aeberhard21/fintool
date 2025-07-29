@@ -981,7 +981,7 @@ impl CertificateOfDepositAccount {
                     .borders(Borders::ALL)
                     .title("Maturity Date Countdown")
                     .title_alignment(layout::Alignment::Center)
-                    .padding(Padding::new(0,0, area.height/2-2, 0)),
+                    .padding(Padding::new(0,0, (if area.height > 4 { area.height/2 -2 } else {0}), 0)),
             )
             .bg(tailwind::SLATE.c900);
         frame.render_widget(p, area);
@@ -1007,7 +1007,7 @@ impl CertificateOfDepositAccount {
                     .borders(Borders::ALL)
                     .title(format!(" Growth - {} ", app.analysis_period))
                     .title_alignment(layout::Alignment::Center)
-                    .padding(Padding::new(0,0, area.height/2-2, 0)),
+                    .padding(Padding::new(0,0, (if area.height > 4 { area.height/2 -2 } else {0}), 0)),
             )
             .bg(tailwind::SLATE.c900);
         let centered_area = centered_rect(10, 10, area);
@@ -1124,7 +1124,7 @@ impl CertificateOfDepositAccount {
                         .borders(Borders::ALL)
                         .title("Value Over Time")
                         .title_alignment(layout::Alignment::Center)
-                        .padding(Padding::new(0,0, area.height/2-2, 0)),
+                        .padding(Padding::new(0,0, (if area.height > 4 { area.height/2 -2 } else {0}), 0)),
                 )
                 .bg(tailwind::SLATE.c900);
 

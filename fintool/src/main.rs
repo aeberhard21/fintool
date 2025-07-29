@@ -550,6 +550,7 @@ pub fn is_account_type( x : &Box<dyn Account>, atype : AccountType) -> bool {
     use crate::accounts::certificate_of_deposit::CertificateOfDepositAccount;
     use crate::accounts::credit_card_account::CreditCardAccount;
     use crate::accounts::investment_account_manager::InvestmentAccountManager;
+    use crate::accounts::roth_ira::RothIraAccount;
     use crate::accounts::wallet::Wallet;
     use crate::types::accounts::AccountType;
     match atype { 
@@ -558,5 +559,6 @@ pub fn is_account_type( x : &Box<dyn Account>, atype : AccountType) -> bool {
         AccountType::Wallet => x.as_any().is::<Wallet>(),
         AccountType::CD => x.as_any().is::<CertificateOfDepositAccount>(),
         AccountType::CreditCard => x.as_any().is::<CreditCardAccount>(),
+        AccountType::RetirementRothIra => (x.as_any().is::<RothIraAccount>()),
     }
 }

@@ -2,6 +2,7 @@ use std::path::Path;
 use core::f64;
 use chrono::{NaiveDate, NaiveTime, Local, Days, Datelike};
 use inquire::Confirm;
+use inquire::CustomType;
 use inquire::Select;
 use inquire::Text;
 #[cfg(feature = "ratatui_support")]
@@ -32,6 +33,7 @@ use rustyline::Hinter;
 use rustyline::Validator;
 use shared_lib::{LedgerEntry, FlatLedgerEntry};
 
+use crate::accounts::roth_ira;
 #[cfg(feature = "ratatui_support")]
 use crate::app::app::App;
 #[cfg(feature = "ratatui_support")]
@@ -50,6 +52,7 @@ use crate::types::investments::StockSplitRecord;
 use crate::types::ledger::LedgerInfo;
 use crate::types::ledger::LedgerRecord;
 use crate::types::participants::ParticipantType;
+use crate::types::roth_ira::RothIraInfo;
 use csv::ReaderBuilder;
 use rustyline::Editor;
 use shared_lib::TransferType;
@@ -64,7 +67,7 @@ use super::base::AccountUI;
 #[cfg(feature = "ratatui_support")]
 use crate::ui::{centered_rect, float_range};
 
-pub struct InvestmentAccountManager {
+pub struct RothIraAccount {
     uid: u32,
     id: u32,
     db: DbConn,
@@ -85,7 +88,7 @@ struct FilePathHelper {
     colored_prompt: String,
 }
 
-impl AccountCreation for InvestmentAccountManager {
+impl AccountCreation for RothIraAccount {
     fn create(uid: u32, name: String, _db: &DbConn) -> AccountRecord {
         let has_bank = true;
         let has_stocks = true;
@@ -93,7 +96,7 @@ impl AccountCreation for InvestmentAccountManager {
         let has_budget = false;
 
         let account: AccountInfo = AccountInfo {
-            atype: AccountType::Investment,
+            atype: AccountType::RetirementRothIra,
             name: name,
             has_stocks: has_stocks,
             has_bank: has_bank,
@@ -103,6 +106,19 @@ impl AccountCreation for InvestmentAccountManager {
 
         let aid = _db.add_account(uid, &account).unwrap();
 
+        let contribution_limit = CustomType::<f32>::new("Enter contribution limit:")
+            .with_placeholder("7000.00")
+            .with_default(7000.00)
+            .with_error_message("Please type a valid amount!")
+            .prompt()
+            .unwrap();
+
+        let roth_ira = RothIraInfo {
+            contribution_limit : contribution_limit
+        };
+
+        _db.add_roth_ira_account(uid, aid, roth_ira).unwrap();
+
         return AccountRecord {
             id: aid,
             info: account,
@@ -110,7 +126,7 @@ impl AccountCreation for InvestmentAccountManager {
     }
 }
 
-impl InvestmentAccountManager {
+impl RothIraAccount {
     pub fn new(uid: u32, id: u32, db: &DbConn) -> Self {
 
         let mut ledger = db.get_ledger(uid, id).unwrap();
@@ -131,9 +147,14 @@ impl InvestmentAccountManager {
 
         acct
     }
+
+    pub fn get_contribution_limit(&self) -> f32 {
+        let acct = self.db.get_roth_ira(self.uid, self.id).unwrap();
+        return acct.info.contribution_limit;
+    }
 }
 
-impl AccountOperations for InvestmentAccountManager {
+impl AccountOperations for RothIraAccount {
     fn record(&mut self) {
         const RECORD_OPTIONS: [&'static str; 6] = [
             "Deposit",
@@ -450,7 +471,7 @@ impl AccountOperations for InvestmentAccountManager {
     }
 
     fn modify(&mut self) {
-        const MODIFY_OPTIONS: [&'static str; 4] = ["Ledger", "Categories", "Participant", "None"];
+        const MODIFY_OPTIONS: [&'static str; 5] = ["Ledger", "Categories", "Contribution Limit", "Participant", "None"];
         let modify_choice =
             Select::new("\nWhat would you like to modify:", MODIFY_OPTIONS.to_vec())
                 .prompt()
@@ -463,6 +484,16 @@ impl AccountOperations for InvestmentAccountManager {
                 }
                 let selected_record = record_or_none.unwrap();
                 self.variable.modify(selected_record);
+            }
+            "Contribution Limit" => { 
+                let record = self.db.get_roth_ira(self.uid, self.id).unwrap();
+                let new_limit        = CustomType::<f32>::new("Enter contribution limit:")
+                    .with_default(record.info.contribution_limit)
+                    .with_placeholder("7000.00")
+                    .with_error_message("Please type a valid amount!")
+                    .prompt()
+                    .unwrap();
+                self.db.update_roth_ira_contribution_limit(self.uid, self.id, new_limit);
             }
             "Categories" => {
                 let records = self.db.get_categories(self.uid, self.id).unwrap();
@@ -938,7 +969,7 @@ impl AccountOperations for InvestmentAccountManager {
     }
 }
 
-impl AccountData for InvestmentAccountManager {
+impl AccountData for RothIraAccount {
     fn get_id(&self) -> u32 {
         return self.id;
     }
@@ -975,7 +1006,7 @@ impl AccountData for InvestmentAccountManager {
 }
 
 #[cfg(feature = "ratatui_support")]
-impl InvestmentAccountManager {
+impl RothIraAccount {
     fn render_growth_chart(&self, frame: &mut Frame, area: Rect, app: &mut App) {
         let (start, end) = (app.analysis_start, app.analysis_end);
         let mut ledger = self.get_ledger_within_dates(start, end);
@@ -1211,16 +1242,57 @@ impl InvestmentAccountManager {
                     .padding(Padding::new(0,0, (if area.height > 4 { area.height/2 -2 } else {0}), 0)),
             )
             .bg(tailwind::SLATE.c900);
-        // let centered_area = centered_rect(10, 10, area);
-        // let growth = Paragraph::new(value);
-        // frame.render_widget(growth, centered_area);
+
         frame.render_widget(display, area);
+    }
+
+    fn render_remaining_contribution(&self, frame: &mut Frame, area: Rect, app: &App) {
+        let contribution_limit = self.get_contribution_limit();
+        let (start, end) = get_analysis_period_dates(self.open_date, &crate::accounts::base::AnalysisPeriod::YTD);
+        let contributions_ytd = self.db.get_ledger_entries_within_timestamps(self.uid, self.id, start, end).unwrap();
+        let aggregate : f32 = contributions_ytd.iter().filter(|x| {
+            x.info.transfer_type == TransferType::DepositFromExternalAccount
+        }).map(|x| x.info.amount).sum();
+
+        let contribution_remaining = contribution_limit - aggregate;
+
+        let remaining_contribution_text = vec![
+            Span::styled(
+                format!("${:.2}", contribution_remaining),
+                Style::default().bold().fg(if contribution_limit < 500. {
+                    tailwind::EMERALD.c400
+                } else if contribution_remaining < 1500. {
+                    tailwind::ROSE.c200
+                } else {
+                    tailwind::ROSE.c100
+                }),
+            ),
+            Span::styled(
+                format!(" of ${:.2} remaining.", contribution_limit),
+                Style::default().bold().fg(tailwind::EMERALD.c400),
+            ),
+        ];
+
+        let line = Line::from(remaining_contribution_text);
+        let text = ratatuiText::from(line);
+        let p = Paragraph::new(text)
+            .centered()
+            .alignment(layout::Alignment::Center)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Remaining Contribution")
+                    .title_alignment(layout::Alignment::Center)
+                    .padding(Padding::new(0,0, (if area.height > 4 { area.height/2 -2 } else {0}), 0)),
+            )
+            .bg(tailwind::SLATE.c900);
+        frame.render_widget(p, area);
     }
 
 }
 
 #[cfg(feature = "ratatui_support")]
-impl AccountUI for InvestmentAccountManager {
+impl AccountUI for RothIraAccount {
     fn render(&self, frame: &mut Frame, area: Rect, app: &mut App) {
         let chunk = Layout::default()
             .direction(Direction::Vertical)
@@ -1240,15 +1312,20 @@ impl AccountUI for InvestmentAccountManager {
 
         let reports_chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .constraints([Constraint::Percentage(33),
+            Constraint::Percentage(34),
+             Constraint::Percentage(33)]
+            )
             .split(report_area);
         
         let value_area = reports_chunks[0];
         let twrr_area = reports_chunks[1];
+        let contribution_area = reports_chunks[2];
 
         self.render_ledger_table(frame, ledger_area, app);
         self.render_growth_chart(frame, graph_area, app);
         self.render_current_value(frame, value_area, app);
+        self.render_remaining_contribution(frame, contribution_area, app);
         self.render_time_weighted_rate_of_return(frame, twrr_area, app);
     }
 
@@ -1331,9 +1408,9 @@ impl AccountUI for InvestmentAccountManager {
 
 }
 
-impl Account for InvestmentAccountManager {
+impl Account for RothIraAccount {
     fn kind(&self) -> AccountType { 
-        return AccountType::Investment;
+        return AccountType::RetirementRothIra;
     }
     #[cfg(feature = "ratatui_support")]
     fn as_any(&self) -> &dyn std::any::Any {

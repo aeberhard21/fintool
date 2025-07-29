@@ -22,9 +22,28 @@ pub fn get_stock_history(
     period_end: NaiveDate,
 ) -> Result<Vec<Quote>, YahooError> {
     let provider = YahooConnector::new().unwrap();
+    let mut start_date = period_start;
+    loop {
+        start_date = match start_date.weekday() {
+            chrono::Weekday::Sat => start_date
+                .checked_sub_days(Days::new(1))
+                .expect("Saturday date out of range!"), // this is a Friday
+            chrono::Weekday::Sun => start_date
+                .checked_sub_days(Days::new(2))
+                .expect("Sunday date out of range!"), // this is a Friday
+            _ => start_date,
+        };
 
+        if check_if_holiday(start_date) == false {
+            break;
+        } else {
+            start_date = start_date
+                .checked_sub_days(Days::new(1))
+                .expect("Invalid date!");
+        }
+    }
     let start = OffsetDateTime::from_unix_timestamp(
-        period_start
+        start_date
             .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
             .and_utc()
             .timestamp(),
@@ -39,10 +58,7 @@ pub fn get_stock_history(
     )
     .unwrap();
 
-    // let starter = Instant::now();
     let rs = tokio_test::block_on(provider.get_quote_history(&ticker, start, end))?;
-    // let duration = starter.elapsed();
-    // println!("Duration is {:?}!", duration);
     return rs.quotes();
 }
 
