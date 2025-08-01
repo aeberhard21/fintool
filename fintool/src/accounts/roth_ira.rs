@@ -740,7 +740,7 @@ impl AccountOperations for RothIraAccount {
                     TransferType::ZeroSumChange => { 
                         // this is a stock split
                         let stock_split_opt = self.db.check_and_get_stock_split_record_matching_from_ledger_id(self.uid, self.id, record.id).unwrap();
-                        if let Some(ss_record) = stock_split_opt {
+                        if let Some(_ss_record) = stock_split_opt {
                             Some(shared_lib::StockInfo {
                                 shares : 0.0, 
                                 costbasis : 0.0, 
@@ -1415,5 +1415,14 @@ impl Account for RothIraAccount {
     #[cfg(feature = "ratatui_support")]
     fn as_any(&self) -> &dyn std::any::Any {
         self
+    }
+    fn has_budget(&self) -> bool {
+        let acct = self.db.get_account(self.uid, self.id).unwrap();
+        acct.info.has_budget
+    }
+    fn set_budget(&self) {
+        let mut acct = self.db.get_account(self.uid, self.id).unwrap();
+        acct.info.has_budget = true;
+        let _ = self.db.update_account(self.uid, self.id, &acct.info).unwrap();
     }
 }

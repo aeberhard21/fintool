@@ -53,6 +53,7 @@ use crate::types::ledger::LedgerRecord;
 use crate::types::participants;
 use crate::types::participants::ParticipantType;
 use shared_lib::TransferType;
+use crate::accounts::base::budget::Budget;
 
 use super::base::fixed_account::FixedAccount;
 use super::base::Account;
@@ -71,6 +72,7 @@ pub struct Wallet {
     db: DbConn,
     fixed: FixedAccount,
     open_date : NaiveDate,
+    budget : Option<Budget>
 }
 
 #[derive(Helper, Completer, Hinter, Highlighter, Validator)]
@@ -93,7 +95,8 @@ impl Wallet {
             id: id,
             db: db.clone(),
             fixed: FixedAccount::new(uid, id, db.clone()),
-            open_date : Local::now().date_naive()
+            open_date : Local::now().date_naive(),
+            budget : None,
         };
 
         let mut ledger = acct.get_ledger();
@@ -101,7 +104,9 @@ impl Wallet {
             ledger.sort_by(|l1, l2| (&l1.info.date).cmp(&l2.info.date));
             acct.open_date = NaiveDate::parse_from_str(&ledger[0].info.date, "%Y-%m-%d").unwrap();
         }
-
+        if acct.has_budget() {
+            acct.budget = Some(Budget::new(uid, id, db));
+        }
         acct
     }
 }
@@ -123,6 +128,17 @@ impl AccountCreation for Wallet {
         };
 
         let aid = _db.add_account(uid, &account).unwrap();
+
+        let add_budget = Confirm::new("Would you like to associate a budget to this account?")
+            .with_default(false)
+            .prompt()
+            .unwrap();
+        if add_budget { 
+            let x = Self::new(uid, aid, _db);
+            let budget = Budget::new(uid, aid, _db);
+            budget.create_budget();
+            x.set_budget();
+        }
 
         return AccountRecord {
             id: aid,
@@ -259,6 +275,11 @@ impl AccountOperations for Wallet {
 
     fn modify(&mut self) {
         const MODIFY_OPTIONS: [&'static str; 4] = ["Ledger", "Categories", "People", "None"];
+        const MODIFY_OPTIONS_WITH_BUDGET: [&'static str; 5] = ["Ledger", "Categories", "People", "Budget", "None"];
+        let options = match self.has_budget() { 
+            true => { MODIFY_OPTIONS_WITH_BUDGET.to_vec() } , 
+            false => { MODIFY_OPTIONS.to_vec() }
+        };
         let modify_choice =
             Select::new("\nWhat would you like to modify:", MODIFY_OPTIONS.to_vec())
                 .prompt()
@@ -335,6 +356,22 @@ impl AccountOperations for Wallet {
                         if delete {
                             self.db
                                 .remove_category(self.uid, self.id, chosen_category.clone());
+                        }
+                    }
+                    "Budget" => {
+                        if let Some(budget) = &self.budget {
+                            budget.modify();
+                        } else { 
+                            let add_budget = Confirm::new("A budget for this account does not exist, would you like to create one (y/n)?")
+                                .with_default(false)
+                                .prompt()
+                                .unwrap();
+                            if !add_budget { 
+                                return;
+                            }
+                            let budget = Budget::new(self.uid, self.id, &self.db);
+                            budget.create_budget();
+                            self.budget = Some(budget);
                         }
                     }
                     "None" => {
@@ -879,5 +916,14 @@ impl Account for Wallet {
     #[cfg(feature = "ratatui_support")]
     fn as_any(&self) -> &dyn std::any::Any {
         self
+    }
+    fn has_budget(&self) -> bool {
+        let acct = self.db.get_account(self.uid, self.id).unwrap();
+        acct.info.has_budget
+    }
+    fn set_budget(&self) {
+        let mut acct = self.db.get_account(self.uid, self.id).unwrap();
+        acct.info.has_budget = true;
+        let _ = self.db.update_account(self.uid, self.id, &acct.info).unwrap();
     }
 }

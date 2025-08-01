@@ -93,6 +93,7 @@ impl FixedAccount {
                     uid: self.uid,
                     aid: self.id,
                     db: self.db.clone(),
+                    cats : None,
                 })
                 .with_default(
                     self.db
@@ -109,6 +110,7 @@ impl FixedAccount {
                     uid: self.uid,
                     aid: self.id,
                     db: self.db.clone(),
+                    cats : None,
                 })
                 .prompt()
                 .unwrap()
@@ -333,6 +335,7 @@ impl FixedAccount {
                     uid: self.uid,
                     aid: self.id,
                     db: self.db.clone(),
+                    cats : None,
                 })
                 .with_default(
                     self.db
@@ -352,6 +355,7 @@ impl FixedAccount {
                     uid: self.uid,
                     aid: self.id,
                     db: self.db.clone(),
+                    cats : None,
                 })
                 .with_validator(category_validator)
                 .prompt()

@@ -40,7 +40,6 @@ pub fn select_account_by_filter(_uid: u32, _db: &mut DbConn, filter: AccountFilt
         &AccountFilter::Stocks => msg = "Select investment account: ",
         &AccountFilter::Wallet => msg = "Select wallet account: ",
         &AccountFilter::Budget => msg = "Select budget account: ",
-        _ => panic!("Unrecognized account type!"),
     }
     let accounts: Vec<String> = _db.get_user_accounts_by_filter(_uid, filter).unwrap();
     let account: String = Select::new(msg, accounts).prompt().unwrap().to_string();

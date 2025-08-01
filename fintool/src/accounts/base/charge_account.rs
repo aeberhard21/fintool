@@ -93,6 +93,7 @@ impl ChargeAccount {
                     uid: self.uid,
                     aid: self.id,
                     db: self.db.clone(),
+                    cats : None,
                 })
                 .with_default(
                     self.db
@@ -109,6 +110,7 @@ impl ChargeAccount {
                     uid: self.uid,
                     aid: self.id,
                     db: self.db.clone(),
+                    cats : None,
                 })
                 .prompt()
                 .unwrap()
@@ -265,6 +267,7 @@ impl ChargeAccount {
                     uid: self.uid,
                     aid: self.id,
                     db: self.db.clone(),
+                    cats : None,
                 })
                 .with_default(
                     self.db
@@ -284,6 +287,7 @@ impl ChargeAccount {
                     uid: self.uid,
                     aid: self.id,
                     db: self.db.clone(),
+                    cats : None,
                 })
                 .with_validator(category_validator)
                 .prompt()

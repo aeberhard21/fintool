@@ -74,9 +74,9 @@ impl DbConn {
             let conn_lock = self.conn.lock().unwrap();
             let rs = conn_lock.execute(sql, p);
             match rs {
-                Ok(rows_inserted) => {}
+                Ok(_rows_inserted) => {}
                 Err(error) => {
-                    panic!("Unable to allocate user!");
+                    panic!("Unable to allocate user: '{}'!", error);
                 }
             }
         }

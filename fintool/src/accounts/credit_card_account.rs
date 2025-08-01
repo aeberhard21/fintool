@@ -4,6 +4,7 @@ use inquire::Confirm;
 use inquire::CustomType;
 use inquire::Select;
 use inquire::Text;
+use std::iter::zip;
 #[cfg(feature = "ratatui_support")]
 use ratatui::{
     buffer::Buffer,
@@ -37,6 +38,7 @@ use std::hash::Hash;
 use std::path::Path;
 use std::rc;
 
+use crate::accounts::base::budget::Budget;
 #[cfg(feature = "ratatui_support")]
 use crate::app::app::App;
 #[cfg(feature = "ratatui_support")]
@@ -73,6 +75,7 @@ pub struct CreditCardAccount {
     db: DbConn,
     charge: ChargeAccount,
     open_date : NaiveDate,
+    budget : Option<Budget>,
 }
 
 #[derive(Helper, Completer, Hinter, Highlighter, Validator)]
@@ -95,13 +98,17 @@ impl CreditCardAccount {
             id: id,
             db: db.clone(),
             charge: ChargeAccount::new(uid, id, db.clone()),
-            open_date : Local::now().date_naive()
+            open_date : Local::now().date_naive(),
+            budget : None
         };
 
         let mut ledger = acct.get_ledger();
         if !ledger.is_empty() { 
             ledger.sort_by(|l1, l2| (&l1.info.date).cmp(&l2.info.date));
             acct.open_date = NaiveDate::parse_from_str(&ledger[0].info.date, "%Y-%m-%d").unwrap();
+        }
+        if acct.has_budget() {
+            acct.budget = Some(Budget::new(acct.uid, acct.id, &acct.db));
         }
 
         acct
@@ -146,6 +153,17 @@ impl AccountCreation for CreditCardAccount {
 
         _db.add_credit_card(uid, aid, cc).unwrap();
 
+        let add_budget = Confirm::new("Would you like to associate a budget to this account?")
+            .with_default(false)
+            .prompt()
+            .unwrap();
+        if add_budget { 
+            let x = Self::new(uid, aid, _db);
+            let budget = Budget::new(uid, aid, _db);
+            budget.create_budget();
+            x.set_budget();
+        }
+
         return AccountRecord {
             id: aid,
             info: account,
@@ -155,7 +173,7 @@ impl AccountCreation for CreditCardAccount {
 
 impl AccountOperations for CreditCardAccount {
     fn record(&mut self) {
-        const RECORD_OPTIONS: [&'static str; 3] = ["Charge", "Payment", "None"];
+        const RECORD_OPTIONS: [&'static str; 4] = ["Charge", "Payment", "Budget", "None"];
         loop {
             let action = Select::new(
                 "\nWhat transaction would you like to record?",
@@ -170,6 +188,22 @@ impl AccountOperations for CreditCardAccount {
                 }
                 "Charge" => {
                     self.charge.charge(None, false);
+                }
+                "Budget" => {
+                    if self.budget.is_none() { 
+                        let add_budget = Confirm::new("A budget for this account does not exist, would you like to create one (y/n)?")
+                            .with_default(false)
+                            .prompt()
+                            .unwrap();
+                        if !add_budget { 
+                            continue;
+                        }
+                        let budget = Budget::new(self.uid, self.id, &self.db);
+                        self.budget = Some(budget);
+                    }
+                    if let Some(budget) = &self.budget { 
+                        budget.record();
+                    }
                 }
                 "None" => {
                     return;
@@ -235,15 +269,15 @@ impl AccountOperations for CreditCardAccount {
             .from_path(fp)
             .unwrap();
 
-        let mut ledger_entries = Vec::new();
+        let mut ledger_expenditures = Vec::new();
         for result in rdr.deserialize::<LedgerEntry>() {
-            ledger_entries.push(result.unwrap());
+            ledger_expenditures.push(result.unwrap());
         }
-        ledger_entries.sort_by(|x, y| {
+        ledger_expenditures.sort_by(|x, y| {
             (NaiveDate::parse_from_str(&x.date, "%Y-%m-%d").unwrap())
                 .cmp(&NaiveDate::parse_from_str(&y.date, "%Y-%m-%d").unwrap())
         });
-        for rcrd in ledger_entries {
+        for rcrd in ledger_expenditures {
             let ptype = if rcrd.transfer_type == TransferType::WithdrawalToExternalAccount {
                 ParticipantType::Payee
             } else if rcrd.transfer_type == TransferType::WithdrawalToInternalAccount {
@@ -288,11 +322,40 @@ impl AccountOperations for CreditCardAccount {
             "People",
             "None",
         ];
+        const MODIFY_OPTIONS_WITH_BUDGET: [&'static str; 7] = [
+            "Ledger",
+            "Credit Line",
+            "Statement Due Date",
+            "Budget",
+            "Categories",
+            "People",
+            "None",
+        ];
+        let options = match self.has_budget() { 
+            true => { MODIFY_OPTIONS_WITH_BUDGET.to_vec() } , 
+            false => { MODIFY_OPTIONS.to_vec() }
+        };
         let modify_choice =
-            Select::new("\nWhat would you like to modify:", MODIFY_OPTIONS.to_vec())
+            Select::new("\nWhat would you like to modify:", options)
                 .prompt()
                 .unwrap();
         match modify_choice {
+            "Budget" => {
+                if let Some(budget) = &self.budget {
+                    budget.modify();
+                } else { 
+                    let add_budget = Confirm::new("A budget for this account does not exist, would you like to create one (y/n)?")
+                        .with_default(false)
+                        .prompt()
+                        .unwrap();
+                    if !add_budget { 
+                        return;
+                    }
+                    let budget = Budget::new(self.uid, self.id, &self.db);
+                    budget.create_budget();
+                    self.budget = Some(budget);
+                }
+            }
             "Ledger" => {
                 let record_or_none = self.charge.select_ledger_entry();
                 if record_or_none.is_none() {
@@ -388,7 +451,7 @@ impl AccountOperations for CreditCardAccount {
                         let delete = Confirm::new(&rm_msg).prompt().unwrap();
                         if delete {
                             self.db
-                                .remove_category(self.uid, self.id, chosen_category.clone());
+                                .remove_category(self.uid, self.id, chosen_category.clone()).unwrap();
                         }
                     }
                     "None" => {
@@ -1010,38 +1073,111 @@ impl CreditCardAccount {
 
     fn render_spend_chart(&self, frame: &mut Frame, area: Rect, app: &App) {
         let (start, end) = (app.analysis_start, app.analysis_end);
-        if let Some(mut entries ) = self.charge.db.get_expenditures_between_dates(self.uid, self.id, start, end).unwrap() { 
+        if let Some(mut expenditures ) = self.charge.db.get_expenditures_between_dates(self.uid, self.id, start, end).unwrap() {
+            let bar_groups = if let Some(account_budget) = &self.budget {
+                let mut budget = account_budget.get_budget();
+                if budget.is_empty() { 
+                    panic!("No budget found for account '{}'!", self.id);
+                }
+                let categories = account_budget.get_budget_categories();
+                if categories.is_empty() { 
+                    panic!("No categories found for account '{}'!", self.id);
+                }
 
-            // group anything less than the top 10 categories into a "miscellaneous" category
-            entries.sort_by(|x, y| { (x.amount).partial_cmp(&y.amount).unwrap_or(std::cmp::Ordering::Equal) });
-            let grouped_others : Option<Expenditure> = if entries.len() > 10 {
-                let misc = entries.drain(10..entries.len()-1).collect::<Vec<Expenditure>>();
-                let amount = misc.into_iter().map(|x| x.amount).sum();
-                Some(Expenditure { category : "Misc".to_string(), amount : amount })
+                // sort expenditures alphabetically
+                expenditures.sort_by(|x, y| { (x.category).cmp(&y.category) });
+                // sort budget alphabetically
+                budget.sort_by(|x, y| { 
+                    (self.db.get_category_name(self.uid, self.id, x.item.category_id).unwrap())
+                    .cmp((&self.db.get_category_name(self.uid, self.id, y.item.category_id).unwrap()))
+                });
+
+                // remove any expenditures that don't map to a budget category, place in to misc category
+                let mut misc_expenditures = Expenditure { category : "Misc".to_string(), amount : 0.0 };
+                expenditures.retain(|expenditure| {
+                    if budget.iter().map(|element| self.db.get_category_name(self.uid, self.id, element.item.category_id).unwrap()).collect::<Vec<String>>().binary_search(&expenditure.category).is_ok() { 
+                        true
+                    } else { 
+                        misc_expenditures.amount = misc_expenditures.amount + expenditure.amount;
+                        false
+                    }
+                });
+
+                let mut bar_group : Vec<BarGroup<'_>> = Vec::new();
+                for elem in zip(budget, expenditures) { 
+                    let budget_bar = Bar::default()
+                        .value(super::base::budget::scale_budget_value_to_analysis_period(elem.0.item.value, start, end) as u64)
+                        .text_value(format!("${:2}", elem.0.item.value))
+                        .style(Style::new().fg(tailwind::WHITE))
+                        .value_style(Style::new().fg(tailwind::WHITE).reversed());
+                    let expenditure_bar = Bar::default()
+                        .value(elem.1.amount as u64)
+                        .text_value(format!("${:2}", elem.1.amount))
+                        .style(Style::new().fg(tailwind::AMBER.c500))
+                        .value_style(Style::new().fg(tailwind::AMBER.c500).reversed());
+                    let bars: Vec<Bar<'_>> = vec![budget_bar, expenditure_bar];
+                    let group = BarGroup::default()
+                        .bars(&bars)
+                        .label(Line::from(elem.1.category).centered());
+                    bar_group.push(group);
+                }
+                if misc_expenditures.amount > 0.0 {
+                    let budget_bar = Bar::default()
+                        .value(0)
+                        .text_value(format!("${:2}", 0.0))
+                        .style(Style::new().fg(tailwind::WHITE))
+                        .value_style(Style::new().fg(tailwind::WHITE).reversed());
+                    let expenditure_bar = Bar::default()
+                        .value(misc_expenditures.amount as u64)
+                        .text_value(format!("${:2}", misc_expenditures.amount))
+                        .style(Style::new().fg(tailwind::AMBER.c500))
+                        .value_style(Style::new().fg(tailwind::AMBER.c500).reversed());
+                    let bars: Vec<Bar<'_>> = vec![budget_bar, expenditure_bar];
+                    let group = BarGroup::default()
+                        .bars(&bars)
+                        .label(Line::from(misc_expenditures.category).centered());
+                    bar_group.push(group)
+                }
+                bar_group
             } else { 
-                None
+                // group anything less than the top 10 categories into a "miscellaneous" category
+                expenditures.sort_by(|x, y| { (x.amount).partial_cmp(&y.amount).unwrap_or(std::cmp::Ordering::Equal) });
+
+                let grouped_others : Option<Expenditure> = if expenditures.len() > 10 {
+                    let misc = expenditures.drain(10..expenditures.len()-1).collect::<Vec<Expenditure>>();
+                    let amount = misc.into_iter().map(|x| x.amount).sum();
+                    Some(Expenditure { category : "Misc".to_string(), amount : amount })
+                } else { 
+                    None
+                };
+
+                if let Some(grouped_others) = grouped_others { 
+                    expenditures.push(grouped_others);
+                }
+
+                let bars: Vec<Bar<'_>> = expenditures.iter().map(|x| {
+                    Bar::default()
+                        .value(x.amount as u64)
+                        .label(Line::from(format!("{}", x.category)))
+                        .text_value(format!("${:2}", x.amount))
+                        .style(Style::new().fg(tailwind::AMBER.c500))
+                        .value_style(Style::new().fg(tailwind::AMBER.c500).reversed())
+                }).collect::<Vec<Bar>>();
+
+                let group = vec![BarGroup::default().bars(&bars)];
+                group
             };
 
-            if let Some(grouped_others) = grouped_others { 
-                entries.push(grouped_others);
-            }
-
-            let bars = entries.iter().map(|x| {
-                Bar::default()
-                    .value(x.amount as u64)
-                    .label(Line::from(format!("{}", x.category)))
-                    .text_value(format!("${:2}", x.amount))
-                    .style(Style::new().fg(tailwind::AMBER.c500))
-                    .value_style((Style::new().fg(tailwind::AMBER.c500).reversed()))
-            }).collect::<Vec<Bar>>();
-
-            let chart =     BarChart::default()
-                .data(BarGroup::default().bars(&bars))
+            let mut chart = BarChart::default()
                 .style(Style::new().bg(tailwind::SLATE.c900))
                 .block(Block::bordered().title_top(Line::from("Spend Analyzer").centered()))
                 .bar_width(10)
-                .bar_gap(area.width / (bars.len() as u16 + 10));
-
+                .group_gap(area.width / (bar_groups.len() as u16 + 10));
+                // .bar_gap(area.width / (bar_groups.len() as u16 + 10));
+            for group in bar_groups { 
+                chart = chart.data(group);
+            }
+    
             frame.render_widget(chart, area);
         } else { 
 
@@ -1074,5 +1210,14 @@ impl Account for CreditCardAccount {
     #[cfg(feature = "ratatui_support")]
     fn as_any(&self) -> &dyn std::any::Any {
         self
+    }
+    fn has_budget(&self) -> bool {
+        let acct = self.db.get_account(self.uid, self.id).unwrap();
+        acct.info.has_budget
+    }
+    fn set_budget(&self) {
+        let mut acct = self.db.get_account(self.uid, self.id).unwrap();
+        acct.info.has_budget = true;
+        let _ = self.db.update_account(self.uid, self.id, &acct.info).unwrap();
     }
 }

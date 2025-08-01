@@ -46,16 +46,6 @@ pub struct Expenditure {
     pub amount: f32,
 }
 
-// impl DisplayableLedgerRecord {
-//     fn ref_array(&self) -> Vec::<String> {
-//         vec![self.id.to_string(), self.info.date.clone(), self.info.transfer_type.clone(),  self.info.amount.to_string(), self.info.category.clone(), self.info.participant.clone(), self.info.description.clone()]
-//     }
-//     // fn id(&self) -> &str {
-//     //     format!("{}", &self.id)
-//     // }
-//     // fn
-// }
-
 impl DbConn {
     pub fn create_ledger_table(&self) -> Result<()> {
         let sql: &str;

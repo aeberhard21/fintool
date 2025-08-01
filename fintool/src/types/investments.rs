@@ -1381,7 +1381,6 @@ impl DbConn {
         ticker: String,
     ) -> rusqlite::Result<Vec<StockRecord>, rusqlite::Error> {
         let p = rusqlite::params![aid, ticker, uid];
-        let sql = "SELECT * FROM stock_purchases WHERE aid = (?1) and ticker LIKE (?2) ORDER BY date DESC";
         let sql = "
             SELECT
                 stock_purchases.id, shares, costbasis, remaining, lid 
@@ -1440,7 +1439,7 @@ impl DbConn {
         uid: u32,
         aid: u32,
     ) -> rusqlite::Result<f32, rusqlite::Error> {
-        let sum: f32;
+        let mut sum: f32;
         let p = rusqlite::params![uid, aid];
         let sql = "
             SELECT SUM(get_stock_value(ticker) * shares) as total_value

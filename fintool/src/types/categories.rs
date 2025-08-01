@@ -175,13 +175,14 @@ impl DbConn {
                 Ok(mut stmt) => {
                     if let Ok(entry_found) = stmt.exists(p) {
                         if entry_found {
-                            if let id =
-                                stmt.query_row(p, |row: &rusqlite::Row<'_>| row.get::<_, u32>(0))
-                            {
-                                return id.unwrap();
-                            } else {
-                                panic!("Unable to query row!");
-                            }
+                            let id =
+                                stmt.query_row(p, |row: &rusqlite::Row<'_>| row.get::<_, u32>(0));
+                            return id.unwrap();
+                            // {
+                            //     return id.unwrap();
+                            // } else {
+                            //     panic!("Unable to query row!");
+                            // }
                         } else {
                             //
                             // self.add_category(uid, aid, name).unwrap()
@@ -252,19 +253,27 @@ pub struct CategoryAutoCompleter {
     pub aid: u32,
     pub uid: u32,
     pub db: DbConn,
+    pub cats : Option<Vec<String>>
 }
 
 impl Autocomplete for CategoryAutoCompleter {
     fn get_suggestions(&mut self, input: &str) -> Result<Vec<String>, CustomUserError> {
         let mut suggestions: Vec<String>;
-        suggestions = self
+        suggestions = if let Some(categories) = self.cats.clone() {
+            categories
+            .into_iter()
+            .filter(|name| name.starts_with(input.to_ascii_uppercase().as_str()))
+            .collect::<Vec<String>>()
+        } else {
+            self
             .db
             .get_categories(self.uid, self.aid)
             .unwrap()
             .into_iter()
             .map(|category| category.category.name)
             .filter(|cname| cname.starts_with(input.to_ascii_uppercase().as_str()))
-            .collect();
+            .collect()
+        };
         suggestions.dedup();
         Ok(suggestions)
     }

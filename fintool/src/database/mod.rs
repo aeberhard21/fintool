@@ -21,7 +21,7 @@ impl DbConn {
     pub fn new(db_path: impl AsRef<Path>) -> Result<Self, rusqlite::Error> {
         // the ? returns early if error, otherwise ok
         let rs = Connection::open(db_path);
-        let mut conn;
+        let conn;
         match rs {
             Ok(rs_conn) => {
                 conn = Self {
@@ -63,7 +63,7 @@ impl DbConn {
         Self::set_schema_version(conn_lock, CURRENT_DATABASE_SCHEMA_VERSION);
 
         // register custom functions
-        let result = conn_lock
+        let _result = conn_lock
             .create_scalar_function(
                 "get_stock_value",
                 1,
@@ -78,7 +78,7 @@ impl DbConn {
             )
             .unwrap();
 
-        let result = conn_lock
+        let _result = conn_lock
             .create_scalar_function(
                 "get_stock_value_on_day",
                 2,

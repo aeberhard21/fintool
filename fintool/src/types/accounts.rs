@@ -255,6 +255,36 @@ impl DbConn {
         }
     }
 
+    pub fn update_account(&self, uid: u32, aid : u32, updated_info: &AccountInfo) -> Result<u32> {
+        let p = rusqlite::params![
+            aid,
+            uid,
+            updated_info.atype as usize,
+            updated_info.name,
+            updated_info.has_stocks,
+            updated_info.has_bank,
+            updated_info.has_ledger,
+            updated_info.has_budget,
+        ];
+        let sql: &str = "
+            UPDATE accounts 
+            SET 
+                type = (?3), name = (?4), stocks = (?5) , bank = (?6), ledger = (?7), budget = (?8) 
+            WHERE
+                id = (?1) and uid = (?2)
+        ";
+        let conn_lock = self.conn.lock().unwrap();
+        let rs = conn_lock.execute(sql, p);
+        match rs {
+            Ok(_usize) => {}
+            Err(error) => {
+                println!("Unable to update account: {}", error);
+            }
+        }
+        Ok(aid)
+    }
+
+
     pub fn create_account_transaction_table(&self) -> Result<()> {
         let sql: &str = "CREATE TABLE IF NOT EXISTS account_transactions (
             id              INTEGER NOT NULL,
@@ -500,7 +530,7 @@ impl DbConn {
         uid: u32,
         filter: AccountFilter,
     ) -> rusqlite::Result<Vec<String>, Error> {
-        let mut sql: &str;
+        let sql: &str;
         match filter {
             AccountFilter::Bank => {
                 sql = "SELECT name FROM accounts WHERE uid = (?1) and bank = TRUE";

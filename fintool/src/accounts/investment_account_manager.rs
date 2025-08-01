@@ -1339,4 +1339,13 @@ impl Account for InvestmentAccountManager {
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
+    fn has_budget(&self) -> bool {
+        let acct = self.db.get_account(self.uid, self.id).unwrap();
+        acct.info.has_budget
+    }
+    fn set_budget(&self) {
+        let mut acct = self.db.get_account(self.uid, self.id).unwrap();
+        acct.info.has_budget = true;
+        let _ = self.db.update_account(self.uid, self.id, &acct.info).unwrap();
+    }
 }

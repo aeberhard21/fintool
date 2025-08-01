@@ -24,7 +24,7 @@ use chrono::NaiveDate;
 use inquire::*;
 
 pub mod tui_accounts;
-pub mod tui_budgets;
+// pub mod tui_budgets;
 pub mod tui_user;
 
 pub fn menu(_db: &mut DbConn) {
@@ -259,9 +259,6 @@ pub fn decode_and_init_account_type(
         AccountType::CD => Box::new(CertificateOfDepositAccount::new(uid, account.id, db)),
         AccountType::Wallet => Box::new(Wallet::new(uid, account.id, db)),
         AccountType::RetirementRothIra => {Box::new(RothIraAccount::new(uid, account.id, db))}
-        _ => {
-            panic!("Invalid account type!");
-        }
     }
 }
 
@@ -399,9 +396,6 @@ pub fn create_account(
         }
         AccountType::RetirementRothIra => { 
             new_account = RothIraAccount::create(uid, name, db);
-        }
-        _ => {
-            panic!("Unrecognized input!");
         }
     }
 

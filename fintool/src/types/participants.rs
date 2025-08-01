@@ -492,9 +492,6 @@ impl Autocomplete for ParticipantAutoCompleter {
                     z.dedup();
                     [[w, x].concat(), [y, z].concat()].concat()
                 }
-                _ => {
-                    panic!("Unable to match ParticipantType in Autocomplete!");
-                }
             };
         } else {
             let current_account_name = self.db.get_account_name(self.uid, self.aid).unwrap();
