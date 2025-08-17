@@ -36,6 +36,7 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::path::Path;
 use std::rc;
+use std::iter::zip;
 
 #[cfg(feature = "ratatui_support")]
 use crate::app::app::App;
@@ -739,52 +740,110 @@ impl AccountData for Wallet {
 impl Wallet { 
     fn render_spend_chart(&self, frame: &mut Frame, area: Rect, app: &App) {
         let (start, end) = (app.analysis_start, app.analysis_end);
-        if let Some(mut entries)= self.db.get_expenditures_between_dates(self.uid, self.id, start, end).unwrap() {
-            entries.sort_by(|x, y| { (x.amount).partial_cmp(&y.amount).unwrap_or(std::cmp::Ordering::Equal) });
-            let grouped_others : Option<Expenditure> = if entries.len() > 10 {
-                let misc = entries.drain(10..entries.len()-1).collect::<Vec<Expenditure>>();
-                let amount = misc.into_iter().map(|x| x.amount).sum();
-                Some(Expenditure { category : "Misc".to_string(), amount : amount })
+        if let Some(mut expenditures)= self.db.get_expenditures_between_dates(self.uid, self.id, start, end).unwrap() {
+            let bar_groups = if let Some(account_budget) = &self.budget {
+                let mut budget = account_budget.get_budget();
+                if budget.is_empty() {
+                    panic!("No budget found for account '{}'!", self.id);
+                }
+                let categories = account_budget.get_budget_categories();
+                if categories.is_empty() { 
+                    panic!("No categories found for account '{}'!", self.id);
+                }
+
+                // sort expenditures alphabetically
+                expenditures.sort_by(|x, y| { (x.category).cmp(&y.category) });
+                // sort budget alphabetically
+                budget.sort_by(|x, y| { 
+                    (self.db.get_category_name(self.uid, self.id, x.item.category_id).unwrap())
+                    .cmp((&self.db.get_category_name(self.uid, self.id, y.item.category_id).unwrap()))
+                });
+
+                // remove any expenditures that don't map to a budget category, place in to misc category
+                let mut misc_expenditures = Expenditure { category : "Misc".to_string(), amount : 0.0 };
+                expenditures.retain(|expenditure| {
+                    if budget.iter().map(|element| self.db.get_category_name(self.uid, self.id, element.item.category_id).unwrap()).collect::<Vec<String>>().binary_search(&expenditure.category).is_ok() { 
+                        true
+                    } else { 
+                        misc_expenditures.amount = misc_expenditures.amount + expenditure.amount;
+                        false
+                    }
+                });
+
+                let mut bar_group : Vec<BarGroup<'_>> = Vec::new();
+                for elem in zip(budget, expenditures) { 
+                    let budget_bar = Bar::default()
+                        .value(super::base::budget::scale_budget_value_to_analysis_period(elem.0.item.value, start, end) as u64)
+                        .text_value(format!("${:2}", elem.0.item.value))
+                        .style(Style::new().fg(tailwind::WHITE))
+                        .value_style(Style::new().fg(tailwind::WHITE).reversed());
+                    let expenditure_bar = Bar::default()
+                        .value(elem.1.amount as u64)
+                        .text_value(format!("${:2}", elem.1.amount))
+                        .style(Style::new().fg(tailwind::AMBER.c500))
+                        .value_style(Style::new().fg(tailwind::AMBER.c500).reversed());
+                    let bars: Vec<Bar<'_>> = vec![budget_bar, expenditure_bar];
+                    let group = BarGroup::default()
+                        .bars(&bars)
+                        .label(Line::from(elem.1.category).centered());
+                    bar_group.push(group);
+                }
+                if misc_expenditures.amount > 0.0 {
+                    let budget_bar = Bar::default()
+                        .value(0)
+                        .text_value(format!("${:2}", 0.0))
+                        .style(Style::new().fg(tailwind::WHITE))
+                        .value_style(Style::new().fg(tailwind::WHITE).reversed());
+                    let expenditure_bar = Bar::default()
+                        .value(misc_expenditures.amount as u64)
+                        .text_value(format!("${:2}", misc_expenditures.amount))
+                        .style(Style::new().fg(tailwind::AMBER.c500))
+                        .value_style(Style::new().fg(tailwind::AMBER.c500).reversed());
+                    let bars: Vec<Bar<'_>> = vec![budget_bar, expenditure_bar];
+                    let group = BarGroup::default()
+                        .bars(&bars)
+                        .label(Line::from(misc_expenditures.category).centered());
+                    bar_group.push(group)
+                }
+                bar_group
             } else { 
-                None
+                // group anything less than the top 10 categories into a "miscellaneous" category
+                expenditures.sort_by(|x, y| { (x.amount).partial_cmp(&y.amount).unwrap_or(std::cmp::Ordering::Equal) });
+
+                let grouped_others : Option<Expenditure> = if expenditures.len() > 10 {
+                    let misc = expenditures.drain(10..expenditures.len()-1).collect::<Vec<Expenditure>>();
+                    let amount = misc.into_iter().map(|x| x.amount).sum();
+                    Some(Expenditure { category : "Misc".to_string(), amount : amount })
+                } else { 
+                    None
+                };
+
+                if let Some(grouped_others) = grouped_others { 
+                    expenditures.push(grouped_others);
+                }
+
+                let bars: Vec<Bar<'_>> = expenditures.iter().map(|x| {
+                    Bar::default()
+                        .value(x.amount as u64)
+                        .label(Line::from(format!("{}", x.category)))
+                        .text_value(format!("${:2}", x.amount))
+                        .style(Style::new().fg(tailwind::AMBER.c500))
+                        .value_style(Style::new().fg(tailwind::AMBER.c500).reversed())
+                }).collect::<Vec<Bar>>();
+
+                let group = vec![BarGroup::default().bars(&bars)];
+                group
             };
 
-            let mut data : Vec<(f64, f64)> = entries.iter().enumerate().map(|x| { ((x.0 as f64 / (entries.len()-1) as f64) * 100. as f64, x.1.amount as f64)}).collect::<Vec<(f64, f64)>>();
-            data.sort_by(|x,y| { (x.1).partial_cmp(&y.1).unwrap_or(std::cmp::Ordering::Equal) });
-            if grouped_others.is_some() { 
-                let grouped = grouped_others.unwrap();
-                data.push((1. + 1. / entries.len() as f64, grouped.amount as f64));
-            }
-
-            let max_amount = entries[entries.len()-1].amount;
-            let max_range = (max_amount) as f64;
-            let dataset = Dataset::default()
-                .marker(symbols::Marker::HalfBlock)
-                .style(Style::new().fg(tailwind::EMERALD.c500))
-                .graph_type(GraphType::Bar)
-                .data(&data);
-
-            let chart = Chart::new(vec![dataset])
-                .block(Block::bordered().title_top(Line::from("Spend Analyzer").cyan().bold().centered()))
+            let mut chart = BarChart::default()
                 .style(Style::new().bg(tailwind::SLATE.c900))
-                .x_axis(
-                    Axis::default()
-                        .style(Style::default().gray())
-                        .bounds([0., 100.])
-                        .labels(entries.iter().map(|x| { x.category.clone().drain(0..(if (x.category.len() > 10) { 10} else {x.category.len()})).collect::<String>() } ).collect::<Vec<String>>())
-                        .labels_alignment(layout::Alignment::Right)
-                )
-                .y_axis(
-                    Axis::default()
-                        .style(Style::default().gray())
-                        .bounds([0.0, max_range])
-                        .labels(
-                            float_range(0., max_range, (max_range) / 5.0)
-                                .into_iter()
-                                .map(|x| format!("{:.2}", x)),
-                        ),
-                )
-                .hidden_legend_constraints((Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)));
+                .block(Block::bordered().title_top(Line::from("Spend Analyzer").centered()))
+                .bar_width(10)
+                .group_gap(area.width / (bar_groups.len() as u16 + 10));
+            for group in bar_groups { 
+                chart = chart.data(group);
+            }
+    
             frame.render_widget(chart, area);
         } else { 
 

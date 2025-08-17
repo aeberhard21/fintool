@@ -331,10 +331,11 @@ impl AccountOperations for CreditCardAccount {
             "People",
             "None",
         ];
-        let options = match self.has_budget() { 
-            true => { MODIFY_OPTIONS_WITH_BUDGET.to_vec() } , 
-            false => { MODIFY_OPTIONS.to_vec() }
-        };
+        // let options = match self.has_budget() { 
+        //     true => { MODIFY_OPTIONS_WITH_BUDGET.to_vec() } , 
+        //     false => { MODIFY_OPTIONS.to_vec() }
+        // };
+        let options = MODIFY_OPTIONS_WITH_BUDGET.to_vec();
         let modify_choice =
             Select::new("\nWhat would you like to modify:", options)
                 .prompt()
@@ -354,6 +355,7 @@ impl AccountOperations for CreditCardAccount {
                     let budget = Budget::new(self.uid, self.id, &self.db);
                     budget.create_budget();
                     self.budget = Some(budget);
+                    self.set_budget();
                 }
             }
             "Ledger" => {
@@ -416,7 +418,7 @@ impl AccountOperations for CreditCardAccount {
                             .unwrap()
                             .to_string();
                         self.db
-                            .update_category_name(self.uid, self.id, chosen_category, new_name);
+                            .update_category_name(self.uid, self.id, chosen_category, new_name).unwrap();
                     }
                     "Remove" => {
                         // check if category is referenced by any current ledger
@@ -1076,7 +1078,7 @@ impl CreditCardAccount {
         if let Some(mut expenditures ) = self.charge.db.get_expenditures_between_dates(self.uid, self.id, start, end).unwrap() {
             let bar_groups = if let Some(account_budget) = &self.budget {
                 let mut budget = account_budget.get_budget();
-                if budget.is_empty() { 
+                if budget.is_empty() {
                     panic!("No budget found for account '{}'!", self.id);
                 }
                 let categories = account_budget.get_budget_categories();
@@ -1173,7 +1175,6 @@ impl CreditCardAccount {
                 .block(Block::bordered().title_top(Line::from("Spend Analyzer").centered()))
                 .bar_width(10)
                 .group_gap(area.width / (bar_groups.len() as u16 + 10));
-                // .bar_gap(area.width / (bar_groups.len() as u16 + 10));
             for group in bar_groups { 
                 chart = chart.data(group);
             }
