@@ -1,6 +1,5 @@
-use ratatui::{layout::Rect, style::palette::tailwind, style::Color, text::Line, Frame};
-use shared_lib::LedgerEntry;
-use strum::FromRepr;
+use ratatui::{layout::Rect, style::palette::tailwind, style::Color, text::Line, Frame, widgets::{Tabs, Block}};
+use strum::{Display, EnumIter, EnumString, FromRepr, IntoEnumIterator};
 use unicode_width::UnicodeWidthStr;
 
 use crate::types::ledger::DisplayableLedgerRecord;
@@ -12,31 +11,25 @@ pub const PALETTES: [tailwind::Palette; 4] = [
     tailwind::RED,
 ];
 
-pub enum CurrentScreen {
-    Login,
-    Main,
-    Accounts,
-}
-
-#[derive(Debug, Clone, Copy, FromRepr)]
-pub enum CurrentlySelecting {
-    AccountTypeTabs,
-    AccountTabs,
-    Account,
-}
-
-#[derive(Debug, Clone, Copy, FromRepr, PartialEq, Eq)]
-pub enum UserLoadedState {
-    NotLoaded,
-    Loading,
-    Loaded,
-}
-
 pub trait TabMenu {
     fn previous(self) -> Self;
     fn next(self) -> Self;
     fn to_tab_title(value: Self) -> Line<'static>;
-    fn render(frame: &mut Frame, area: Rect, selected_tab: usize, title: String);
+    fn render(frame: &mut Frame, area: Rect, selected_tab: usize, title: String, color : Color);
+}
+
+#[derive(Display, Debug, Clone, Copy, FromRepr, PartialEq, Eq, EnumIter, PartialOrd)]
+pub enum CurrentScreen {
+    Login,
+    Landing,
+}
+
+#[derive(Debug, Clone, Copy, FromRepr)]
+pub enum CurrentlySelecting {
+    MainTabs,
+    AccountTypeTabs,
+    AccountTabs,
+    Account,
 }
 
 impl CurrentlySelecting {
@@ -49,6 +42,52 @@ impl CurrentlySelecting {
         let current = self.clone() as usize;
         let next = current.saturating_add(1);
         Self::from_repr(next).unwrap_or(self)
+    }
+}
+
+
+#[derive(Debug, Clone, Copy, FromRepr, PartialEq, Eq)]
+pub enum UserLoadedState {
+    NotLoaded,
+    Loading,
+    Loaded,
+}
+
+#[derive(Display, Debug, Clone, Copy, FromRepr, PartialEq, Eq, EnumIter, PartialOrd)]
+pub enum Pages {
+    Main,
+    Accounts,
+}
+
+impl TabMenu for Pages {
+    fn previous(self) -> Self {
+        let current = self as usize;
+        let prev = current.saturating_sub(1).min(Pages::Main as usize);
+        Self::from_repr(prev).unwrap_or(self)
+    }
+    fn next(self) -> Self {
+        let current = self as usize;
+        let next = current.saturating_add(1);
+        Self::from_repr(next).unwrap_or(self)
+    }
+    fn to_tab_title(value: Self) -> Line<'static> {
+        let text = format!("  {value}  ");
+        text.into()
+    }
+    fn render(frame: &mut Frame, area: Rect, selected_tab: usize, title: String, color : Color) {
+        let atype_tabs = 
+            Tabs::new(Pages::iter()
+                // filter out login screen
+                .filter(|x| *x >= Pages::Main)
+                .collect::<Vec<Pages>>()
+                .iter()
+                .map(|x|Pages::to_tab_title(*x)))
+            .highlight_style(color)
+            .select(selected_tab)
+            .block(Block::bordered().title(title))
+            .padding("", "")
+            .divider(" ");
+        frame.render_widget(atype_tabs, area);
     }
 }
 

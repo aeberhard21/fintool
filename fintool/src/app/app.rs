@@ -10,7 +10,7 @@ use crate::types::accounts::AccountType;
 use crate::types::ledger::{DisplayableLedgerRecord, LedgerRecord};
 use crate::{accounts::base::Account, app::screen::TabMenu};
 
-use super::screen::{CurrentScreen, CurrentlySelecting, LedgerColors, UserLoadedState};
+use super::screen::{CurrentScreen, CurrentlySelecting, LedgerColors, UserLoadedState, Pages};
 
 const ITEM_HEIGHT: usize = 2;
 
@@ -20,6 +20,7 @@ pub struct App {
     pub current_screen: CurrentScreen,
     pub selected_atype_tab: AccountType,
     pub accounts_for_type: Option<Vec<String>>,
+    pub selected_page_tab: Pages,
     pub selected_account_tab: usize,
     pub account_index_to_restore : usize,
     pub currently_selected: Option<CurrentlySelecting>,
@@ -43,11 +44,12 @@ impl App {
             key_input: String::new(),
             invalid_input: false,
             current_screen: CurrentScreen::Login,
+            selected_page_tab: Pages::Main,
             selected_atype_tab: AccountType::Bank,
             accounts_for_type: None,
             selected_account_tab: 0,
             account_index_to_restore: 0,
-            currently_selected: Some(CurrentlySelecting::AccountTypeTabs),
+            currently_selected: Some(CurrentlySelecting::MainTabs),
             db: db.clone(),
             user_id: None,
             account: None,
@@ -64,7 +66,6 @@ impl App {
     }
 
     pub fn advance_currently_selecting(&mut self) {
-        // self.restore_account();
         if let Some(selecting) = &self.currently_selected {
             self.currently_selected = Some(selecting.next());
         } else {
@@ -73,7 +74,6 @@ impl App {
     }
 
     pub fn retreat_currently_selecting(&mut self) {
-        self.restore_account();
         if let Some(selecting) = &self.currently_selected {
             self.currently_selected = Some(selecting.previous());
         } else {
@@ -81,18 +81,23 @@ impl App {
         }
     }
 
+    pub fn advance_page_tab(&mut self) { 
+        self.selected_page_tab = self.selected_page_tab.next();
+    }
+
+    pub fn retreat_page_tab(&mut self) { 
+        self.selected_page_tab = self.selected_page_tab.previous();
+    }
+
     pub fn advance_account_type(&mut self) {
-        self.restore_account();
         self.selected_atype_tab = self.selected_atype_tab.next();
     }
 
     pub fn retreat_account_type(&mut self) {
-        self.restore_account();
         self.selected_atype_tab = self.selected_atype_tab.previous();
     }
 
     pub fn advance_account(&mut self) {
-        self.restore_account();
         if self.accounts_for_type.is_none() {
             return;
         }
@@ -103,7 +108,6 @@ impl App {
     }
 
     pub fn retreat_account(&mut self) {
-        self.restore_account();
         if self.accounts_for_type.is_none() {
             return;
         }

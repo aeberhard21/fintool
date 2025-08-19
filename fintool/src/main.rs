@@ -24,7 +24,7 @@ use std::result;
 #[cfg(feature = "ratatui_support")]
 use crate::app::app::App;
 #[cfg(feature = "ratatui_support")]
-use crate::app::screen::{CurrentScreen, CurrentlySelecting, UserLoadedState};
+use crate::app::screen::{CurrentScreen, CurrentlySelecting, UserLoadedState, Pages};
 #[cfg(feature = "ratatui_support")]
 use crate::app::ui;
 use crate::database::DbConn;
@@ -132,7 +132,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                 terminal.draw(|f: &mut ratatui::Frame<'_>| ui::ui(f, app))?;
 
                 if profiles_loaded == number_of_accounts { 
-                    app.current_screen = CurrentScreen::Main;
+                    app.current_screen = CurrentScreen::Landing;
                     app.user_load_state = UserLoadedState::Loaded;
                 }
             }
@@ -181,29 +181,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                     }
                     _ => {}
                 },
-                CurrentScreen::Main => match (key.modifiers, key.code) { 
-                    (_, KeyCode::Char('q'))
-                    | (KeyModifiers::CONTROL, KeyCode::Char('c') | KeyCode::Char('C')) => {
-                        return Ok(true)
-                    }
-                    (_, KeyCode::Char('a')) => { 
-                        app.current_screen = CurrentScreen::Accounts;
-                        app.accounts_for_type = if let Some(accounts) = &app.accounts {
-                            let filtered_accounts = accounts.iter().filter(|x| {
-                                    is_account_type(x, app.selected_atype_tab)
-                            }).collect::<Vec<&Box<dyn Account>>>();
-                            let names = filtered_accounts.iter().map(|x| x.get_name()).collect::<Vec<String>>();
-                            Some(names)
-                        } else { 
-                            None
-                        };
-                        if app.accounts_for_type.is_some() {
-                            app.get_account();
-                        }
-                    }
-                    _ => {}
-                }
-                CurrentScreen::Accounts => match (key.modifiers, key.code) {
+                CurrentScreen::Landing => match (key.modifiers, key.code) {
                     (_, KeyCode::Char('q'))
                     | (KeyModifiers::CONTROL, KeyCode::Char('c') | KeyCode::Char('C')) => {
                         return Ok(true)
@@ -211,7 +189,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                     (_, KeyCode::Right | KeyCode::Char('l')) => {
                         match app.currently_selected {
                             Some(CurrentlySelecting::AccountTabs) => {
-                                // app.restore_account();
+                                app.restore_account();
                                 app.advance_account();
                                 if app.accounts_for_type.is_some() {
                                     app.get_account();
@@ -219,6 +197,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                             }
                             Some(CurrentlySelecting::AccountTypeTabs) => {
                                 // get accounts for filter
+                                app.restore_account();
                                 app.advance_account_type();
                                 app.accounts_for_type = if let Some(accounts) = &app.accounts {
                                     let filtered_accounts = accounts.iter().filter(|x| {
@@ -233,18 +212,37 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                                     app.get_account();
                                 }
                             }
+                            Some(CurrentlySelecting::MainTabs) => {
+                                // moving to accounts tab
+                                if let Pages::Main = app.selected_page_tab {
+                                    app.accounts_for_type = if let Some(accounts) = &app.accounts {
+                                        let filtered_accounts = accounts.iter().filter(|x| {
+                                                is_account_type(x, app.selected_atype_tab)
+                                        }).collect::<Vec<&Box<dyn Account>>>();
+                                        let names = filtered_accounts.iter().map(|x| x.get_name()).collect::<Vec<String>>();
+                                        Some(names)
+                                    } else { 
+                                        None
+                                    };
+                                    if app.accounts_for_type.is_some() {
+                                        app.get_account();
+                                    }
+                                }
+                                app.advance_page_tab();
+                            }
                             _ => {}
                         }
                     }
                     (_, KeyCode::Left | KeyCode::Char('h')) => match app.currently_selected {
                         Some(CurrentlySelecting::AccountTabs) => {
-                            // app.restore_account();
+                            app.restore_account();
                             app.retreat_account();
                             if app.accounts_for_type.is_some() {
                                 app.get_account();
                             }
                         }
                         Some(CurrentlySelecting::AccountTypeTabs) => {
+                            app.restore_account();
                             app.retreat_account_type();
                             app.accounts_for_type = if let Some(accounts) = &app.accounts {
                                 let filtered_accounts = accounts.iter().filter(|x| {
@@ -259,12 +257,17 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                                 app.get_account();
                             }
                         }
+                        Some(CurrentlySelecting::MainTabs) => {
+                            app.restore_account();
+                            app.retreat_page_tab();
+                        }
                         _ => {}
-                    },
+                    }
                     (_, KeyCode::Backspace) => {
                         if let Some(select_mode) = &app.currently_selected {
                             match select_mode {
                                 CurrentlySelecting::AccountTabs => {
+                                    app.restore_account();
                                     app.retreat_currently_selecting();
                                     app.accounts_for_type = if let Some(accounts) = &app.accounts {
                                         let filtered_accounts = accounts.iter().filter(|x| {
@@ -282,6 +285,10 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                                     app.selected_account_tab = 0;
                                 }
                                 CurrentlySelecting::Account => {
+                                    // app.restore_account();
+                                    app.retreat_currently_selecting();
+                                }
+                                CurrentlySelecting::AccountTypeTabs => { 
                                     app.retreat_currently_selecting();
                                 }
                                 _ => {}
@@ -289,18 +296,21 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                         }
                     }
                     (_, KeyCode::Enter) => {
-                        if app.accounts_for_type.is_none() {
-                        } else {
-                            if let Some(select_mode) = &app.currently_selected {
-                                match select_mode {
-                                    CurrentlySelecting::AccountTypeTabs => {
+                        if let Some(select_mode) = &app.currently_selected {
+                            match select_mode {
+                                CurrentlySelecting::MainTabs => {
+                                    if Pages::Accounts == app.selected_page_tab {
+                                        // only accept enter input when accounts tab is selected
                                         app.advance_currently_selecting()
                                     }
-                                    CurrentlySelecting::AccountTabs => {
-                                        app.advance_currently_selecting()
-                                    }
-                                    _ => {}
                                 }
+                                CurrentlySelecting::AccountTypeTabs => {
+                                    app.advance_currently_selecting()
+                                }
+                                CurrentlySelecting::AccountTabs => {
+                                    app.advance_currently_selecting()
+                                }
+                                _ => {}
                             }
                         }
                     }
@@ -525,17 +535,17 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                             }
                         }
                     }
-                    (_, KeyCode::Esc) => { 
-                        if let Some(select_mode) = &app.currently_selected {
-                            match select_mode { 
-                                CurrentlySelecting::AccountTypeTabs|CurrentlySelecting::AccountTabs => {
-                                    app.restore_account();
-                                    app.current_screen = CurrentScreen::Main;
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
+                    // (_, KeyCode::Esc) => { 
+                    //     if let Some(select_mode) = &app.currently_selected {
+                    //         match select_mode { 
+                    //             CurrentlySelecting::AccountTypeTabs|CurrentlySelecting::AccountTabs => {
+                    //                 app.restore_account();
+                    //                 app.current_screen = CurrentScreen::Landing;
+                    //             }
+                    //             _ => {}
+                    //         }
+                    //     }
+                    // }
                     _ => {}
                 },
                 _ => {}

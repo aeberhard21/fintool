@@ -56,9 +56,9 @@ impl TabMenu for AccountType {
         let text = format!("  {value}  ");
         text.into()
     }
-    fn render(frame: &mut Frame, area: Rect, selected_tab: usize, title: String) {
+    fn render(frame: &mut Frame, area: Rect, selected_tab: usize, title: String, color : Color) {
         let atype_tabs = Tabs::new(AccountType::iter().map(AccountType::to_tab_title))
-            .highlight_style(Color::Red)
+            .highlight_style(color)
             .select(selected_tab)
             .block(Block::bordered().title(title))
             .padding("", "")
