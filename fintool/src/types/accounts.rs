@@ -109,6 +109,7 @@ impl DbConn {
                 uid INTEGER NOT NULL PRIMARY KEY,
                 next_account_id INTEGER NOT NULL,
                 next_account_transaction_id INTEGER NOT NULL,
+                next_label_id INTEGER NOT NULL,
                 FOREIGN KEY (uid) REFERENCES users(id)
             )   
         ";
@@ -124,12 +125,12 @@ impl DbConn {
     }
 
     pub fn initialize_user_account_table(&self, uid: u32) -> rusqlite::Result<()> {
-        let p = rusqlite::params![uid, 0, 0];
+        let p = rusqlite::params![uid, 0, 0, 0];
         let sql: &str = "
             INSERT INTO account_ids 
-                (uid, next_account_id, next_account_transaction_id) 
+                (uid, next_account_id, next_account_transaction_id, next_label_id) 
             VALUES 
-                ( ?1, ?2, ?3)
+                ( ?1, ?2, ?3, ?4)
         ";
         let conn_lock = self.conn.lock().unwrap();
         let rs = conn_lock.execute(sql, p);
@@ -180,6 +181,25 @@ impl DbConn {
             }
             false => {
                 panic!("The next transaction ID within table 'account_ids' does not exist.");
+            }
+        }
+    }
+
+    pub fn get_next_label_id(&self, uid: u32) -> rusqlite::Result<u32> {
+        let sql = "SELECT next_label_id FROM account_ids WHERE uid = (?1)";
+        let p = rusqlite::params![uid];
+        let conn_lock = self.conn.lock().unwrap();
+        let mut stmt = conn_lock.prepare(sql)?;
+        let exists = stmt.exists(p)?;
+        match exists {
+            true => {
+                let id = stmt.query_row(p, |row| row.get::<_, u32>(0))?;
+                let sql = "UPDATE account_ids SET next_label_id = next_label_id + 1  WHERE uid = (?1)";
+                conn_lock.execute(sql, p)?;
+                Ok(id)
+            }
+            false => {
+                panic!("The next label ID within table 'account_ids' does not exist.");
             }
         }
     }
@@ -660,6 +680,7 @@ impl DbConn {
             ccid    INTEGER NOT NULL,
             cdid    INTEGER NOT NULL,
             stock_split_allocation_id INTEGER NOT NULL,
+            label_allocation_id INTEGER NOT NULL,
             PRIMARY KEY(uid, aid)
             FOREIGN KEY(uid) REFERENCES users(id)
             FOREIGN KEY(uid,aid) REFERENCES accounts(uid, id) ON DELETE CASCADE ON UPDATE CASCADE
@@ -676,12 +697,12 @@ impl DbConn {
     }
 
     pub fn initialize_user_account_info_table(&self, uid: u32, aid: u32) -> rusqlite::Result<()> {
-        let p = rusqlite::params![uid, aid, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let p = rusqlite::params![uid, aid, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
         let sql: &str = "
             INSERT INTO user_account_info 
-                (uid, aid, spid, ssid, said, cid, pid, bid, lid, splid, ccid, cdid, stock_split_allocation_id) 
+                (uid, aid, spid, ssid, said, cid, pid, bid, lid, splid, ccid, cdid, stock_split_allocation_id, label_allocation_id) 
             VALUES 
-                ( ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+                ( ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
         ";
         let conn_lock = self.conn.lock().unwrap();
         let rs = conn_lock.execute(sql, p);
@@ -875,6 +896,25 @@ impl DbConn {
             }
             false => {
                 panic!("The next stock split ID within table 'user_account_info' does not exist.");
+            }
+        }
+    }
+
+    pub fn get_next_label_allocation_id(&self, uid: u32, aid: u32) -> rusqlite::Result<u32> {
+        let sql = "SELECT label_allocation_id FROM user_account_info WHERE uid = (?1) and aid = (?2)";
+        let p = rusqlite::params![uid, aid];
+        let conn_lock = self.conn.lock().unwrap();
+        let mut stmt = conn_lock.prepare(sql)?;
+        let exists = stmt.exists(p)?;
+        match exists {
+            true => {
+                let id = stmt.query_row(p, |row| row.get::<_, u32>(0))?;
+                let sql = "UPDATE user_account_info SET label_allocation_id = label_allocation_id + 1 WHERE uid = (?1) and aid = (?2)";
+                conn_lock.execute(sql, p)?;
+                Ok(id)
+            }
+            false => {
+                panic!("The next label allocation ID within table 'user_account_info' does not exist.");
             }
         }
     }

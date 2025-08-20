@@ -193,8 +193,8 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
                 let display_text = Text::styled(Line::from(format!("{} -- (q) to quit / (◀︎) Move Tab Left / (▶︎) Move Tab Right / (⏎) Select / (⌫) Deselect / (c) Create Account", content)).to_string(), Style::default().fg(tailwind::RED.c500));
 
                 let accounts_paragraph = Paragraph::new(display_text).wrap(Wrap { trim: false });
-                let area = centered_rect(60, 25, frame.area());
-                frame.render_widget(accounts_paragraph, area);
+                // let area = centered_rect(60, 25, frame.area());
+                frame.render_widget(accounts_paragraph, footer_chunks);
             } else {
                 let accts = app.accounts_for_type.clone().unwrap();
                 if !accts.is_empty() {
@@ -464,7 +464,6 @@ fn render_net_worth_chart( app: &App, frame : &mut Frame, area : Rect) {
 
         frame.render_widget(net_worth_chart, area);
     }
-
 }
 
 fn render_asset_investment_ratio_chart( app: &App, frame : &mut Frame, area : Rect) {

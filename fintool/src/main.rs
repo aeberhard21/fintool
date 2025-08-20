@@ -117,6 +117,15 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                 let mut profiles_loaded = 0;
                 let account_records = app.db.get_user_accounts(app.user_id.unwrap()).unwrap();
                 let number_of_accounts = account_records.len();
+                
+                if number_of_accounts == 0 { 
+                    app.load_profile_progress = 1.;
+                    terminal.draw(|f| ui::ui(f, app))?;
+                    app.current_screen = CurrentScreen::Landing;
+                    app.user_load_state = UserLoadedState::Loaded;
+                    break;
+                }
+
                 let mut accounts = Vec::new();
                 for record in account_records { 
                     let acct = decode_and_init_account_type(app.user_id.unwrap(), &app.db, &record);
@@ -353,7 +362,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                                         None
                                     };
 
-                                    // app.restore_account();
+                                    app.restore_account();
                                     app.skip_to_last_account();
                                     app.get_account();
                                 }

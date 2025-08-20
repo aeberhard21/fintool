@@ -32,6 +32,7 @@ pub struct DisplayableLedgerInfo {
     pub category: String,
     pub description: String,
     pub ancillary_f32data: String,
+    pub labels : String
 }
 
 #[derive(Clone, Debug)]
@@ -233,7 +234,7 @@ impl DbConn {
     ) -> rusqlite::Result<Vec<DisplayableLedgerRecord>, rusqlite::Error> {
         let p = rusqlite::params![aid, uid];
         let sql = "
-            SELECT l.id, l.date, l.amount, l.transfer_type, p.name, c.category, l.desc, l.ancillary_f32 
+            SELECT l.id, l.date, l.amount, l.transfer_type, p.name, c.category, l.desc, l.ancillary_f32, GROUP_CONCAT(labels.label, ', ') 
             FROM ledgers l 
             INNER JOIN categories c ON
                 l.cid = c.id AND
@@ -243,7 +244,15 @@ impl DbConn {
                 l.pid = p.id AND
                 l.uid = p.uid AND
                 l.aid = p.aid
-            WHERE l.aid = (?1) and l.uid = (?2) order by date DESC";
+            INNER JOIN label_allocations ON
+                label_allocations.ledger_id = l.id AND
+                label_allocations.uid = l.uid AND
+                label_allocations.aid = l.aid
+            INNER JOIN labels ON
+                labels.id = label_allocations.label_id
+            WHERE l.aid = (?1) and l.uid = (?2)
+            GROUP BY l.id 
+            ORDER BY date DESC";
         let conn_lock = self.conn.lock().unwrap();
         let mut stmt = conn_lock.prepare(sql)?;
         let exists = stmt.exists(p)?;
@@ -266,6 +275,7 @@ impl DbConn {
                                 category: row.get(5)?,
                                 description: row.get(6)?,
                                 ancillary_f32data: row.get::<_, f32>(7)?.to_string(),
+                                labels : row.get(8)?
                             },
                         })
                     })

@@ -124,7 +124,7 @@ impl LedgerColors {
 
 pub fn ledger_table_constraint_len_calculator(
     entries: &[DisplayableLedgerRecord],
-) -> (u16, u16, u16, u16, u16, u16, u16) {
+) -> (u16, u16, u16, u16, u16, u16, u16, u16) {
     let id_len = entries
         .iter()
         .map(|d| d.id.as_str())
@@ -167,6 +167,12 @@ pub fn ledger_table_constraint_len_calculator(
         .map(UnicodeWidthStr::width)
         .max()
         .unwrap_or(0);
+    let labels_len = entries
+        .iter()
+        .map(|d| d.info.labels.as_str())
+        .map(UnicodeWidthStr::width)
+        .max()
+        .unwrap_or(0);
 
     (
         id_len as u16,
@@ -176,5 +182,6 @@ pub fn ledger_table_constraint_len_calculator(
         cat_len as u16,
         peer_len as u16,
         desc_len as u16,
+        labels_len as u16
     )
 }

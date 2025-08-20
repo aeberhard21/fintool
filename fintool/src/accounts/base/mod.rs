@@ -76,6 +76,7 @@ pub trait AccountUI: AccountData {
             "Category",
             "Peer",
             "Description",
+            "Labels",
         ]
         .into_iter()
         .map(Cell::from)
@@ -99,6 +100,7 @@ pub trait AccountUI: AccountData {
                 &record.info.category,
                 &record.info.participant.to_string(),
                 &record.info.description,
+                &record.info.labels,
             ];
             item.into_iter()
                 .map(|content| Cell::from(ratatuiText::from(format!("\n{content}\n"))))
@@ -119,6 +121,7 @@ pub trait AccountUI: AccountData {
                 Constraint::Min(constraint_lens.4 + 1),
                 Constraint::Min(constraint_lens.5 + 1),
                 Constraint::Min(constraint_lens.6 + 1),
+                Constraint::Min(constraint_lens.7 + 1)
             ],
         )
         .header(header)

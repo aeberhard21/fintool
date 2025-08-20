@@ -2,6 +2,7 @@ use crate::database::DbConn;
 use crate::tui::{decode_and_init_account_type, prompt_and_create_new_account};
 use crate::types::accounts::AccountRecord;
 use crate::types::categories::CategoryAutoCompleter;
+use crate::types::labels::LabelAutoCompleter;
 use crate::types::ledger::{LedgerInfo, LedgerRecord};
 use crate::types::participants::{ParticipantAutoCompleter, ParticipantType};
 use chrono::{Datelike, NaiveDate};
@@ -205,6 +206,40 @@ impl FixedAccount {
                     .unwrap()
             };
 
+            if overwrite {
+                let maintain_labels = Confirm::new("Would you like to maintain all prior labels (y/n)?").prompt().unwrap();
+                if !maintain_labels {
+                    let mapped_labels = self.db.check_and_get_label_mapping_matching_ledger_id(self.uid, self.id, id).unwrap();
+                    if !mapped_labels.is_empty() { 
+                        for label in mapped_labels {
+                            self.db.remove_label_mapping(self.uid, self.id, label.id).unwrap();
+                        }
+                    }
+                }
+            }
+
+            // add labels for transaction
+            let add_label_prompt = Confirm::new("Add labels to withdrawal (y/n)?").prompt().unwrap();
+            if add_label_prompt == true { 
+                loop {
+                    let label = Text::new("Enter label:")
+                        .with_autocomplete(LabelAutoCompleter { 
+                            uid : self.uid, 
+                            db : self.db.clone()
+                        })
+                        .prompt()
+                        .unwrap()
+                        .to_ascii_uppercase();
+                    let label_id = self.db.check_and_add_label(self.uid, label).unwrap();
+                    self.db.add_label_mapping(self.uid, self.id, label_id, id).unwrap();
+
+                    let continue_prompt = Confirm::new("Add more labels (y/n)?").prompt().unwrap();
+                    if !continue_prompt { 
+                        break;
+                    }
+                }
+            }
+
             return LedgerRecord {
                 id: id,
                 info: withdrawal,
@@ -261,6 +296,40 @@ impl FixedAccount {
                 id: id,
                 info: withdrawal,
             };
+
+            if overwrite {
+                let maintain_labels = Confirm::new("Would you like to maintain all prior labels (y/n)?").prompt().unwrap();
+                if !maintain_labels {
+                    let mapped_labels = self.db.check_and_get_label_mapping_matching_ledger_id(self.uid, self.id, id).unwrap();
+                    if !mapped_labels.is_empty() { 
+                        for label in mapped_labels {
+                            self.db.remove_label_mapping(self.uid, self.id, label.id).unwrap();
+                        }
+                    }
+                }
+            }
+
+            // add labels for transaction
+            let add_label_prompt = Confirm::new("Add labels to withdrawal (y/n)?").prompt().unwrap();
+            if add_label_prompt == true { 
+                loop {
+                    let label = Text::new("Enter label:")
+                        .with_autocomplete(LabelAutoCompleter { 
+                            uid : self.uid, 
+                            db : self.db.clone()
+                        })
+                        .prompt()
+                        .unwrap()
+                        .to_ascii_uppercase();
+                    let label_id = self.db.check_and_add_label(self.uid, label).unwrap();
+                    self.db.add_label_mapping(self.uid, self.id, label_id, entry.id).unwrap();
+
+                    let continue_prompt = Confirm::new("Add more labels (y/n)?").prompt().unwrap();
+                    if !continue_prompt { 
+                        break;
+                    }
+                }
+            }
 
             if link {
                 acct.link(self.id, entry.clone());
@@ -467,6 +536,40 @@ impl FixedAccount {
                     .unwrap()
             };
 
+            if overwrite {
+                let maintain_labels = Confirm::new("Would you like to maintain all prior labels (y/n)?").prompt().unwrap();
+                if !maintain_labels {
+                    let mapped_labels = self.db.check_and_get_label_mapping_matching_ledger_id(self.uid, self.id, id).unwrap();
+                    if !mapped_labels.is_empty() { 
+                        for label in mapped_labels {
+                            self.db.remove_label_mapping(self.uid, self.id, label.id).unwrap();
+                        }
+                    }
+                }
+            }
+
+            // add labels for transaction
+            let add_label_prompt = Confirm::new("Add labels to deposit (y/n)?").prompt().unwrap();
+            if add_label_prompt == true { 
+                loop {
+                    let label = Text::new("Enter label:")
+                        .with_autocomplete(LabelAutoCompleter { 
+                            uid : self.uid, 
+                            db : self.db.clone()
+                        })
+                        .prompt()
+                        .unwrap()
+                        .to_ascii_uppercase();
+                    let label_id = self.db.check_and_add_label(self.uid, label).unwrap();
+                    self.db.add_label_mapping(self.uid, self.id, label_id, id).unwrap();
+
+                    let continue_prompt = Confirm::new("Add more labels (y/n)?").prompt().unwrap();
+                    if !continue_prompt { 
+                        break;
+                    }
+                }
+            }
+
             return LedgerRecord {
                 id: id,
                 info: deposit,
@@ -523,6 +626,40 @@ impl FixedAccount {
                 id: id,
                 info: deposit,
             };
+
+            if overwrite {
+                let maintain_labels = Confirm::new("Would you like to maintain all prior labels (y/n)?").prompt().unwrap();
+                if !maintain_labels {
+                    let mapped_labels = self.db.check_and_get_label_mapping_matching_ledger_id(self.uid, self.id, id).unwrap();
+                    if !mapped_labels.is_empty() { 
+                        for label in mapped_labels {
+                            self.db.remove_label_mapping(self.uid, self.id, label.id).unwrap();
+                        }
+                    }
+                }
+            }
+
+            // add labels for transaction
+            let add_label_prompt = Confirm::new("Add labels to deposit (y/n)?").prompt().unwrap();
+            if add_label_prompt == true { 
+                loop {
+                    let label = Text::new("Enter label:")
+                        .with_autocomplete(LabelAutoCompleter { 
+                            uid : self.uid, 
+                            db : self.db.clone()
+                        })
+                        .prompt()
+                        .unwrap()
+                        .to_ascii_uppercase();
+                    let label_id = self.db.check_and_add_label(self.uid, label).unwrap();
+                    self.db.add_label_mapping(self.uid, self.id, label_id, entry.id).unwrap();
+
+                    let continue_prompt = Confirm::new("Add more labels (y/n)?").prompt().unwrap();
+                    if !continue_prompt { 
+                        break;
+                    }
+                }
+            }
 
             if link {
                 acct.link(self.id, entry.clone());
