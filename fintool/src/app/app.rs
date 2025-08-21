@@ -19,7 +19,7 @@ pub struct App {
     pub invalid_input: bool,
     pub current_screen: CurrentScreen,
     pub selected_atype_tab: AccountType,
-    pub accounts_for_type: Option<Vec<String>>,
+    pub accounts_for_type: Vec<String>,
     pub selected_page_tab: Pages,
     pub selected_account_tab: usize,
     pub account_index_to_restore : usize,
@@ -46,7 +46,7 @@ impl App {
             current_screen: CurrentScreen::Login,
             selected_page_tab: Pages::Main,
             selected_atype_tab: AccountType::Bank,
-            accounts_for_type: None,
+            accounts_for_type: Vec::new(),
             selected_account_tab: 0,
             account_index_to_restore: 0,
             currently_selected: Some(CurrentlySelecting::MainTabs),
@@ -98,28 +98,19 @@ impl App {
     }
 
     pub fn advance_account(&mut self) {
-        if self.accounts_for_type.is_none() {
-            return;
-        }
         self.selected_account_tab = self
             .selected_account_tab
             .saturating_add(1)
-            .min(self.accounts_for_type.clone().unwrap().len() - 1)
+            .min(self.accounts_for_type.clone().len() - 1)
     }
 
     pub fn retreat_account(&mut self) {
-        if self.accounts_for_type.is_none() {
-            return;
-        }
         self.selected_account_tab = self.selected_account_tab.saturating_sub(1).max(0)
     }
 
     pub fn skip_to_last_account(&mut self) {
         self.restore_account();
-        if self.accounts_for_type.is_none() {
-            return;
-        }
-        self.selected_account_tab = self.accounts_for_type.clone().unwrap().len() - 1
+        self.selected_account_tab = self.accounts_for_type.clone().len() - 1
     }
 
     pub fn validate_user(&mut self, username: String) -> Option<u32> {

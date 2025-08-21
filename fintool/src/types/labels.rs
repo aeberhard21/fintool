@@ -3,8 +3,8 @@ use rusqlite::{Error, Result};
 use crate::{database::DbConn, types::ledger};
 
 pub struct LabelInfo { 
-    id : u32, 
-    label : String
+    pub id : u32, 
+    pub label : String
 }
 
 pub struct LabelMappingInfo { 

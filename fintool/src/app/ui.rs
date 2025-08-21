@@ -27,15 +27,6 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
             ])
             .split(frame.area());
 
-    let current_navigation_text = vec![
-        // The first half of the text
-        match app.current_screen {
-            CurrentScreen::Login => Span::styled("Login", Style::default().fg(Color::Cyan)),
-            CurrentScreen::Landing => Span::styled("Main", Style::default().fg(Color::White)),
-        }
-        .to_owned(),
-    ];
-
     let current_keys_hint = {
         match app.current_screen {
             CurrentScreen::Login => Span::styled (
@@ -56,11 +47,18 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
                         Style::default().fg(Color::LightBlue),
                         )
                     }
-                    CurrentlySelecting::MainTabs => { 
-                        Span::styled (
-                        "(q) to quit /  (◀︎) Move Tab Left / (▶︎) Move Tab Right / (⏎) Select / (⌫) Deselect",
-                        Style::default().fg(Color::LightBlue),
-                        )
+                    CurrentlySelecting::MainTabs => {
+                        if Pages::Main == app.selected_page_tab { 
+                            Span::styled (
+                            "(q) to quit /  (◀︎) Move Tab Left / (▶︎) Move Tab Right / (⏎) Select / (⌫) Deselect / (m) Modify Labels",
+                            Style::default().fg(Color::LightBlue),
+                            )
+                        } else { 
+                            Span::styled (
+                            "(q) to quit /  (◀︎) Move Tab Left / (▶︎) Move Tab Right / (⏎) Select / (⌫) Deselect",
+                            Style::default().fg(Color::LightBlue),
+                            )
+                        }
                     }
                 }
             },
@@ -188,75 +186,74 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
                 }
             }
 
-            if app.accounts_for_type.is_none() {
-                let content = "No Accounts found!".to_string();
-                let display_text = Text::styled(Line::from(format!("{} -- (q) to quit / (◀︎) Move Tab Left / (▶︎) Move Tab Right / (⏎) Select / (⌫) Deselect / (c) Create Account", content)).to_string(), Style::default().fg(tailwind::RED.c500));
-
-                let accounts_paragraph = Paragraph::new(display_text).wrap(Wrap { trim: false });
-                // let area = centered_rect(60, 25, frame.area());
-                frame.render_widget(accounts_paragraph, footer_chunks);
-            } else {
-                let accts = app.accounts_for_type.clone().unwrap();
-                if !accts.is_empty() {
-                    if let Some(current_selection) = app.currently_selected {
-                        match current_selection {
-                            CurrentlySelecting::AccountTabs => render_account_tabs(
-                                frame,
-                                account_chunks[1],
-                                app.accounts_for_type.clone().unwrap(),
-                                app.selected_account_tab,
-                                Color::Red,
-                            ),
-                            CurrentlySelecting::Account => render_account_tabs(
-                                frame,
-                                account_chunks[1],
-                                app.accounts_for_type.clone().unwrap(),
-                                app.selected_account_tab,
-                                Color::Green,
-                            ),
-                            _ => {
-                                render_account_tabs(
-                                    frame,
-                                    account_chunks[1],
-                                    app.accounts_for_type.clone().unwrap(),
-                                    app.selected_account_tab,
-                                    Color::Reset,
-                                );
-                            }
-                        }
-                    }
-                    if let Some(acct) = app.account.take() {
-                        acct.render(frame, account_chunks[2], app);
-                        app.account = Some(acct);
-                    } else {
-                        let error_footer = Paragraph::new(Line::from(
-                            "ERROR: Unable to retrieve account information! -- (q) to quit / (◀︎) Move Tab Left / (▶︎) Move Tab Right / (⏎) Select / (⌫) Deselect / (c) Create Account",
-                        ))
-                        .block(
-                            Block::default()
-                                .borders(Borders::ALL)
-                                .style(tailwind::ROSE.c500),
+            if let Some(current_selection) = app.currently_selected {
+                match current_selection {
+                    CurrentlySelecting::AccountTabs => render_account_tabs(
+                        frame,
+                        account_chunks[1],
+                        app.accounts_for_type.clone(),
+                        app.selected_account_tab,
+                        Color::Red,
+                    ),
+                    CurrentlySelecting::Account => render_account_tabs(
+                        frame,
+                        account_chunks[1],
+                        app.accounts_for_type.clone(),
+                        app.selected_account_tab,
+                        Color::Green,
+                    ),
+                    _ => {
+                        render_account_tabs(
+                            frame,
+                            account_chunks[1],
+                            app.accounts_for_type.clone(),
+                            app.selected_account_tab,
+                            Color::Reset,
                         );
-                        frame.render_widget(error_footer, footer_chunks);
                     }
-                } else {
-                    let content = "No Accounts found!".to_string();
-                    let display_text = Text::styled(Line::from(format!("{} -- (q) to quit / (◀︎) Move Tab Left / (▶︎) Move Tab Right / (⏎) Select / (⌫) Deselect / (c) Create Account", content)).to_string(), Style::default().fg(tailwind::RED.c500));
-
-                    let login_paragraph = Paragraph::new(display_text).wrap(Wrap { trim: false });
-                    let area = centered_rect(60, 25, frame.area());
-                    frame.render_widget(login_paragraph, area);
                 }
             }
 
-            if app.invalid_input {
-                let content = "Account operation invalid!".to_string();
+            let accts = app.accounts_for_type.clone();
+            if !accts.is_empty() {
+                if let Some(acct) = app.account.take() {
+                    acct.render(frame, account_chunks[2], app);
+                    app.account = Some(acct);
+                } else {
+                    let error_footer = Paragraph::new(Line::from(
+                        "ERROR: Unable to retrieve account information!",
+                    ))
+                    .alignment(layout::Alignment::Center)
+                    .block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .style(tailwind::ROSE.c500)
+                            .padding(Padding::new(0, 0, (if account_chunks[2].height > 4 { account_chunks[2].height/2-2} else {0}), 0))
+                    );
+                    frame.render_widget(error_footer, footer_chunks);
+                }
+            } else {
+                let content = "No Accounts found!".to_string();
                 let display_text = Text::styled(content, Style::default().fg(tailwind::RED.c500));
 
-                let login_paragraph = Paragraph::new(display_text).wrap(Wrap { trim: false });
-                let area = centered_rect(60, 25, frame.area());
-                frame.render_widget(login_paragraph, area);
+                let accounts_paragraph = Paragraph::new(display_text)
+                    .alignment(layout::Alignment::Center)   
+                    .block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .padding(Padding::new(0, 0, (if account_chunks[2].height > 4 { account_chunks[2].height/2-2} else {0}), 0))
+                    ).wrap(Wrap { trim: false });
+                frame.render_widget(accounts_paragraph, account_chunks[2]);
             }
+        }
+
+        if app.invalid_input {
+            let content = "Account operation invalid!".to_string();
+            let display_text = Text::styled(content, Style::default().fg(tailwind::RED.c500));
+
+            let login_paragraph = Paragraph::new(display_text).wrap(Wrap { trim: false });
+            let area = centered_rect(60, 25, frame.area());
+            frame.render_widget(login_paragraph, area);
         }
 
         if let Pages::Main = app.selected_page_tab {
@@ -424,6 +421,12 @@ fn render_net_worth_chart( app: &App, frame : &mut Frame, area : Rect) {
         tstamp_min = tstamp_min.min(timestamp);
         data.push((timestamp, aggregate));
 
+        // this is to protect when the float_range function cannot break out of its loop
+        if min_total == max_total { 
+            min_total = min_total-1.0;
+            max_total = max_total+1.0;
+        }
+
         let datasets = vec![               
             Dataset::default()
             .name("Time Period Investment")
@@ -532,6 +535,9 @@ fn render_asset_investment_ratio_chart( app: &App, frame : &mut Frame, area : Re
 pub fn float_range(start: f64, end: f64, step: f64) -> Vec<f64> {
     let mut vec = Vec::new();
     let mut current = start;
+    if start == end { 
+        return vec;
+    }
     while current <= end {
         vec.push(current);
         current += step;

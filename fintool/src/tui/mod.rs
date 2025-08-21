@@ -20,6 +20,7 @@ use crate::database::DbConn;
 use crate::tui::tui_user::*;
 use crate::types::accounts::AccountType;
 use crate::types::accounts::*;
+use crate::types::labels::LabelAutoCompleter;
 use chrono::NaiveDate;
 use inquire::*;
 
@@ -35,9 +36,9 @@ pub fn menu(_db: &mut DbConn) {
 
     let menu_options: Vec<&str>;
     if _db.is_admin(uid).unwrap() {
-        menu_options = vec!["Create User", "Change User", "Access Account(s)", "Exit"];
+        menu_options = vec!["Create User", "Change User", "Access Account(s)", "Modify Labels", "Exit"];
     } else {
-        menu_options = vec!["Change User", "Access Account(s)", "Exit"];
+        menu_options = vec!["Change User", "Access Account(s)", "Modify Labels", "Exit"];
     }
 
     let rf = &menu_options;
@@ -57,6 +58,9 @@ pub fn menu(_db: &mut DbConn) {
             }
             "Access Account(s)" => {
                 access_account(uid, _db);
+            }
+            "Modify Labels" => {
+                modify_labels(uid, _db);
             }
             "Exit" => {
                 println!("Exiting...");
@@ -428,4 +432,43 @@ pub fn name_account(uid: u32, db: &DbConn) -> String {
 pub fn rename_account(db: &DbConn, uid: u32, id: u32) {
     let new_name = name_account(uid, db);
     db.rename_account(uid, id, new_name).unwrap();
+}
+
+pub fn modify_labels(uid : u32, db : &DbConn) { 
+    loop {
+        let label = Text::new("Enter label to modify (or \"none\" to exit):")
+            .with_autocomplete(LabelAutoCompleter { 
+                uid : uid, 
+                db : db.clone()
+            })
+            .prompt()
+            .unwrap()
+            .to_ascii_uppercase();
+        if label == "NONE" {
+            break;
+        }
+        let labels = db.get_labels(uid).unwrap();
+        if labels.is_empty() {
+            panic!("Labels not returned!");
+        }
+        let info_opt = labels.iter().find(|x| x.label == label);
+        if let Some(info) = info_opt { 
+            let new_label = Text::new("Enter new label:")
+                .with_autocomplete(LabelAutoCompleter { 
+                    uid : uid, 
+                    db : db.clone()
+                })
+                .prompt()
+                .unwrap()
+                .to_ascii_uppercase();
+            db.update_label(uid, info.id, new_label).unwrap();
+        } else {
+            panic!("No match for label: {}", label);
+        }
+
+        let again = Confirm::new("Modify more labels (y/n)?").prompt().unwrap();
+        if !again {
+            break;
+        }
+    }
 }
