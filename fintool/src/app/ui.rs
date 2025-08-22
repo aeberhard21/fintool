@@ -354,8 +354,8 @@ fn render_net_worth( app: &App, frame : &mut Frame, area : Rect ) {
     let assets_area = net_worth_areas[1];
     let liabilities_area = net_worth_areas[2];
 
-    let (assets, liabilities) = if let Some(accounts) = &app.accounts { 
-        ( get_total_assets(accounts), get_total_liabilities(accounts) )
+    let (assets, liabilities) = if !app.accounts.is_empty() { 
+        ( get_total_assets(&app.accounts), get_total_liabilities(&app.accounts) )
     } else { 
         ( 0., 0. )
     };
@@ -382,11 +382,11 @@ fn render_net_worth( app: &App, frame : &mut Frame, area : Rect ) {
 
 fn render_net_worth_chart( app: &App, frame : &mut Frame, area : Rect) {
 
-    if let Some(accounts) = &app.accounts { 
+    if !app.accounts.is_empty() { 
         // get earliest start date
         let mut start_date = Local::now().date_naive();
         let today = start_date;
-        for account in accounts { 
+        for account in &app.accounts { 
             start_date = start_date.min(account.get_open_date());
         }
         let start_eoy = NaiveDate::from_ymd_opt(start_date.year(), 12, 31).unwrap();
@@ -396,7 +396,7 @@ fn render_net_worth_chart( app: &App, frame : &mut Frame, area : Rect) {
         let mut min_total= f64::MAX;
         let mut max_total = f64::MIN;
         while date < today {
-            let aggregate : f64 = accounts.iter().map(|acct| acct.get_value_on_day(date) as f64).sum();
+            let aggregate : f64 = app.accounts.iter().map(|acct| acct.get_value_on_day(date) as f64).sum();
             let timestamp = date
                     .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
                     .and_utc()
@@ -410,7 +410,7 @@ fn render_net_worth_chart( app: &App, frame : &mut Frame, area : Rect) {
             date = NaiveDate::from_ymd_opt(date.year() + 1, 12, 31).unwrap();
         }
         // get for today
-        let aggregate : f64 = accounts.iter().map(|acct| acct.get_value_on_day(today) as f64).sum();
+        let aggregate : f64 = app.accounts.iter().map(|acct| acct.get_value_on_day(today) as f64).sum();
         let timestamp = today
                 .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
                 .and_utc()
@@ -471,16 +471,16 @@ fn render_net_worth_chart( app: &App, frame : &mut Frame, area : Rect) {
 
 fn render_asset_investment_ratio_chart( app: &App, frame : &mut Frame, area : Rect) {
 
-    if let Some(accounts) = &app.accounts { 
+    if !app.accounts.is_empty() { 
 
-        let total_assets = get_total_assets(accounts);
+        let total_assets = get_total_assets(&app.accounts);
         let mut cash: f32 = 0.0;
         let mut liquid_investment : f32 = 0.0;
         let mut long_term_investments : f32 = 0.0;
         let mut retirement : f32 = 0.0;
         let mut health : f32 = 0.0;
 
-        for account in accounts { 
+        for account in &app.accounts { 
             match account.kind() { 
                 AccountType::Bank|AccountType::Wallet => {
                     cash = cash + account.get_value();
@@ -493,6 +493,9 @@ fn render_asset_investment_ratio_chart( app: &App, frame : &mut Frame, area : Re
                 }
                 AccountType::RetirementRothIra =>  {
                     retirement = retirement + account.get_value();
+                }
+                AccountType::HealthSavingsAccount => { 
+                    health = health + account.get_value();
                 }
                 _ => {}
             }

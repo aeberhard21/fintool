@@ -31,7 +31,9 @@ pub enum AccountType {
     // #[strum(to_string = "401k Account")]
     // Retirement401k,
     #[strum(to_string = "Roth IRA Account")]
-    RetirementRothIra
+    RetirementRothIra,
+    #[strum(to_string = "Health Savings Account")]
+    HealthSavingsAccount,
 }
 
 impl AccountType {
@@ -681,6 +683,8 @@ impl DbConn {
             cdid    INTEGER NOT NULL,
             stock_split_allocation_id INTEGER NOT NULL,
             label_allocation_id INTEGER NOT NULL,
+            roth_ira_id INTEGER NOT NULL,
+            hsa_id INTEGER NOT NULL, 
             PRIMARY KEY(uid, aid)
             FOREIGN KEY(uid) REFERENCES users(id)
             FOREIGN KEY(uid,aid) REFERENCES accounts(uid, id) ON DELETE CASCADE ON UPDATE CASCADE
@@ -697,12 +701,12 @@ impl DbConn {
     }
 
     pub fn initialize_user_account_info_table(&self, uid: u32, aid: u32) -> rusqlite::Result<()> {
-        let p = rusqlite::params![uid, aid, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let p = rusqlite::params![uid, aid, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
         let sql: &str = "
             INSERT INTO user_account_info 
-                (uid, aid, spid, ssid, said, cid, pid, bid, lid, splid, ccid, cdid, stock_split_allocation_id, label_allocation_id) 
+                (uid, aid, spid, ssid, said, cid, pid, bid, lid, splid, ccid, cdid, stock_split_allocation_id, label_allocation_id, roth_ira_id, hsa_id) 
             VALUES 
-                ( ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+                ( ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
         ";
         let conn_lock = self.conn.lock().unwrap();
         let rs = conn_lock.execute(sql, p);
@@ -935,6 +939,46 @@ impl DbConn {
             }
             false => {
                 panic!("The next credit card ID within table 'user_account_info' does not exist.");
+            }
+        }
+    }
+
+    pub fn get_next_roth_ira_id(&self, uid: u32, aid: u32) -> rusqlite::Result<u32> {
+        let sql = "SELECT roth_ira_id FROM user_account_info WHERE uid = (?1) and aid = (?2)";
+        let p = rusqlite::params![uid, aid];
+        let conn_lock = self.conn.lock().unwrap();
+        let mut stmt = conn_lock.prepare(sql)?;
+        let exists = stmt.exists(p)?;
+        match exists {
+            true => {
+                let id = stmt.query_row(p, |row| row.get::<_, u32>(0))?;
+                let sql =
+                    "UPDATE user_account_info SET roth_ira_id = roth_ira_id + 1 WHERE uid = (?1) and aid = (?2)";
+                conn_lock.execute(sql, p)?;
+                Ok(id)
+            }
+            false => {
+                panic!("The next Roth IRA ID within table 'user_account_info' does not exist.");
+            }
+        }
+    }
+
+    pub fn get_next_hsa_id(&self, uid: u32, aid: u32) -> rusqlite::Result<u32> {
+        let sql = "SELECT hsa_id FROM user_account_info WHERE uid = (?1) and aid = (?2)";
+        let p = rusqlite::params![uid, aid];
+        let conn_lock = self.conn.lock().unwrap();
+        let mut stmt = conn_lock.prepare(sql)?;
+        let exists = stmt.exists(p)?;
+        match exists {
+            true => {
+                let id = stmt.query_row(p, |row| row.get::<_, u32>(0))?;
+                let sql =
+                    "UPDATE user_account_info SET hsa_id = hsa_id + 1 WHERE uid = (?1) and aid = (?2)";
+                conn_lock.execute(sql, p)?;
+                Ok(id)
+            }
+            false => {
+                panic!("The next Roth IRA ID within table 'user_account_info' does not exist.");
             }
         }
     }

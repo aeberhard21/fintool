@@ -1,7 +1,3 @@
-use inquire::autocompletion;
-use inquire::autocompletion::*;
-use inquire::Autocomplete;
-use inquire::CustomUserError;
 use rusqlite::Result;
 
 use crate::database::DbConn;

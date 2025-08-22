@@ -27,7 +27,7 @@ pub struct App {
     pub db: DbConn,
     pub user_id: Option<u32>,
     pub account: Option<Box<dyn Account>>,
-    pub accounts: Option<Vec<Box<dyn Account>>>,
+    pub accounts: Vec<Box<dyn Account>>,
     pub ledger_table_state: TableState,
     pub ledger_table_colors: LedgerColors,
     pub ledger_entries: Option<Vec<DisplayableLedgerRecord>>,
@@ -53,7 +53,7 @@ impl App {
             db: db.clone(),
             user_id: None,
             account: None,
-            accounts : None,
+            accounts : Vec::new(),
             ledger_table_state: TableState::default().with_selected(0),
             ledger_table_colors: LedgerColors::new(&PALETTES[1]),
             ledger_entries: None,
@@ -123,15 +123,17 @@ impl App {
     }
 
     pub fn get_account(&mut self) {
-        self.account = if let Some(accounts) = &mut self.accounts { 
-            let matching_indexes : Vec<usize> = accounts
+        // self.account = if let Some(accounts) = &mut self.accounts { 
+        self.account = if !self.accounts.is_empty() {
+            // let accounts = self.accounts;
+            let matching_indexes : Vec<usize> = self.accounts
                 .iter()
                 .enumerate()
                 .filter(|(_, acc)| is_account_type(acc, self.selected_atype_tab))
                 .map(|(i, _)| i)
                 .collect();
             if let Some(&original_index) = matching_indexes.get(self.selected_account_tab) {
-                let account = accounts.remove(original_index);
+                let account = self.accounts.remove(original_index);
                 self.account_index_to_restore = original_index;
                 Some(account)
             } else {
@@ -145,12 +147,13 @@ impl App {
     pub fn restore_account(&mut self) {
         if let (Some(account), index) = (self.account.take(), self.account_index_to_restore) {
             // self.accounts.insert(index, account); // ✅ restores order
-            if let Some(mut accounts) = self.accounts.take() { 
-                accounts.insert(index, account);
-                self.accounts = Some(accounts);
-            } else { 
-                self.accounts = None
-            }
+            self.accounts.insert(index, account);
+            // if let Some(mut accounts) = self.accounts.take() { 
+            //     accounts.insert(index, account);
+            //     self.accounts = Some(accounts);
+            // } else { 
+            //     self.accounts = None
+            // }
         }
     }
 

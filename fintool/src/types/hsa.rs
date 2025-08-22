@@ -3,19 +3,19 @@ use rusqlite::Result;
 use crate::database::DbConn;
 
 #[derive(Clone)]
-pub struct RothIraRecord {
+pub struct HsaRecord {
     pub id: u32,
-    pub info: RothIraInfo,
+    pub info: HsaInfo,
 }
 
 #[derive(Clone)]
-pub struct RothIraInfo {
+pub struct HsaInfo {
     pub contribution_limit : f32,
 }
 
 impl DbConn {
-    pub fn create_roth_ira_accounts_table(&self) -> Result<()> {
-        let sql: &str = "CREATE TABLE IF NOT EXISTS roth_iras ( 
+    pub fn create_hsa_accounts_table(&self) -> Result<()> {
+        let sql: &str = "CREATE TABLE IF NOT EXISTS hsas ( 
                 id          INTEGER NOT NULL,
                 contribution_limit REAL NOT NULL,
                 uid  INTEGER NOT NULL, 
@@ -32,10 +32,10 @@ impl DbConn {
         Ok(())
     }
 
-    pub fn add_roth_ira_account(&self, uid: u32, aid: u32, info: RothIraInfo) -> Result<u32> {
-        let id = self.get_next_roth_ira_id(uid, aid).unwrap();
+    pub fn add_hsa_account(&self, uid: u32, aid: u32, info: HsaInfo) -> Result<u32> {
+        let id = self.get_next_hsa_id(uid, aid).unwrap();
         let p = rusqlite::params!(id, aid, uid, info.contribution_limit);
-        let sql = "INSERT INTO roth_iras (id, aid, uid, contribution_limit) VALUES (?1, ?2, ?3, ?4)";
+        let sql = "INSERT INTO hsas (id, aid, uid, contribution_limit) VALUES (?1, ?2, ?3, ?4)";
         let conn_lock = self.conn.lock().unwrap();
         match conn_lock.execute(sql, p) {
             Ok(_) => Ok(id),
@@ -45,24 +45,24 @@ impl DbConn {
         }
     }
 
-    pub fn update_roth_ira_contribution_limit(&self, uid: u32, aid: u32, new_contribution_lmit: f32) -> Result<f32> {
+    pub fn update_hsa_contribution_limit(&self, uid: u32, aid: u32, new_contribution_lmit: f32) -> Result<f32> {
         let p = rusqlite::params!(uid, aid, new_contribution_lmit);
-        let sql = "UPDATE roth_iras SET contribution_limit = (?3) WHERE uid = (?1) and aid = (?2)";
+        let sql = "UPDATE hsas SET contribution_limit = (?3) WHERE uid = (?1) and aid = (?2)";
         let conn_lock = self.conn.lock().unwrap();
         match conn_lock.execute(sql, p) {
             Ok(_) => Ok(new_contribution_lmit),
             Err(error) => {
                 panic!(
-                    "Unable to update contribution limit for roth ira {}: {}!",
+                    "Unable to update hsa for hsa {}: {}!",
                     aid, error
                 );
             }
         }
     }
 
-    pub fn get_roth_ira(&self, uid: u32, aid: u32) -> Result<RothIraRecord, rusqlite::Error> {
+    pub fn get_hsa(&self, uid: u32, aid: u32) -> Result<HsaRecord, rusqlite::Error> {
         let p = rusqlite::params![uid, aid];
-        let sql = "SELECT id, contribution_limit FROM roth_iras WHERE uid = (?1) and aid = (?2)";
+        let sql = "SELECT id, contribution_limit FROM hsas WHERE uid = (?1) and aid = (?2)";
         let conn_lock = self.conn.lock().unwrap();
         let mut stmt = conn_lock.prepare(sql)?;
         let exists = stmt.exists(p)?;
@@ -70,9 +70,9 @@ impl DbConn {
             true => {
                 stmt = conn_lock.prepare(sql)?;
                 let cc_wrap = stmt.query_row(p, |row| {
-                    Ok(RothIraRecord {
+                    Ok(HsaRecord {
                         id: row.get(0)?,
-                        info: RothIraInfo {
+                        info: HsaInfo {
                             contribution_limit: row.get(1)?,
                         },
                     })
@@ -81,14 +81,14 @@ impl DbConn {
                     Ok(cc) => return Ok(cc),
                     Err(error) => {
                         panic!(
-                            "Unable to retrieve roth ira info for account {}: {}",
+                            "Unable to retrieve hsa info for account {}: {}",
                             aid, error
                         )
                     }
                 }
             }
             false => {
-                panic!("Unable to find roth ira matching account id: {}!", aid);
+                panic!("Unable to find hsa matching account id: {}!", aid);
             }
         }
     }
