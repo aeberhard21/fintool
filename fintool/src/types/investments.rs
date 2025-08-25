@@ -1,6 +1,6 @@
 // use super::DbConn;
 use crate::database::DbConn;
-use crate::stocks::get_stock_at_close;
+use shared_lib::stocks::get_stock_at_close;
 use chrono::{Days, NaiveDate};
 use rusqlite::{Error, Result};
 use shared_lib::TransferType;

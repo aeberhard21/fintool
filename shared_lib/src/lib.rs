@@ -8,6 +8,8 @@ use serde::Serializer;
 use std::fmt;
 use strum::{Display, EnumIter, FromRepr};
 
+pub mod stocks;
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct LedgerEntry {
     pub date: String,

@@ -234,7 +234,7 @@ impl DbConn {
     ) -> rusqlite::Result<Vec<DisplayableLedgerRecord>, rusqlite::Error> {
         let p = rusqlite::params![aid, uid];
         let sql = "
-            SELECT l.id, l.date, l.amount, l.transfer_type, p.name, c.category, l.desc, l.ancillary_f32, GROUP_CONCAT(labels.label, ', ') 
+            SELECT l.id, l.date, l.amount, l.transfer_type, p.name, c.category, l.desc, l.ancillary_f32, COALESCE(GROUP_CONCAT(labels.label, ', '), '') AS label_list 
             FROM ledgers l 
             INNER JOIN categories c ON
                 l.cid = c.id AND
@@ -244,11 +244,11 @@ impl DbConn {
                 l.pid = p.id AND
                 l.uid = p.uid AND
                 l.aid = p.aid
-            INNER JOIN label_allocations ON
+            LEFT JOIN label_allocations ON
                 label_allocations.ledger_id = l.id AND
                 label_allocations.uid = l.uid AND
                 label_allocations.aid = l.aid
-            INNER JOIN labels ON
+            LEFT JOIN labels ON
                 labels.id = label_allocations.label_id
             WHERE l.aid = (?1) and l.uid = (?2)
             GROUP BY l.id 

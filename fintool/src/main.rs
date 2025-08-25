@@ -37,7 +37,6 @@ mod accounts;
 #[cfg(feature = "ratatui_support")]
 mod app;
 mod database;
-mod stocks;
 mod tui;
 mod types;
 

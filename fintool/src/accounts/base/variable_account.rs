@@ -14,7 +14,6 @@ use yahoo_finance_api::Quote;
 
 use crate::accounts::base::{SharesOwned, StockData};
 use crate::database::DbConn;
-use crate::stocks::{self, get_stock_history};
 use crate::types::investments::{
     SaleAllocationInfo, SaleAllocationRecord, StockInfo, StockRecord, StockSplitAllocationInfo,
     StockSplitInfo, StockSplitRecord,
@@ -22,6 +21,7 @@ use crate::types::investments::{
 use crate::types::ledger::{LedgerInfo, LedgerRecord};
 use crate::types::participants::ParticipantType;
 use shared_lib::{LedgerEntry, TransferType};
+use shared_lib::stocks::{self, get_stock_history};  
 
 use super::fixed_account::FixedAccount;
 

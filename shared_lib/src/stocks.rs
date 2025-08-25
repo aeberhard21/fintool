@@ -5,7 +5,7 @@ use yahoo::{YahooConnector, YahooError};
 use yahoo_finance_api::{self as yahoo, Quote};
 use std::time::Instant;
 
-use crate::types::investments::StockInfo;
+// use crate::types::investments::StockInfo;
 
 // #[cfg(not(feature = "blocking"))]
 pub fn get_stock_at_close(ticker: String) -> Result<f64, YahooError> {
@@ -62,7 +62,7 @@ pub fn get_stock_history(
     return rs.quotes();
 }
 
-pub fn get_stock_quote(ticker: String, date: NaiveDate) -> Result<f64, YahooError> {
+pub fn get_stock_quote(ticker: String, date: NaiveDate) -> Result<Quote, YahooError> {
     // to get stock quote, we need a start and end date. The "start" date will be
     // the returned quoted by the call to the function.
 
@@ -89,19 +89,27 @@ pub fn get_stock_quote(ticker: String, date: NaiveDate) -> Result<f64, YahooErro
                 .expect("Invalid date!");
         }
     }
-    // should return 1 quote only, the day requested. End date is not inclusive (despite what documentation states)
-    let quote = get_stock_history(
-        ticker,
-        start_date,
-        start_date
-            .checked_add_days(Days::new(1))
-            .expect("Invalid day!"),
-    )
-    .unwrap()
-    .get(0)
-    .expect("Quote not found!")
-    .to_owned();
-    Ok(quote.close)
+    let quote;
+    loop { 
+        // should return 1 quote only, the day requested. End date is not inclusive (despite what documentation states)
+        let quotes = get_stock_history(
+            ticker.clone(),
+            start_date,
+            start_date
+                .checked_add_days(Days::new(1))
+                .expect("Invalid day!"),
+        );
+        if let Ok(quotes) = quotes {
+            quote = quotes
+                .get(0)
+                .expect("Quote not found!")
+                .to_owned();
+            break;
+        } else { 
+            start_date = start_date.checked_sub_days(Days::new(1)).expect("Invalid day!"); 
+        }
+    }
+    Ok(quote)
 }
 
 pub fn check_if_holiday(date: NaiveDate) -> bool {

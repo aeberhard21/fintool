@@ -73,7 +73,7 @@ impl DbConn {
                 FunctionFlags::SQLITE_INNOCUOUS,
                 |ctx| {
                     let ticker: String = ctx.get(0)?;
-                    match crate::stocks::get_stock_at_close(ticker) {
+                    match shared_lib::stocks::get_stock_at_close(ticker) {
                         Ok(price) => Ok(price),
                         Err(e) => Err(rusqlite::Error::ToSqlConversionFailure(Box::new(e))),
                     }
@@ -89,11 +89,11 @@ impl DbConn {
                 |ctx| {
                     let ticker: String = ctx.get(0)?;
                     let date: String = ctx.get(1)?;
-                    match crate::stocks::get_stock_quote(
+                    match shared_lib::stocks::get_stock_quote(
                         ticker,
                         NaiveDate::parse_from_str(date.as_str(), "%Y-%m-%d").unwrap(),
                     ) {
-                        Ok(value) => Ok(value),
+                        Ok(value) => Ok(value.close),
                         Err(e) => Err(rusqlite::Error::ToSqlConversionFailure(Box::new(e))),
                     }
                 },
