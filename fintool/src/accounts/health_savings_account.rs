@@ -225,6 +225,9 @@ impl AccountOperations for HealthSavingsAccount {
         let mut csv: String = String::new();
         loop {
             csv = rl.readline("Enter path to CSV file: ").unwrap();
+            if csv.to_string() == "none" {
+                return;
+            }
             bad_path = match Path::new(&csv).try_exists() {
                 Ok(true) => false,
                 Ok(false) => {
