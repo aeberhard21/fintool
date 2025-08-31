@@ -1,20 +1,13 @@
-[package]
-name = "fintool"
-version = "0.1.0"
-edition = "2021"
+[workspace]
+members = [
+    "shared_lib", 
+    "fintool", 
+    "./utils/vfcu2fin",
+    "./utils/vfcucc2fin",
+    "./utils/vfcucd2fin",
+    "./utils/lpl2fin",
+    "./utils/discover2fin",
+    "./utils/healthequity2fin"
+]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-chrono = "0.4"
-inquire = { version = "0.7.5", features = ["date"] }
-file = "1.0.0"
-savefile = "0.16.2"
-rusqlite = { version = "0.32.1", features = ["functions"] }
-yahoo_finance_api = "2.2.0"
-tokio = { version = "1.35.1", features = ["full"] }
-tokio-test = "0.4.3"
-time = "0.3.28"
-regex = "1.11.0"
-serde = { version = "1.0", features = ["derive"] }
-serde-xml-rs = "0.5"
+workspace.resolver = "2"
