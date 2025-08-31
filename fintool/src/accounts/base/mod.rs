@@ -169,7 +169,7 @@ pub trait AccountUI: AccountData {
 }
 
 #[cfg(not(feature = "ratatui_support"))]
-pub trait Account: AccountData + AccountOperations {
+pub trait Account: AccountData + AccountOperations + Any {
     fn kind(&self) -> AccountType;
     fn has_budget(&self) -> bool;
     fn set_budget(&self);

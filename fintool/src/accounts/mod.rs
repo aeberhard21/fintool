@@ -12,6 +12,7 @@ use crate::accounts::base::Account;
 use crate::accounts::base::liquid_account::LiquidAccount;
 use crate::accounts::wallet::Wallet;
 
+#[cfg(feature = "ratatui_support")]
 pub fn as_liquid_account(account: &dyn Account) -> Option<&dyn LiquidAccount> {
     if let Some(ca) = account.as_any().downcast_ref::<BankAccount>() {
         return Some(ca);
