@@ -1031,13 +1031,15 @@ impl CreditCardAccount {
                 let mut bar_group : Vec<BarGroup<'_>> = Vec::new();
                 for elem in zip(budget, expenditures) { 
                     let budget_bar = Bar::default()
+                        // this takes the amount spent and determines the ratio of what was spent in the period of analysis and scaled the bar
+                        // to that 
                         .value(super::base::budget::scale_budget_value_to_analysis_period(elem.0.item.value, start, end) as u64)
-                        .text_value(format!("${:2}", elem.0.item.value))
+                        .text_value(format!("${:.2}", elem.0.item.value))
                         .style(Style::new().fg(tailwind::WHITE))
                         .value_style(Style::new().fg(tailwind::WHITE).reversed());
                     let expenditure_bar = Bar::default()
                         .value(elem.1.amount as u64)
-                        .text_value(format!("${:2}", elem.1.amount))
+                        .text_value(format!("${:.2}", elem.1.amount))
                         .style(Style::new().fg(tailwind::AMBER.c500))
                         .value_style(Style::new().fg(tailwind::AMBER.c500).reversed());
                     let bars: Vec<Bar<'_>> = vec![budget_bar, expenditure_bar];
@@ -1049,12 +1051,12 @@ impl CreditCardAccount {
                 if misc_expenditures.amount > 0.0 {
                     let budget_bar = Bar::default()
                         .value(0)
-                        .text_value(format!("${:2}", 0.0))
+                        .text_value(format!("${:.2}", 0.0))
                         .style(Style::new().fg(tailwind::WHITE))
                         .value_style(Style::new().fg(tailwind::WHITE).reversed());
                     let expenditure_bar = Bar::default()
                         .value(misc_expenditures.amount as u64)
-                        .text_value(format!("${:2}", misc_expenditures.amount))
+                        .text_value(format!("${:.2}", misc_expenditures.amount))
                         .style(Style::new().fg(tailwind::AMBER.c500))
                         .value_style(Style::new().fg(tailwind::AMBER.c500).reversed());
                     let bars: Vec<Bar<'_>> = vec![budget_bar, expenditure_bar];

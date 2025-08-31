@@ -1,4 +1,4 @@
-use chrono::{Datelike, Local, NaiveDate, NaiveTime};
+use chrono::{Datelike, Local, Months, NaiveDate, NaiveTime, Days};
 use ratatui::{
     buffer::Buffer,
     layout::{self, Constraint, Direction, Layout, Rect},
@@ -10,10 +10,11 @@ use ratatui::{
     },
     Frame,
 };
+use time::Month;
 
 use super::app::App;
 use super::screen::{CurrentScreen, TabMenu};
-use crate::{accounts::{self, bank_account::BankAccount}, app::screen::{Pages, UserLoadedState}, tui::tui_accounts::{get_total_assets, get_total_liabilities}, types::accounts::AccountType};
+use crate::{accounts::{self, bank_account::BankAccount, as_liquid_account}, app::screen::{Pages, UserLoadedState}, tui::tui_accounts::{get_total_assets, get_total_liabilities}, types::accounts::AccountType};
 use crate::{accounts::base::Account, app::screen::CurrentlySelecting};
 
 pub fn ui(frame: &mut Frame, app: &mut App) {
@@ -287,18 +288,10 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
             render_net_worth(app, frame, quadrant_0);
             render_net_worth_chart(app, frame, quadrant_1);
             render_asset_investment_ratio_chart(app, frame, quadrant_2);
-
-            let last_one = Paragraph::new(Text::styled("Hmmm....I guess!", Style::default().fg(Color::Green)))
-                .block(Block::default().borders(Borders::ALL).title("The Last One").style(Style::default()).padding(Padding::new(0,0, if quadrant_3.height > 4 { quadrant_3.height/2-2 } else { 0 } , 0)))
-                .centered()
-                .bold();
-
-            frame.render_widget(last_one, quadrant_3);
+            render_cash_flow_chart(app, frame, quadrant_3);
         }
 
     }
-
-
 }
 
 /// helper function to create a centered rect using up certain percentage of the available rect `r`
@@ -354,6 +347,17 @@ fn render_net_worth( app: &App, frame : &mut Frame, area : Rect ) {
     let assets_area = net_worth_areas[1];
     let liabilities_area = net_worth_areas[2];
 
+    let asset_areas_split = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(50),
+            Constraint::Percentage(50),
+        ])
+        .split(assets_area);
+
+    let total_assets_area = asset_areas_split[0];
+    let liquid_assets_area = asset_areas_split[1];
+
     let (assets, liabilities) = if !app.accounts.is_empty() { 
         ( get_total_assets(&app.accounts), get_total_liabilities(&app.accounts) )
     } else { 
@@ -361,12 +365,31 @@ fn render_net_worth( app: &App, frame : &mut Frame, area : Rect ) {
     };
     let net_worth = assets - liabilities;
 
+    let mut liquid_accounts = Vec::new();
+    for account in &app.accounts {
+        let acct_record = app.db.get_account(app.user_id.unwrap(), account.get_id()).unwrap();
+        if !acct_record.is_liquid_account() { 
+            // skip any non-liquid accounts
+            continue;
+        }
+        liquid_accounts.push(account);
+    }
+
+    let mut liquid_assets = 0.0;
+    for account in liquid_accounts { 
+        liquid_assets = liquid_assets + account.get_value();
+    }
+
     let net_worth_widget = Paragraph::new(Text::styled(format!("$ {:.2}", net_worth), Style::default().fg(tailwind::EMERALD.c500)))
         .block(Block::default().borders(Borders::ALL).title("Net Worth").style(Style::default()).padding(Padding::new(0,0, if net_worth_area.height > 4 { net_worth_area.height/2-2 } else { 0 } , 0)))
         .centered()
         .bold();
     let total_assets_widget = Paragraph::new(Text::styled(format!("$ {:.2}", assets), Style::default().fg(tailwind::EMERALD.c500)))
-        .block(Block::default().borders(Borders::ALL).title("Total Assets").style(Style::default()).padding(Padding::new(0,0, if assets_area.height > 4 { assets_area.height/2-2 } else { 0 } , 0)))
+        .block(Block::default().borders(Borders::ALL).title("Total Assets").style(Style::default()).padding(Padding::new(0,0, if total_assets_area.height > 4 { total_assets_area.height/2-2 } else { 0 } , 0)))
+        .centered()
+        .bold();
+    let liquid_assets_widget = Paragraph::new(Text::styled(format!("$ {:.2}", liquid_assets), Style::default().fg(tailwind::EMERALD.c500)))
+        .block(Block::default().borders(Borders::ALL).title("Liquid Assets").style(Style::default()).padding(Padding::new(0,0, if liquid_assets_area.height > 4 { liquid_assets_area.height/2-2 } else { 0 } , 0)))
         .centered()
         .bold();
     let liabilities_widget = Paragraph::new(Text::styled(format!("$ {:.2}", liabilities), Style::default().fg(tailwind::ROSE.c500)))
@@ -375,164 +398,245 @@ fn render_net_worth( app: &App, frame : &mut Frame, area : Rect ) {
         .bold();
 
     frame.render_widget(net_worth_widget, net_worth_area);
-    frame.render_widget(total_assets_widget, assets_area);
+    frame.render_widget(total_assets_widget, total_assets_area);
+    frame.render_widget(liquid_assets_widget, liquid_assets_area);
     frame.render_widget(liabilities_widget, liabilities_area);
 
 }
 
 fn render_net_worth_chart( app: &App, frame : &mut Frame, area : Rect) {
 
-    if !app.accounts.is_empty() { 
-        // get earliest start date
-        let mut start_date = Local::now().date_naive();
-        let today = start_date;
-        for account in &app.accounts { 
-            start_date = start_date.min(account.get_open_date());
-        }
-        let start_eoy = NaiveDate::from_ymd_opt(start_date.year(), 12, 31).unwrap();
-        let mut date = start_eoy;
-        let mut data : Vec<(f64, f64)> = Vec::new();
-        let mut tstamp_min = f64::MAX;
-        let mut min_total= f64::MAX;
-        let mut max_total = f64::MIN;
-        while date < today {
-            let aggregate : f64 = app.accounts.iter().map(|acct| acct.get_value_on_day(date) as f64).sum();
-            let timestamp = date
-                    .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
-                    .and_utc()
-                    .timestamp_millis() as f64;
-            min_total = min_total.min(aggregate);
-            max_total = max_total.max(aggregate);
-            tstamp_min = tstamp_min.min(timestamp);
+    if app.accounts.is_empty() { 
+        render_no_data_filler(app, frame, area);
+        return;
+    }
 
-            data.push((timestamp, aggregate));
-
-            date = NaiveDate::from_ymd_opt(date.year() + 1, 12, 31).unwrap();
-        }
-        // get for today
-        let aggregate : f64 = app.accounts.iter().map(|acct| acct.get_value_on_day(today) as f64).sum();
-        let timestamp = today
+    // get earliest start date
+    let mut start_date = Local::now().date_naive();
+    let today = start_date;
+    for account in &app.accounts { 
+        start_date = start_date.min(account.get_open_date());
+    }
+    let start_eoy = NaiveDate::from_ymd_opt(start_date.year(), 12, 31).unwrap();
+    let mut date = start_eoy;
+    let mut data : Vec<(f64, f64)> = Vec::new();
+    let mut tstamp_min = f64::MAX;
+    let mut min_total= f64::MAX;
+    let mut max_total = f64::MIN;
+    while date < today {
+        let aggregate : f64 = app.accounts.iter().map(|acct| acct.get_value_on_day(date) as f64).sum();
+        let timestamp = date
                 .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
                 .and_utc()
                 .timestamp_millis() as f64;
-        let tstamp_max = timestamp;
         min_total = min_total.min(aggregate);
         max_total = max_total.max(aggregate);
         tstamp_min = tstamp_min.min(timestamp);
+
         data.push((timestamp, aggregate));
 
-        // this is to protect when the float_range function cannot break out of its loop
-        if min_total == max_total { 
-            min_total = min_total-1.0;
-            max_total = max_total+1.0;
-        }
-
-        let datasets = vec![               
-            Dataset::default()
-            .name("Time Period Investment")
-            .marker(symbols::Marker::HalfBlock)
-            .style(Style::default().fg(tailwind::LIME.c400))
-            .graph_type(GraphType::Line)
-            .data(&data)];
-
-        let net_worth_chart = Chart::new(datasets)
-            .block(
-                Block::bordered().title(Line::from(" Growth Over Time ").cyan().bold().centered()),
-            )
-            .legend_position(Some(LegendPosition::TopLeft))
-            .x_axis(
-                Axis::default()
-                    .title("Time")
-                    .style(Style::default().gray())
-                    .bounds([tstamp_min, tstamp_max])
-                    .labels([start_eoy.to_string(), today.to_string()]),
-            )
-            .y_axis(
-                Axis::default()
-                    .title("Value (💰)")
-                    .style(Style::default().gray())
-                    .bounds([min_total, max_total])
-                    .labels(
-                        float_range(min_total, max_total, (max_total - min_total) / 5.0)
-                            .into_iter()
-                            .map(|x| format!("{:.2}", x)),
-                    ),
-            );
-        frame.render_widget(net_worth_chart, area);
-    } else { 
-       let net_worth_chart = Paragraph::new(Text::styled(format!("No data to display!"), Style::default().fg(tailwind::ROSE.c500)))
-            .block(Block::default().borders(Borders::ALL).title("").style(Style::default()).padding(Padding::new(0,0, (if area.height > 4 { area.height/2 -2 } else {0}), 0)))
-            .centered()
-            .bold();
-
-        frame.render_widget(net_worth_chart, area);
+        date = NaiveDate::from_ymd_opt(date.year() + 1, 12, 31).unwrap();
     }
+    // get for today
+    let aggregate : f64 = app.accounts.iter().map(|acct| acct.get_value_on_day(today) as f64).sum();
+    let timestamp = today
+            .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
+            .and_utc()
+            .timestamp_millis() as f64;
+    let tstamp_max = timestamp;
+    min_total = min_total.min(aggregate);
+    max_total = max_total.max(aggregate);
+    tstamp_min = tstamp_min.min(timestamp);
+    data.push((timestamp, aggregate));
+
+    // this is to protect when the float_range function cannot break out of its loop
+    if min_total == max_total { 
+        min_total = min_total-1.0;
+        max_total = max_total+1.0;
+    }
+
+    let datasets = vec![               
+        Dataset::default()
+        .name("Time Period Investment")
+        .marker(symbols::Marker::HalfBlock)
+        .style(Style::default().fg(tailwind::LIME.c400))
+        .graph_type(GraphType::Line)
+        .data(&data)];
+
+    let net_worth_chart = Chart::new(datasets)
+        .block(
+            Block::bordered().title(Line::from(" Growth Over Time ").cyan().bold().centered()),
+        )
+        .legend_position(Some(LegendPosition::TopLeft))
+        .x_axis(
+            Axis::default()
+                .title("Time")
+                .style(Style::default().gray())
+                .bounds([tstamp_min, tstamp_max])
+                .labels([start_eoy.to_string(), today.to_string()]),
+        )
+        .y_axis(
+            Axis::default()
+                .title("Value (💰)")
+                .style(Style::default().gray())
+                .bounds([min_total, max_total])
+                .labels(
+                    float_range(min_total, max_total, (max_total - min_total) / 5.0)
+                        .into_iter()
+                        .map(|x| format!("{:.2}", x)),
+                ),
+        );
+    frame.render_widget(net_worth_chart, area);
 }
 
 fn render_asset_investment_ratio_chart( app: &App, frame : &mut Frame, area : Rect) {
 
-    if !app.accounts.is_empty() { 
+    if app.accounts.is_empty() { 
+        render_no_data_filler(app, frame, area);
+        return;
+    }
 
-        let total_assets = get_total_assets(&app.accounts);
-        let mut cash: f32 = 0.0;
-        let mut liquid_investment : f32 = 0.0;
-        let mut long_term_investments : f32 = 0.0;
-        let mut retirement : f32 = 0.0;
-        let mut health : f32 = 0.0;
+    let total_assets = get_total_assets(&app.accounts);
+    let mut cash: f32 = 0.0;
+    let mut liquid_investment : f32 = 0.0;
+    let mut long_term_investments : f32 = 0.0;
+    let mut retirement : f32 = 0.0;
+    let mut health : f32 = 0.0;
 
-        for account in &app.accounts { 
-            match account.kind() { 
-                AccountType::Bank|AccountType::Wallet => {
-                    cash = cash + account.get_value();
-                }
-                AccountType::CD => {
-                    liquid_investment = liquid_investment + account.get_value();
-                }
-                AccountType::Investment => {
-                    long_term_investments = long_term_investments + account.get_value();
-                }
-                AccountType::RetirementRothIra =>  {
-                    retirement = retirement + account.get_value();
-                }
-                AccountType::HealthSavingsAccount => { 
-                    health = health + account.get_value();
-                }
-                _ => {}
+    for account in &app.accounts { 
+        match account.kind() { 
+            AccountType::Bank|AccountType::Wallet => {
+                cash = cash + account.get_value();
+            }
+            AccountType::CD => {
+                liquid_investment = liquid_investment + account.get_value();
+            }
+            AccountType::Investment => {
+                long_term_investments = long_term_investments + account.get_value();
+            }
+            AccountType::RetirementRothIra =>  {
+                retirement = retirement + account.get_value();
+            }
+            AccountType::HealthSavingsAccount => { 
+                health = health + account.get_value();
+            }
+            _ => {}
+        }
+    }
+
+    let mut data : Vec<(String, f64, Color)> = Vec::new();
+    data.push(("Cash".to_string(), (cash/total_assets * 100.).into(), tailwind::AMBER.c500));
+    data.push(("Liquid Investments".to_string(), (liquid_investment/total_assets * 100.) as f64, tailwind::FUCHSIA.c500));
+    data.push(("Long Term Investments".to_string(), (long_term_investments/total_assets * 100.) as f64 , tailwind::INDIGO.c500));
+    data.push(("Retirement".to_string(), (retirement/total_assets * 100.) as f64, tailwind::LIME.c500));
+    data.push(("Health".to_string(), (health/total_assets * 100.) as f64, tailwind::ORANGE.c500));
+
+    let bars = data.iter().map(|x| {
+        Bar::default()
+            .value(x.1 as u64)
+            .label(Line::from(format!("{}", x.0)))
+            .text_value(format!("{:.2}%", x.1))
+            .style(Style::new().fg(x.2))
+            .value_style((Style::new().fg(x.2).reversed()))
+    }).collect::<Vec<Bar>>();
+
+    let chart =     BarChart::default()
+        .data(BarGroup::default().bars(&bars))
+        .block(Block::bordered().title_top("Asset Investment Ratio"))
+        .bar_width(10)
+        .bar_gap(10);
+
+    frame.render_widget(chart, area);
+}
+
+fn render_cash_flow_chart(app : &App, frame : &mut Frame, area : Rect) {
+    
+    if app.accounts.is_empty() { 
+        render_no_data_filler(app, frame, area);
+        return;
+    }
+
+    let mut monthly_positive_cash_flow : Vec<f64> = vec![0.0; 12];
+    let mut monthly_negative_cash_flow : Vec<f64> = vec![0.0; 12];
+    let mut months :Vec<String> = vec!["".to_string(); 12];
+
+    let mut liquid_accounts = Vec::new();
+
+    for account in &app.accounts {
+        let acct_record = app.db.get_account(app.user_id.unwrap(), account.get_id()).unwrap();
+        if !acct_record.is_liquid_account() { 
+            // skip any non-liquid accounts
+            continue;
+        }
+        let liquid = as_liquid_account(account.as_ref()).unwrap();
+        liquid_accounts.push(liquid);
+    }
+
+    if liquid_accounts.is_empty() { 
+        render_no_data_filler(app, frame, area);
+        return;
+    }
+
+    for (i, account) in liquid_accounts.iter().enumerate() {
+        let today = Local::now().date_naive();
+        let mut start_of_month = NaiveDate::from_ymd_opt(today.year_ce().1 as i32, today.month(), 1).unwrap();
+        let mut last_date = today;
+        for j in (0..=11).rev() { 
+            monthly_positive_cash_flow[j] = monthly_positive_cash_flow[j] + (account.get_positive_cash_flow(start_of_month, last_date) as f64);
+            monthly_negative_cash_flow[j] = monthly_negative_cash_flow[j] + (account.get_negative_cash_flow(start_of_month, last_date) as f64);
+            last_date = start_of_month.checked_sub_days(Days::new(1)).unwrap();
+            start_of_month = start_of_month.checked_sub_months(Months::new(1)).unwrap();
+            if i == 0 { 
+                months[j] = start_of_month.format("%b").to_string();
             }
         }
+    } 
 
-        let mut data : Vec<(String, u64, Color)> = Vec::new();
-        data.push(("Cash".to_string(), (cash/total_assets * 100.) as u64, tailwind::AMBER.c500));
-        data.push(("Liquid Investments".to_string(), (liquid_investment/total_assets * 100.) as u64, tailwind::FUCHSIA.c500));
-        data.push(("Long Term Investments".to_string(), (long_term_investments/total_assets * 100.) as u64 , tailwind::INDIGO.c500));
-        data.push(("Retirement".to_string(), (retirement/total_assets * 100.) as u64, tailwind::LIME.c500));
-        data.push(("Health".to_string(), (health/total_assets * 100.) as u64, tailwind::ORANGE.c500));
-
-        let bars = data.iter().map(|x| {
-            Bar::default()
-                .value(x.1)
-                .label(Line::from(format!("{}", x.0)))
-                .text_value(format!("{}%", x.1))
-                .style(Style::new().fg(x.2))
-                .value_style((Style::new().fg(x.2).reversed()))
-        }).collect::<Vec<Bar>>();
-
-        let chart =     BarChart::default()
-            .data(BarGroup::default().bars(&bars))
-            .block(Block::bordered().title_top("Asset Investment Ratio"))
-            .bar_width(10)
-            .bar_gap(10);
-
-        frame.render_widget(chart, area);
-    } else { 
-       let chart = Paragraph::new(Text::styled(format!("No data to display!"), Style::default().fg(tailwind::ROSE.c500)))
-            .block(Block::default().borders(Borders::ALL).title("").style(Style::default()).padding(Padding::new(0,0, (if area.height > 4 { area.height/2 -2 } else {0}), 0)))
-            .centered()
-            .bold();
-
-        frame.render_widget(chart, area);
+    let mut bar_groups : Vec<BarGroup<'_>> = Vec::new();
+    for i in 0..12 { 
+        let pcf_bar = Bar::default()
+            .value( monthly_positive_cash_flow[i] as u64 )
+            .text_value(format!("${:.2}", monthly_positive_cash_flow[i]))
+            .style(Style::new().fg(tailwind::EMERALD.c500))
+            .value_style(Style::new().fg(tailwind::EMERALD.c500).reversed());
+        let ncf_bar = Bar::default()
+            .value( monthly_negative_cash_flow[i] as u64 )
+            .text_value(format!("${:.2}", monthly_negative_cash_flow[i]))
+            .style(Style::new().fg(tailwind::ROSE.c500))
+            .value_style(Style::new().fg(tailwind::ROSE.c500).reversed());
+        let bars: Vec<Bar<'_>> = vec![pcf_bar, ncf_bar];
+        let group = BarGroup::default()
+            .bars(&bars)
+            .label(Line::from(months[i].clone()).centered());
+        bar_groups.push(group);
     }
+
+    let mut chart = BarChart::default()
+        .style(Style::new().bg(tailwind::SLATE.c900))
+        .block(Block::bordered().title_top(Line::from("Cash Flow").centered()))
+        .direction(Direction::Horizontal)
+        .bar_width(1)
+        .bar_gap(0)
+        .group_gap(area.height / (bar_groups.len() as u16));
+    for (i, group) in bar_groups.iter().enumerate() { 
+        // temporrary fix for size 
+        if i < 6 { 
+            continue;
+        }
+        chart = chart.data(group.clone());
+    }
+
+    frame.render_widget(chart, area);
     
+}
+
+fn render_no_data_filler(app : &App, frame : &mut Frame, area : Rect) {
+    let cash_flow_chart = Paragraph::new(Text::styled(format!("No data to display!"), Style::default().fg(tailwind::ROSE.c500)))
+        .block(Block::default().borders(Borders::ALL).title("").style(Style::default()).padding(Padding::new(0,0, (if area.height > 4 { area.height/2 -2 } else {0}), 0)))
+        .centered()
+        .bold();
+
+    frame.render_widget(cash_flow_chart, area);
 }
 
 pub fn float_range(start: f64, end: f64, step: f64) -> Vec<f64> {

@@ -1,5 +1,6 @@
 use core::panic;
 
+use crate::accounts::base::liquid_account::{self, LiquidAccount};
 use crate::database::{self, *};
 // use crate::tui::tui_budgets::create_budget;
 use crate::types::accounts::*;
@@ -52,11 +53,10 @@ pub fn get_total_assets(accounts : &Vec<Box<dyn Account>>) -> f32 {
     let mut assets = 0.0;
     for account in accounts {
         match account.kind() { 
-            AccountType::Bank |
-            AccountType::Investment |
-            AccountType::CD |
-            AccountType::Wallet => { assets = assets + account.get_value() },
-            _ => { assets = assets }
+            AccountType::CreditCard => { assets = assets },
+            _ => { 
+                assets = assets + account.get_value()
+            }
         }
     }
     return assets;

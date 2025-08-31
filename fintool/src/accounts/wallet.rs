@@ -57,6 +57,7 @@ use shared_lib::TransferType;
 use crate::accounts::base::budget::Budget;
 
 use super::base::fixed_account::FixedAccount;
+use super::base::liquid_account::LiquidAccount;
 use super::base::Account;
 use super::base::AccountCreation;
 use super::base::AccountData;
@@ -984,5 +985,63 @@ impl Account for Wallet {
         let mut acct = self.db.get_account(self.uid, self.id).unwrap();
         acct.info.has_budget = true;
         let _ = self.db.update_account(self.uid, self.id, &acct.info).unwrap();
+    }
+}
+
+impl LiquidAccount for Wallet { 
+    fn get_positive_cash_flow(&self, start : NaiveDate, end : NaiveDate) -> f32 {
+        let ledger = self.get_ledger_within_dates(start, end);
+        if ledger.is_empty() {
+            return 0.0;
+        }
+
+        let mut amt = 0.0;
+        for txn in ledger {
+
+            if !txn.info.transfer_type.is_deposit() {
+                continue;
+            }
+
+            if let Some(link) = self.db.check_and_get_account_transaction_record_matching_to_ledger_id(self.uid, self.id, txn.id).unwrap() { 
+                // if linked, checked to see that the account is not another liquid account (if liquid, then skip because cash is still available)
+                let peer_account = self.db.get_account(self.uid, link.info.from_account).unwrap();
+                if !peer_account.is_liquid_account() {
+                    continue;
+                }
+            }
+            amt = amt + txn.info.amount;
+        }
+
+        amt
+    }
+
+    fn get_negative_cash_flow(&self, start : NaiveDate, end : NaiveDate) -> f32 {
+        let ledger = self.get_ledger_within_dates(start, end);
+        if ledger.is_empty() {
+            return 0.0;
+        }
+
+        let mut amt = 0.0;
+        for txn in ledger {
+
+            if !txn.info.transfer_type.is_withdrawal() {
+                continue;
+            }
+
+            if let Some(link) = self.db.check_and_get_account_transaction_record_matching_to_ledger_id(self.uid, self.id, txn.id).unwrap() { 
+                // if linked, checked to see that the account is not another liquid account (if liquid, then skip because cash is still available)
+                let peer_account = self.db.get_account(self.uid, link.info.from_account).unwrap();
+                if !peer_account.is_liquid_account() {
+                    continue;
+                }
+            }
+            amt = amt + txn.info.amount;
+        }
+
+        amt
+    }
+    
+    fn get_cash_flow(&self, start : NaiveDate, end : NaiveDate) -> f32 {
+        return self.get_positive_cash_flow(start, end) - self.get_negative_cash_flow(start, end);
     }
 }

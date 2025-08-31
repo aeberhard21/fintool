@@ -31,6 +31,7 @@ pub mod charge_account;
 pub mod fixed_account;
 pub mod variable_account;
 pub mod budget;
+pub mod liquid_account;
 
 pub trait AccountCreation {
     fn create(uid: u32, name: String, _db: &DbConn) -> AccountRecord;
@@ -55,6 +56,7 @@ pub trait AccountData {
     fn get_value_on_day(&self, day : NaiveDate) -> f32;
     fn get_open_date(&self) -> NaiveDate;
 }
+
 #[cfg(feature = "ratatui_support")]
 pub trait AccountUI: AccountData {
     fn render(&self, frame: &mut Frame, area: Rect, app: &mut App);
@@ -120,7 +122,8 @@ pub trait AccountUI: AccountData {
                 Constraint::Min(constraint_lens.3 + 1),
                 Constraint::Min(constraint_lens.4 + 1),
                 Constraint::Min(constraint_lens.5 + 1),
-                Constraint::Min(constraint_lens.6 + 1),
+                // don't take more than 25% of screen when display descriptions
+                Constraint::Min(area.width / 4),
                 Constraint::Min(constraint_lens.7 + 1)
             ],
         )

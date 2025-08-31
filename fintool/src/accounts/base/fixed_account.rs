@@ -670,17 +670,13 @@ impl FixedAccount {
     }
 
     pub fn modify(&self, selected_record: LedgerRecord) -> LedgerRecord {
-        let was_deposit = match selected_record.info.transfer_type.clone() {
-            TransferType::DepositFromExternalAccount | TransferType::DepositFromInternalAccount => {
-                true
-            }
-            TransferType::WithdrawalToInternalAccount
-            | TransferType::WithdrawalToExternalAccount => false,
-            TransferType::ZeroSumChange => {
-                println!("Unable to modify a zero-sum change!");
-                return selected_record;
-            }
-        };
+
+        if selected_record.info.transfer_type == TransferType::ZeroSumChange { 
+            println!("Unable to modify a zero-sum change!");
+            return selected_record;
+        }
+
+        let was_deposit = selected_record.info.transfer_type.is_deposit();
 
         const OPTIONS: [&'static str; 3] = ["Update", "Remove", "None"];
         let modify_choice = Select::new("What would you like to do:", OPTIONS.to_vec())

@@ -112,6 +112,22 @@ impl From<u32> for TransferType {
     }
 }
 
+impl TransferType { 
+    pub fn is_deposit(&self) -> bool { 
+        match self { 
+            TransferType::DepositFromExternalAccount|TransferType::DepositFromInternalAccount => true, 
+            _ => false
+        }
+    }
+
+    pub fn is_withdrawal(&self) -> bool { 
+        match self { 
+            TransferType::WithdrawalToExternalAccount|TransferType::WithdrawalToInternalAccount => true, 
+            _ => false
+        }
+    }
+}
+
 pub fn deserialize_transfer_type<'de, D>(deserializer: D) -> Result<TransferType, D::Error>
 where
     D: Deserializer<'de>,

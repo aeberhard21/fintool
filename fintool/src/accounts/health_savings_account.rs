@@ -1285,7 +1285,7 @@ impl AccountUI for HealthSavingsAccount {
 
 impl Account for HealthSavingsAccount {
     fn kind(&self) -> AccountType { 
-        return AccountType::Investment;
+        return AccountType::HealthSavingsAccount;
     }
     #[cfg(feature = "ratatui_support")]
     fn as_any(&self) -> &dyn std::any::Any {

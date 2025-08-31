@@ -123,9 +123,7 @@ impl App {
     }
 
     pub fn get_account(&mut self) {
-        // self.account = if let Some(accounts) = &mut self.accounts { 
         self.account = if !self.accounts.is_empty() {
-            // let accounts = self.accounts;
             let matching_indexes : Vec<usize> = self.accounts
                 .iter()
                 .enumerate()
@@ -146,14 +144,7 @@ impl App {
 
     pub fn restore_account(&mut self) {
         if let (Some(account), index) = (self.account.take(), self.account_index_to_restore) {
-            // self.accounts.insert(index, account); // ✅ restores order
             self.accounts.insert(index, account);
-            // if let Some(mut accounts) = self.accounts.take() { 
-            //     accounts.insert(index, account);
-            //     self.accounts = Some(accounts);
-            // } else { 
-            //     self.accounts = None
-            // }
         }
     }
 
@@ -166,18 +157,15 @@ impl App {
             None => Some(0),
         };
         self.ledger_table_state.select(i);
-        // set scroll position
     }
 
     pub fn go_to_last_ledger_table_row(&mut self) {
         self.ledger_table_state
             .select(Some(self.ledger_entries.clone().unwrap().len() - 1));
-        // set scroll position
     }
 
     pub fn go_to_first_ledger_table_row(&mut self) {
         self.ledger_table_state.select(Some(0));
-        // set scroll position
     }
 
     pub fn retreat_ledger_table_row(&mut self) {
@@ -186,6 +174,5 @@ impl App {
             None => Some(0),
         };
         self.ledger_table_state.select(i);
-        // set scroll position
     }
 }

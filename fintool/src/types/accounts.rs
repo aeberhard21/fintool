@@ -92,6 +92,15 @@ pub struct AccountRecord {
     pub info: AccountInfo,
 }
 
+impl AccountRecord { 
+    pub fn is_liquid_account(&self) -> bool { 
+        match self.info.atype {
+            AccountType::Bank|AccountType::Wallet => {true}, 
+            _ => { false }
+        }
+    }
+}
+
 pub struct AccountTransaction {
     pub from_account: u32,
     pub to_account: u32,
