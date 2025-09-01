@@ -7,7 +7,8 @@ members = [
     "./utils/vfcucd2fin",
     "./utils/lpl2fin",
     "./utils/discover2fin",
-    "./utils/healthequity2fin"
+    "./utils/healthequity2fin",
+    "./utils/ofx2fin"
 ]
 
 workspace.resolver = "2"
