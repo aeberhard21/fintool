@@ -60,6 +60,8 @@ impl DbConn {
         Self::create_labels_table(self);
         Self::create_label_allocations_table(self);
         Self::create_hsa_accounts_table(self);
+        Self::create_401k_accounts_table(self);
+        Self::create_stock_prices_table(self);
 
         let conn_lock = &self.conn.lock().unwrap();
 

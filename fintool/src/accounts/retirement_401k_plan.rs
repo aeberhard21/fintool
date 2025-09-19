@@ -4,7 +4,6 @@ use chrono::{NaiveDate, NaiveTime, Local, Days, Datelike};
 use inquire::Confirm;
 use inquire::Select;
 use inquire::Text;
-use inquire::CustomType;
 #[cfg(feature = "ratatui_support")]
 use ratatui::{
     buffer::Buffer,
@@ -44,7 +43,6 @@ use crate::types::accounts::AccountInfo;
 use crate::types::accounts::AccountRecord;
 use crate::types::accounts::AccountTransaction;
 use crate::types::accounts::AccountType;
-use crate::types::hsa::HsaInfo;
 use crate::types::investments::StockInfo;
 use crate::types::investments::StockRecord;
 use crate::types::investments::StockSplitInfo;
@@ -66,7 +64,7 @@ use super::base::AccountUI;
 #[cfg(feature = "ratatui_support")]
 use crate::ui::{centered_rect, float_range};
 
-pub struct HealthSavingsAccount {
+pub struct Retirement401kPlan {
     uid: u32,
     id: u32,
     db: DbConn,
@@ -87,7 +85,7 @@ struct FilePathHelper {
     colored_prompt: String,
 }
 
-impl AccountCreation for HealthSavingsAccount {
+impl AccountCreation for Retirement401kPlan {
     fn create(uid: u32, name: String, _db: &DbConn) -> AccountRecord {
         let has_bank = true;
         let has_stocks = true;
@@ -95,7 +93,7 @@ impl AccountCreation for HealthSavingsAccount {
         let has_budget = false;
 
         let account: AccountInfo = AccountInfo {
-            atype: AccountType::HealthSavingsAccount,
+            atype: AccountType::Retirement401k,
             name: name,
             has_stocks: has_stocks,
             has_bank: has_bank,
@@ -105,19 +103,6 @@ impl AccountCreation for HealthSavingsAccount {
 
         let aid = _db.add_account(uid, &account).unwrap();
 
-        let contribution_limit = CustomType::<f32>::new("Enter contribution limit:")
-            .with_placeholder("4000.00")
-            .with_default(7000.00)
-            .with_error_message("Please type a valid amount!")
-            .prompt()
-            .unwrap();
-
-        let hsa_info = HsaInfo {
-            contribution_limit : contribution_limit
-        };
-
-        _db.add_hsa_account(uid, aid, hsa_info).unwrap();
-
         return AccountRecord {
             id: aid,
             info: account,
@@ -125,7 +110,7 @@ impl AccountCreation for HealthSavingsAccount {
     }
 }
 
-impl HealthSavingsAccount {
+impl Retirement401kPlan {
     pub fn new(uid: u32, id: u32, db: &DbConn) -> Self {
 
         let mut ledger = db.get_ledger(uid, id).unwrap();
@@ -146,14 +131,9 @@ impl HealthSavingsAccount {
 
         acct
     }
-
-    pub fn get_contribution_limit(&self) -> f32 {
-        let acct = self.db.get_hsa(self.uid, self.id).unwrap();
-        return acct.info.contribution_limit;
-    }
 }
 
-impl AccountOperations for HealthSavingsAccount {
+impl AccountOperations for Retirement401kPlan {
     fn record(&mut self) {
         const RECORD_OPTIONS: [&'static str; 7] = [
             "Deposit",
@@ -161,7 +141,7 @@ impl AccountOperations for HealthSavingsAccount {
             "Purchase",
             "Sale",
             "Stock Split",
-            "Stock Price",
+            "Stock Price", 
             "None",
         ];
         loop {
@@ -477,7 +457,7 @@ impl AccountOperations for HealthSavingsAccount {
     }
 
     fn modify(&mut self) {
-        const MODIFY_OPTIONS: [&'static str; 5] = ["Ledger", "Categories", "Contribution Limit", "Participant", "None"];
+        const MODIFY_OPTIONS: [&'static str; 4] = ["Ledger", "Categories", "Participant", "None"];
         let modify_choice =
             Select::new("\nWhat would you like to modify:", MODIFY_OPTIONS.to_vec())
                 .prompt()
@@ -490,15 +470,6 @@ impl AccountOperations for HealthSavingsAccount {
                 }
                 let selected_record = record_or_none.unwrap();
                 self.variable.modify(selected_record);
-            }
-            "Contribution Limit" => { 
-                let hsa = self.db.get_hsa(self.uid, self.id).unwrap();
-                let new_contribution_limit = CustomType::<f32>::new("Enter new contribution limit:")
-                    .with_default(hsa.info.contribution_limit)
-                    .with_error_message("Please type a valid amount!")
-                    .prompt()
-                    .unwrap();
-                self.db.update_hsa_contribution_limit(self.uid, self.id, new_contribution_limit);
             }
             "Categories" => {
                 let records = self.db.get_categories(self.uid, self.id).unwrap();
@@ -972,7 +943,7 @@ impl AccountOperations for HealthSavingsAccount {
     }
 }
 
-impl AccountData for HealthSavingsAccount {
+impl AccountData for Retirement401kPlan {
     fn get_id(&self) -> u32 {
         return self.id;
     }
@@ -1009,7 +980,7 @@ impl AccountData for HealthSavingsAccount {
 }
 
 #[cfg(feature = "ratatui_support")]
-impl HealthSavingsAccount {
+impl Retirement401kPlan {
     fn render_growth_chart(&self, frame: &mut Frame, area: Rect, app: &mut App) {
         let (start, end) = (app.analysis_start, app.analysis_end);
         let mut ledger = self.get_ledger_within_dates(start, end);
@@ -1161,7 +1132,6 @@ impl HealthSavingsAccount {
                             date.checked_add_days(Days::new(days_to_add as u64)).unwrap()
                         }
                     };
-                    // date = date.checked_add_days(Days::new(10)).unwrap();
                 }
             }
 
@@ -1245,16 +1215,13 @@ impl HealthSavingsAccount {
                     .padding(Padding::new(0,0, (if area.height > 4 { area.height/2 -2 } else {0}), 0)),
             )
             .bg(tailwind::SLATE.c900);
-        // let centered_area = centered_rect(10, 10, area);
-        // let growth = Paragraph::new(value);
-        // frame.render_widget(growth, centered_area);
         frame.render_widget(display, area);
     }
 
 }
 
 #[cfg(feature = "ratatui_support")]
-impl AccountUI for HealthSavingsAccount {
+impl AccountUI for Retirement401kPlan {
     fn render(&self, frame: &mut Frame, area: Rect, app: &mut App) {
         let chunk = Layout::default()
             .direction(Direction::Vertical)
@@ -1288,9 +1255,9 @@ impl AccountUI for HealthSavingsAccount {
 
 }
 
-impl Account for HealthSavingsAccount {
+impl Account for Retirement401kPlan {
     fn kind(&self) -> AccountType { 
-        return AccountType::HealthSavingsAccount;
+        return AccountType::Retirement401k;
     }
     #[cfg(feature = "ratatui_support")]
     fn as_any(&self) -> &dyn std::any::Any {
