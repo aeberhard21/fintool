@@ -5,8 +5,8 @@ use regex::Regex;
 use serde::{Deserialize, Deserializer};
 use shared_lib::stocks::get_stock_quote;
 use std::env;
-use std::io::Write;
 use std::io;
+use std::io::Write;
 
 use shared_lib::LedgerEntry;
 use shared_lib::StockInfo;
@@ -20,7 +20,10 @@ pub struct HealthEquityRecord {
     pub transaction: String,
     #[serde(rename = "Amount", deserialize_with = "deserialize_accounting_f32")]
     pub amount: f32,
-    #[serde(rename = "HSA Cash Balance", deserialize_with = "deserialize_accounting_f32")]
+    #[serde(
+        rename = "HSA Cash Balance",
+        deserialize_with = "deserialize_accounting_f32"
+    )]
     pub acct_balance: f32,
     #[serde(rename = "Attachments")]
     pub attachments: String,
@@ -67,14 +70,14 @@ fn main() {
         } else {
             txn.amount
         };
-        
+
         let mut stock: Option<StockInfo> = None;
 
         let transaction_re = Regex::new(
             r"^(Investment:|Employee Contribution|Employer Contribution|Incentive Contribution|Interest|Balance|From BenefitWallet:|Transfer from BenefitWallet)\s+(.+)"
         ).unwrap();
         let x = transaction_re.captures(&txn.transaction.as_str());
-        if x.is_none() { 
+        if x.is_none() {
             panic!("1 - {} did not match!", txn.transaction);
         }
         let x = x.unwrap();
@@ -86,125 +89,146 @@ fn main() {
                     let ticker = helper_data.clone();
                     let history = get_stock_quote(ticker.clone(), posted_date);
                     if let Ok(quote) = history {
-
                         let close = quote.close as f32;
                         let shares = amt / close;
 
                         // purchase of stock
-                        let si = StockInfo { 
-                            shares : shares.clone(),
-                            remaining : shares.clone(),
-                            costbasis : close,
-                            is_buy : true,
-                            is_split : false,
+                        let si = StockInfo {
+                            shares: shares.clone(),
+                            remaining: shares.clone(),
+                            costbasis: close,
+                            is_buy: true,
+                            is_split: false,
                         };
                         stock = Some(si);
 
                         t_type = TransferType::WithdrawalToInternalAccount;
-                        description = format!("Purchase {} shares of {} at ${} on {}.", shares, ticker, amt, txn.date); 
+                        description = format!(
+                            "Purchase {} shares of {} at ${} on {}.",
+                            shares, ticker, amt, txn.date
+                        );
                         cat = "BUY".to_string();
                         peer = helper_data;
                         has_stock = true;
-                    } else { 
+                    } else {
                         panic!("Ticker not recognized: {}!", ticker);
                     }
                 }
-                "Employee Contribution"|"Incentive Contribution" => {
+                "Employee Contribution" | "Incentive Contribution" => {
                     t_type = TransferType::DepositFromExternalAccount;
                     cat = "DEPOSIT".to_string();
-                    description = format!("Employee contribution of ${} on {}.", txn.amount, txn.date);
+                    description =
+                        format!("Employee contribution of ${} on {}.", txn.amount, txn.date);
                     peer = "SELF".to_string();
                 }
                 "Employer Contribution" => {
                     t_type = TransferType::DepositFromExternalAccount;
                     cat = "DEPOSIT".to_string();
-                    description = format!("Employee contribution of ${} on {}.", txn.amount, txn.date);
+                    description =
+                        format!("Employee contribution of ${} on {}.", txn.amount, txn.date);
                     peer = "EMPLOYER".to_string();
                 }
                 "Interest" => {
                     t_type = TransferType::DepositFromInternalAccount;
                     cat = "INTEREST".to_string();
                     peer = "Health Equity".to_ascii_uppercase().to_string();
-                    description = format!("Employee contribution of ${} on {}.", txn.amount, txn.date);
+                    description =
+                        format!("Employee contribution of ${} on {}.", txn.amount, txn.date);
                 }
                 "Balance" => {
                     t_type = TransferType::DepositFromInternalAccount;
                 }
-                "Transfer from BenefitWallet" => { 
+                "Transfer from BenefitWallet" => {
                     t_type = TransferType::DepositFromInternalAccount;
                     cat = "DEPOSIT".to_string();
                     peer = "Benefit Wallet".to_ascii_uppercase().to_string();
-                    description = format!("Transfer of funds amounting to ${} on {}.", txn.amount, txn.date);
+                    description = format!(
+                        "Transfer of funds amounting to ${} on {}.",
+                        txn.amount, txn.date
+                    );
                 }
                 "From BenefitWallet:" => {
-                    let helper_data = match helper_data.as_str().find('(') { 
-                        Some(index) => {
-                            helper_data[..index].trim_end().to_string()
-                        }, 
-                        None => { 
-                            helper_data
-                        }
+                    let helper_data = match helper_data.as_str().find('(') {
+                        Some(index) => helper_data[..index].trim_end().to_string(),
+                        None => helper_data,
                     };
 
-                    let helper_data = match helper_data.as_str().find("POSTED THROUGH") { 
-                        Some(index) => {
-                            helper_data[..index].trim_end().to_string()
-                        }, 
-                        None => { 
-                            helper_data
-                        }
+                    let helper_data = match helper_data.as_str().find("POSTED THROUGH") {
+                        Some(index) => helper_data[..index].trim_end().to_string(),
+                        None => helper_data,
                     };
 
                     match helper_data.as_str() {
-                        "Transfer"=> { 
+                        "Transfer" => {
                             t_type = TransferType::DepositFromInternalAccount;
                             cat = "DEPOSIT".to_string();
                             peer = "Benefit Wallet".to_ascii_uppercase().to_string();
-                            description = format!("Transfer of funds amounting to ${} on {}.", txn.amount, txn.date);
+                            description = format!(
+                                "Transfer of funds amounting to ${} on {}.",
+                                txn.amount, txn.date
+                            );
                         }
-                        "HSA INVEST" => { 
+                        "HSA INVEST" => {
                             t_type = TransferType::WithdrawalToInternalAccount;
                             cat = "BUY".to_string();
                             peer = "Investment Fund".to_ascii_uppercase().to_string();
                             description = format!("Purchases of funds amounting to ${} on {}. Funds purchased not disclosed in data provided by HealthEquity.", txn.amount, txn.date);
                         }
-                        "HSA CHECK DISBURSEMENT" => { 
+                        "HSA CHECK DISBURSEMENT" => {
                             t_type = TransferType::WithdrawalToExternalAccount;
                             cat = "Check Disbursement".to_string();
                             peer = "Self".to_ascii_uppercase().to_string();
-                            description = format!("Distribution of funds amounting to ${} on {}.", txn.amount, txn.date);
+                            description = format!(
+                                "Distribution of funds amounting to ${} on {}.",
+                                txn.amount, txn.date
+                            );
                         }
-                        "EMPLOYEE PAYROLL CONTRIBUTION" => { 
+                        "EMPLOYEE PAYROLL CONTRIBUTION" => {
                             t_type = TransferType::DepositFromExternalAccount;
                             cat = "CONTRIBUTION".to_string();
                             peer = "Self".to_ascii_uppercase().to_string();
-                            description = format!("Contribution of funds amounting to ${} on {}.", txn.amount, txn.date);
+                            description = format!(
+                                "Contribution of funds amounting to ${} on {}.",
+                                txn.amount, txn.date
+                            );
                         }
-                        "EMPLOYEE PAYROLL DEBIT" => { 
+                        "EMPLOYEE PAYROLL DEBIT" => {
                             t_type = TransferType::WithdrawalToExternalAccount;
                             cat = "DEBIT".to_string();
                             peer = "Self".to_ascii_uppercase().to_string();
-                            description = format!("Debit of funds amounting to ${} on {}.", txn.amount, txn.date);
+                            description = format!(
+                                "Debit of funds amounting to ${} on {}.",
+                                txn.amount, txn.date
+                            );
                         }
-                        "PARTIAL MONTH INTEREST"|"INTEREST" => { 
+                        "PARTIAL MONTH INTEREST" | "INTEREST" => {
                             t_type = TransferType::DepositFromInternalAccount;
                             cat = "INTEREST".to_string();
                             peer = "Health Equity".to_ascii_uppercase().to_string();
-                            description = format!("Account interest amounting to ${} on {}.", txn.amount, txn.date);
+                            description = format!(
+                                "Account interest amounting to ${} on {}.",
+                                txn.amount, txn.date
+                            );
                         }
-                        "WELLNESS PAYROLL CREDIT" => { 
+                        "WELLNESS PAYROLL CREDIT" => {
                             t_type = TransferType::DepositFromExternalAccount;
                             cat = "Wellness Incentive".to_string();
                             peer = "Employer".to_ascii_uppercase().to_string();
-                            description = format!("Wellness payroll credit amounting to ${} on {}.", txn.amount, txn.date);
+                            description = format!(
+                                "Wellness payroll credit amounting to ${} on {}.",
+                                txn.amount, txn.date
+                            );
                         }
-                        "EMPLOYER PAYROLL CONTRIBUTION" => { 
+                        "EMPLOYER PAYROLL CONTRIBUTION" => {
                             t_type = TransferType::DepositFromExternalAccount;
                             cat = "CONTRIBUTION".to_string();
                             peer = "Employer".to_ascii_uppercase().to_string();
-                            description = format!("Employer contribution amounting to ${} on {}.", txn.amount, txn.date);
+                            description = format!(
+                                "Employer contribution amounting to ${} on {}.",
+                                txn.amount, txn.date
+                            );
                         }
-                        "Starting Balance"|"Transfer to HealthEquity" => {
+                        "Starting Balance" | "Transfer to HealthEquity" => {
                             continue;
                         }
                         _ => {
@@ -216,8 +240,11 @@ fn main() {
                     panic!("Unrecognized activity: {}", activity);
                 }
             }
-        } else { 
-            panic!("{} did not produce a valid match for a transaction!", txn.transaction);
+        } else {
+            panic!(
+                "{} did not produce a valid match for a transaction!",
+                txn.transaction
+            );
         }
         if has_stock {
             let ledger_entry = LedgerEntry {

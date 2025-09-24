@@ -43,48 +43,47 @@ pub struct FlatLedgerEntry {
     pub category: String,
     pub description: String,
     pub ancillary_f32: f32,
-    pub shares : Option<String>,
-    pub costbasis : Option<String>,
-    pub remaining : Option<String>, 
-    pub is_buy : Option<String>, 
-    pub is_split : Option<String>,
+    pub shares: Option<String>,
+    pub costbasis: Option<String>,
+    pub remaining: Option<String>,
+    pub is_buy: Option<String>,
+    pub is_split: Option<String>,
 }
 
 impl From<LedgerEntry> for FlatLedgerEntry {
     fn from(l: LedgerEntry) -> Self {
         match l.stock_info {
-            Some(s) => FlatLedgerEntry { 
-                date: l.date, 
-                amount: l.amount, 
-                transfer_type: l.transfer_type, 
-                participant: l.participant, 
-                category: l.category, 
-                description: l.description, 
-                ancillary_f32: l.ancillary_f32, 
-                shares: Some(s.shares.to_string()), 
-                costbasis: Some(s.costbasis.to_string()), 
-                remaining: Some(s.remaining.to_string()), 
-                is_buy: Some(s.is_buy.to_string()), 
-                is_split: Some(s.is_split.to_string()) 
+            Some(s) => FlatLedgerEntry {
+                date: l.date,
+                amount: l.amount,
+                transfer_type: l.transfer_type,
+                participant: l.participant,
+                category: l.category,
+                description: l.description,
+                ancillary_f32: l.ancillary_f32,
+                shares: Some(s.shares.to_string()),
+                costbasis: Some(s.costbasis.to_string()),
+                remaining: Some(s.remaining.to_string()),
+                is_buy: Some(s.is_buy.to_string()),
+                is_split: Some(s.is_split.to_string()),
             },
-            None => FlatLedgerEntry { 
-                date: l.date, 
-                amount: l.amount, 
-                transfer_type: l.transfer_type, 
-                participant: l.participant, 
-                category: l.category, 
-                description: l.description, 
-                ancillary_f32: l.ancillary_f32, 
-                shares: None, 
-                costbasis: None, 
-                remaining: None, 
-                is_buy: None, 
-                is_split: None 
+            None => FlatLedgerEntry {
+                date: l.date,
+                amount: l.amount,
+                transfer_type: l.transfer_type,
+                participant: l.participant,
+                category: l.category,
+                description: l.description,
+                ancillary_f32: l.ancillary_f32,
+                shares: None,
+                costbasis: None,
+                remaining: None,
+                is_buy: None,
+                is_split: None,
             },
         }
     }
 }
-
 
 #[derive(PartialEq, Clone, Debug, Deserialize, Serialize, Display, FromRepr, EnumIter)]
 pub enum TransferType {
@@ -112,18 +111,21 @@ impl From<u32> for TransferType {
     }
 }
 
-impl TransferType { 
-    pub fn is_deposit(&self) -> bool { 
-        match self { 
-            TransferType::DepositFromExternalAccount|TransferType::DepositFromInternalAccount => true, 
-            _ => false
+impl TransferType {
+    pub fn is_deposit(&self) -> bool {
+        match self {
+            TransferType::DepositFromExternalAccount | TransferType::DepositFromInternalAccount => {
+                true
+            }
+            _ => false,
         }
     }
 
-    pub fn is_withdrawal(&self) -> bool { 
-        match self { 
-            TransferType::WithdrawalToExternalAccount|TransferType::WithdrawalToInternalAccount => true, 
-            _ => false
+    pub fn is_withdrawal(&self) -> bool {
+        match self {
+            TransferType::WithdrawalToExternalAccount
+            | TransferType::WithdrawalToInternalAccount => true,
+            _ => false,
         }
     }
 }
@@ -161,39 +163,46 @@ where
     deserializer.deserialize_i64(TransferTypeVisitor)
 }
 
-fn serialize_transfer_type<S>(
-    tt : &TransferType,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
+fn serialize_transfer_type<S>(tt: &TransferType, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
-    let output = match tt { 
+    let output = match tt {
         TransferType::DepositFromExternalAccount => "1".to_string(),
         TransferType::DepositFromInternalAccount => "3".to_string(),
         TransferType::WithdrawalToExternalAccount => "0".to_string(),
         TransferType::WithdrawalToInternalAccount => "2".to_string(),
-        TransferType::ZeroSumChange => "4".to_string()
+        TransferType::ZeroSumChange => "4".to_string(),
     };
     serializer.serialize_str(&output)
 }
 
-fn serialize_stock_info<S>(
-    info : &Option<StockInfo>,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
+fn serialize_stock_info<S>(info: &Option<StockInfo>, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
-    let output = match info { 
-        Some(info) => { 
-            (info.shares.to_string(), info.costbasis.to_string(), info.remaining.to_string(), info.is_buy.to_string(), info.is_split.to_string())
-        }
-        None => {
-            ("".to_string(), "".to_string(), "".to_string(), "".to_string(), "".to_string())
-        }
+    let output = match info {
+        Some(info) => (
+            info.shares.to_string(),
+            info.costbasis.to_string(),
+            info.remaining.to_string(),
+            info.is_buy.to_string(),
+            info.is_split.to_string(),
+        ),
+        None => (
+            "".to_string(),
+            "".to_string(),
+            "".to_string(),
+            "".to_string(),
+            "".to_string(),
+        ),
     };
-    
-    serializer.serialize_str(format!("{},{},{},{},{}", output.0, output.1, output.2, output.3, output.4).as_str())
-}
 
+    serializer.serialize_str(
+        format!(
+            "{},{},{},{},{}",
+            output.0, output.1, output.2, output.3, output.4
+        )
+        .as_str(),
+    )
+}

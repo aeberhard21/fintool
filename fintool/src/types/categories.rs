@@ -253,7 +253,7 @@ pub struct CategoryAutoCompleter {
     pub aid: u32,
     pub uid: u32,
     pub db: DbConn,
-    pub cats : Option<Vec<String>>
+    pub cats: Option<Vec<String>>,
 }
 
 impl Autocomplete for CategoryAutoCompleter {
@@ -261,18 +261,17 @@ impl Autocomplete for CategoryAutoCompleter {
         let mut suggestions: Vec<String>;
         suggestions = if let Some(categories) = self.cats.clone() {
             categories
-            .into_iter()
-            .filter(|name| name.starts_with(input.to_ascii_uppercase().as_str()))
-            .collect::<Vec<String>>()
+                .into_iter()
+                .filter(|name| name.starts_with(input.to_ascii_uppercase().as_str()))
+                .collect::<Vec<String>>()
         } else {
-            self
-            .db
-            .get_categories(self.uid, self.aid)
-            .unwrap()
-            .into_iter()
-            .map(|category| category.category.name)
-            .filter(|cname| cname.starts_with(input.to_ascii_uppercase().as_str()))
-            .collect()
+            self.db
+                .get_categories(self.uid, self.aid)
+                .unwrap()
+                .into_iter()
+                .map(|category| category.category.name)
+                .filter(|cname| cname.starts_with(input.to_ascii_uppercase().as_str()))
+                .collect()
         };
         suggestions.dedup();
         Ok(suggestions)

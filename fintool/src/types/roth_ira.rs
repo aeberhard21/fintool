@@ -10,7 +10,7 @@ pub struct RothIraRecord {
 
 #[derive(Clone)]
 pub struct RothIraInfo {
-    pub contribution_limit : f32,
+    pub contribution_limit: f32,
 }
 
 impl DbConn {
@@ -35,7 +35,8 @@ impl DbConn {
     pub fn add_roth_ira_account(&self, uid: u32, aid: u32, info: RothIraInfo) -> Result<u32> {
         let id = self.get_next_roth_ira_id(uid, aid).unwrap();
         let p = rusqlite::params!(id, aid, uid, info.contribution_limit);
-        let sql = "INSERT INTO roth_iras (id, aid, uid, contribution_limit) VALUES (?1, ?2, ?3, ?4)";
+        let sql =
+            "INSERT INTO roth_iras (id, aid, uid, contribution_limit) VALUES (?1, ?2, ?3, ?4)";
         let conn_lock = self.conn.lock().unwrap();
         match conn_lock.execute(sql, p) {
             Ok(_) => Ok(id),
@@ -45,7 +46,12 @@ impl DbConn {
         }
     }
 
-    pub fn update_roth_ira_contribution_limit(&self, uid: u32, aid: u32, new_contribution_lmit: f32) -> Result<f32> {
+    pub fn update_roth_ira_contribution_limit(
+        &self,
+        uid: u32,
+        aid: u32,
+        new_contribution_lmit: f32,
+    ) -> Result<f32> {
         let p = rusqlite::params!(uid, aid, new_contribution_lmit);
         let sql = "UPDATE roth_iras SET contribution_limit = (?3) WHERE uid = (?1) and aid = (?2)";
         let conn_lock = self.conn.lock().unwrap();
@@ -92,5 +98,4 @@ impl DbConn {
             }
         }
     }
-
 }

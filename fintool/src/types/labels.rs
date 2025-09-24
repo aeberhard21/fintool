@@ -1,22 +1,25 @@
-use inquire::{autocompletion::{self, Replacement}, type_aliases::Suggester, Autocomplete, CustomUserError};
-use rusqlite::{Error, Result};
 use crate::{database::DbConn, types::ledger};
+use inquire::{
+    autocompletion::{self, Replacement},
+    type_aliases::Suggester,
+    Autocomplete, CustomUserError,
+};
+use rusqlite::{Error, Result};
 
-pub struct LabelInfo { 
-    pub id : u32, 
-    pub label : String
+pub struct LabelInfo {
+    pub id: u32,
+    pub label: String,
 }
 
-pub struct LabelMappingInfo { 
-    pub id : u32, 
-    pub ledger_id : u32, 
-    pub label_id : u32,
+pub struct LabelMappingInfo {
+    pub id: u32,
+    pub ledger_id: u32,
+    pub label_id: u32,
 }
 
-impl DbConn { 
-    pub fn create_labels_table(&self) -> rusqlite::Result<()> { 
-        let sql = 
-        "
+impl DbConn {
+    pub fn create_labels_table(&self) -> rusqlite::Result<()> {
+        let sql = "
             CREATE TABLE IF NOT EXISTS labels (
                 id INTEGER NOT NULL,
                 label TEXT NOT NULL, 
@@ -36,19 +39,16 @@ impl DbConn {
         Ok(())
     }
 
-    pub fn add_label(&self, uid : u32, label : String) -> Result<u32> { 
+    pub fn add_label(&self, uid: u32, label: String) -> Result<u32> {
         let label_id = self.get_next_label_id(uid).unwrap();
         let p = rusqlite::params![uid, label_id, label];
-        let sql = 
-        "
+        let sql = "
             INSERT INTO labels (uid, id, label) VALUES (?1, ?2, ?3)
         ";
         let conn_lock = self.conn.lock().unwrap();
         let rs = conn_lock.execute(sql, p);
         match rs {
-            Ok(id) => {
-                Ok(label_id)
-            }
+            Ok(id) => Ok(label_id),
             Err(error) => {
                 panic!(
                     "Unable to add label {} for user {}: {}!",
@@ -58,7 +58,7 @@ impl DbConn {
         }
     }
 
-    pub fn check_and_add_label(&self, uid : u32, label : String) -> Result<u32> { 
+    pub fn check_and_add_label(&self, uid: u32, label: String) -> Result<u32> {
         let p = rusqlite::params![uid, label];
         let sql = "SELECT id FROM labels WHERE uid = (?1) and label = (?2)";
         let cloned_conn = self.conn.clone();
@@ -94,7 +94,7 @@ impl DbConn {
         Ok(id)
     }
 
-    pub fn remove_label(&self, uid : u32, label_id : u32) -> Result<u32> {
+    pub fn remove_label(&self, uid: u32, label_id: u32) -> Result<u32> {
         let p = rusqlite::params![uid, label_id];
         let sql = "DELETE FROM labels WHERE uid = ?1 and id = ?2";
         let conn_lock = self.conn.lock().unwrap();
@@ -129,7 +129,7 @@ impl DbConn {
         Ok(label_id)
     }
 
-    pub fn update_label(&self, uid : u32, label_id : u32, new_label : String) -> Result<u32> { 
+    pub fn update_label(&self, uid: u32, label_id: u32, new_label: String) -> Result<u32> {
         let p = rusqlite::params![uid, label_id, new_label];
         let sql = "UPDATE labels SET label = (?3) WHERE uid = (?1) and id = (?2)";
         let conn_lock = self.conn.lock().unwrap();
@@ -143,30 +143,31 @@ impl DbConn {
         Ok(label_id)
     }
 
-    pub fn get_labels(&self, uid : u32) -> Result<Vec<LabelInfo>, rusqlite::Error> {
+    pub fn get_labels(&self, uid: u32) -> Result<Vec<LabelInfo>, rusqlite::Error> {
         let p = rusqlite::params![uid];
-        let sql = "SELECT * FROM labels WHERE uid = (?1)"; 
+        let sql = "SELECT * FROM labels WHERE uid = (?1)";
         let conn_lock = self.conn.lock().unwrap();
         let mut stmt = conn_lock.prepare(sql)?;
         let exists = stmt.exists(p)?;
         let mut entries: Vec<LabelInfo> = Vec::new();
         match exists {
             true => {
-                let found_entries = stmt.query_map(p, |row| {
-                    Ok(LabelInfo { 
-                        id : row.get(0)?, 
-                        label : row.get(1)?
+                let found_entries = stmt
+                    .query_map(p, |row| {
+                        Ok(LabelInfo {
+                            id: row.get(0)?,
+                            label: row.get(1)?,
+                        })
                     })
-                }).unwrap().collect::<Vec<_>>();
+                    .unwrap()
+                    .collect::<Vec<_>>();
 
-                for entry in found_entries { 
+                for entry in found_entries {
                     entries.push(entry.unwrap());
                 }
                 return Ok(entries);
             }
-            false => {
-                return Ok(entries)
-            }
+            false => return Ok(entries),
         }
     }
 
@@ -196,7 +197,13 @@ impl DbConn {
         Ok(())
     }
 
-    pub fn add_label_mapping(&self, uid : u32, aid : u32, label_id : u32, ledger_id : u32) -> Result<u32, rusqlite::Error> { 
+    pub fn add_label_mapping(
+        &self,
+        uid: u32,
+        aid: u32,
+        label_id: u32,
+        ledger_id: u32,
+    ) -> Result<u32, rusqlite::Error> {
         let id = self.get_next_label_allocation_id(uid, aid).unwrap();
         let p = rusqlite::params![id, uid, aid, ledger_id, label_id];
         let sql = 
@@ -216,7 +223,12 @@ impl DbConn {
         }
     }
 
-    pub fn check_and_get_label_mapping_matching_ledger_id(&self, uid : u32, aid : u32, ledger_id : u32) -> Result<Vec<LabelMappingInfo>, rusqlite::Error> { 
+    pub fn check_and_get_label_mapping_matching_ledger_id(
+        &self,
+        uid: u32,
+        aid: u32,
+        ledger_id: u32,
+    ) -> Result<Vec<LabelMappingInfo>, rusqlite::Error> {
         let p = rusqlite::params![uid, aid, ledger_id];
         let sql = "SELECT id, ledger_id, label_id FROM label_allocations WHERE uid = (?1) and aid = (?2) and ledger_id = (?3)";
         let conn_lock = self.conn.lock().unwrap();
@@ -225,26 +237,32 @@ impl DbConn {
         let mut entries: Vec<LabelMappingInfo> = Vec::new();
         match exists {
             true => {
-                let found_entries = stmt.query_map(p, |row| {
-                    Ok(LabelMappingInfo { 
-                        id : row.get(0)?, 
-                        ledger_id : row.get(1)?, 
-                        label_id : row.get(2)?
+                let found_entries = stmt
+                    .query_map(p, |row| {
+                        Ok(LabelMappingInfo {
+                            id: row.get(0)?,
+                            ledger_id: row.get(1)?,
+                            label_id: row.get(2)?,
+                        })
                     })
-                }).unwrap().collect::<Vec<_>>();
+                    .unwrap()
+                    .collect::<Vec<_>>();
 
-                for entry in found_entries { 
+                for entry in found_entries {
                     entries.push(entry.unwrap());
                 }
                 return Ok(entries);
             }
-            false => {
-                return Ok(entries)
-            }
-        } 
+            false => return Ok(entries),
+        }
     }
 
-    pub fn remove_label_mapping(&self, uid : u32, aid : u32, id : u32) -> Result<u32, rusqlite::Error> { 
+    pub fn remove_label_mapping(
+        &self,
+        uid: u32,
+        aid: u32,
+        id: u32,
+    ) -> Result<u32, rusqlite::Error> {
         let p = rusqlite::params![uid, aid, id];
         let sql = "DELETE FROM label_allocations WHERE uid = (?1) and aid = (?2) and id = (?3)";
         let conn_lock = self.conn.lock().unwrap();
@@ -278,19 +296,23 @@ impl DbConn {
         }
         Ok(id)
     }
-
 }
 
 #[derive(Clone)]
-pub struct LabelAutoCompleter { 
-    pub uid : u32,
-    pub db : DbConn,
+pub struct LabelAutoCompleter {
+    pub uid: u32,
+    pub db: DbConn,
 }
 
-impl Autocomplete for LabelAutoCompleter { 
-    fn get_suggestions(&mut self, input: &str) -> std::result::Result<Vec<String>, inquire::CustomUserError> {
+impl Autocomplete for LabelAutoCompleter {
+    fn get_suggestions(
+        &mut self,
+        input: &str,
+    ) -> std::result::Result<Vec<String>, inquire::CustomUserError> {
         let mut suggestions: Vec<String>;
-        suggestions = self.db.get_labels(self.uid)
+        suggestions = self
+            .db
+            .get_labels(self.uid)
             .unwrap()
             .into_iter()
             .map(|info| info.label)
@@ -301,22 +323,22 @@ impl Autocomplete for LabelAutoCompleter {
     }
 
     fn get_completion(
-            &mut self,
-            input: &str,
-            highlighted_suggestion: Option<String>,
-        ) -> std::result::Result<inquire::autocompletion::Replacement, CustomUserError> {
-            Ok(
-                match highlighted_suggestion {
-                    Some(suggestion) => Replacement::Some(suggestion),
-                    None => { 
-                        let suggestions = self.get_suggestions(input.to_ascii_uppercase().as_str()).unwrap();
-                        if suggestions.len() == 0 { 
-                            autocompletion::Replacement::None
-                        } else { 
-                            Some(suggestions[0].clone())
-                        }
-                    }
+        &mut self,
+        input: &str,
+        highlighted_suggestion: Option<String>,
+    ) -> std::result::Result<inquire::autocompletion::Replacement, CustomUserError> {
+        Ok(match highlighted_suggestion {
+            Some(suggestion) => Replacement::Some(suggestion),
+            None => {
+                let suggestions = self
+                    .get_suggestions(input.to_ascii_uppercase().as_str())
+                    .unwrap();
+                if suggestions.len() == 0 {
+                    autocompletion::Replacement::None
+                } else {
+                    Some(suggestions[0].clone())
                 }
-            )
+            }
+        })
     }
 }

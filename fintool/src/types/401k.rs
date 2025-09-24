@@ -10,7 +10,7 @@ pub struct Retirement401kRecord {
 
 #[derive(Clone)]
 pub struct Retirement401kInfo {
-    pub contribution_limit : f32,
+    pub contribution_limit: f32,
 }
 
 impl DbConn {
@@ -35,7 +35,8 @@ impl DbConn {
     pub fn add_401k_account(&self, uid: u32, aid: u32, info: Retirement401kInfo) -> Result<u32> {
         let id = self.get_next_401k_id(uid, aid).unwrap();
         let p = rusqlite::params!(id, aid, uid, info.contribution_limit);
-        let sql = "INSERT INTO plan_401ks (id, aid, uid, contribution_limit) VALUES (?1, ?2, ?3, ?4)";
+        let sql =
+            "INSERT INTO plan_401ks (id, aid, uid, contribution_limit) VALUES (?1, ?2, ?3, ?4)";
         let conn_lock = self.conn.lock().unwrap();
         match conn_lock.execute(sql, p) {
             Ok(_) => Ok(id),
@@ -45,17 +46,19 @@ impl DbConn {
         }
     }
 
-    pub fn update_401k_contribution_limit(&self, uid: u32, aid: u32, new_contribution_lmit: f32) -> Result<f32> {
+    pub fn update_401k_contribution_limit(
+        &self,
+        uid: u32,
+        aid: u32,
+        new_contribution_lmit: f32,
+    ) -> Result<f32> {
         let p = rusqlite::params!(uid, aid, new_contribution_lmit);
         let sql = "UPDATE plan_401ks SET contribution_limit = (?3) WHERE uid = (?1) and aid = (?2)";
         let conn_lock = self.conn.lock().unwrap();
         match conn_lock.execute(sql, p) {
             Ok(_) => Ok(new_contribution_lmit),
             Err(error) => {
-                panic!(
-                    "Unable to update hsa for 401k {}: {}!",
-                    aid, error
-                );
+                panic!("Unable to update hsa for 401k {}: {}!", aid, error);
             }
         }
     }
@@ -92,5 +95,4 @@ impl DbConn {
             }
         }
     }
-
 }

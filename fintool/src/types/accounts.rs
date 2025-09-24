@@ -58,7 +58,7 @@ impl TabMenu for AccountType {
         let text = format!("  {value}  ");
         text.into()
     }
-    fn render(frame: &mut Frame, area: Rect, selected_tab: usize, title: String, color : Color) {
+    fn render(frame: &mut Frame, area: Rect, selected_tab: usize, title: String, color: Color) {
         let atype_tabs = Tabs::new(AccountType::iter().map(AccountType::to_tab_title))
             .highlight_style(color)
             .select(selected_tab)
@@ -92,11 +92,11 @@ pub struct AccountRecord {
     pub info: AccountInfo,
 }
 
-impl AccountRecord { 
-    pub fn is_liquid_account(&self) -> bool { 
+impl AccountRecord {
+    pub fn is_liquid_account(&self) -> bool {
         match self.info.atype {
-            AccountType::Bank|AccountType::Wallet => {true}, 
-            _ => { false }
+            AccountType::Bank | AccountType::Wallet => true,
+            _ => false,
         }
     }
 }
@@ -205,7 +205,8 @@ impl DbConn {
         match exists {
             true => {
                 let id = stmt.query_row(p, |row| row.get::<_, u32>(0))?;
-                let sql = "UPDATE account_ids SET next_label_id = next_label_id + 1  WHERE uid = (?1)";
+                let sql =
+                    "UPDATE account_ids SET next_label_id = next_label_id + 1  WHERE uid = (?1)";
                 conn_lock.execute(sql, p)?;
                 Ok(id)
             }
@@ -286,7 +287,7 @@ impl DbConn {
         }
     }
 
-    pub fn update_account(&self, uid: u32, aid : u32, updated_info: &AccountInfo) -> Result<u32> {
+    pub fn update_account(&self, uid: u32, aid: u32, updated_info: &AccountInfo) -> Result<u32> {
         let p = rusqlite::params![
             aid,
             uid,
@@ -314,7 +315,6 @@ impl DbConn {
         }
         Ok(aid)
     }
-
 
     pub fn create_account_transaction_table(&self) -> Result<()> {
         let sql: &str = "CREATE TABLE IF NOT EXISTS account_transactions (
@@ -916,7 +916,8 @@ impl DbConn {
     }
 
     pub fn get_next_label_allocation_id(&self, uid: u32, aid: u32) -> rusqlite::Result<u32> {
-        let sql = "SELECT label_allocation_id FROM user_account_info WHERE uid = (?1) and aid = (?2)";
+        let sql =
+            "SELECT label_allocation_id FROM user_account_info WHERE uid = (?1) and aid = (?2)";
         let p = rusqlite::params![uid, aid];
         let conn_lock = self.conn.lock().unwrap();
         let mut stmt = conn_lock.prepare(sql)?;
@@ -929,7 +930,9 @@ impl DbConn {
                 Ok(id)
             }
             false => {
-                panic!("The next label allocation ID within table 'user_account_info' does not exist.");
+                panic!(
+                    "The next label allocation ID within table 'user_account_info' does not exist."
+                );
             }
         }
     }

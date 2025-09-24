@@ -94,7 +94,7 @@ impl FixedAccount {
                     uid: self.uid,
                     aid: self.id,
                     db: self.db.clone(),
-                    cats : None,
+                    cats: None,
                 })
                 .with_default(
                     self.db
@@ -111,7 +111,7 @@ impl FixedAccount {
                     uid: self.uid,
                     aid: self.id,
                     db: self.db.clone(),
-                    cats : None,
+                    cats: None,
                 })
                 .prompt()
                 .unwrap()
@@ -150,7 +150,7 @@ impl FixedAccount {
                         db: self.db.clone(),
                         ptype: ParticipantType::Payee,
                         with_accounts: false,
-                        manually_recorded_only : false
+                        manually_recorded_only: false,
                     })
                     .with_default(
                         self.db
@@ -168,7 +168,7 @@ impl FixedAccount {
                         db: self.db.clone(),
                         ptype: ParticipantType::Payee,
                         with_accounts: false,
-                        manually_recorded_only : false
+                        manually_recorded_only: false,
                     })
                     .prompt()
                     .unwrap()
@@ -209,34 +209,46 @@ impl FixedAccount {
             };
 
             if overwrite {
-                let maintain_labels = Confirm::new("Would you like to maintain all prior labels (y/n)?").prompt().unwrap();
+                let maintain_labels =
+                    Confirm::new("Would you like to maintain all prior labels (y/n)?")
+                        .prompt()
+                        .unwrap();
                 if !maintain_labels {
-                    let mapped_labels = self.db.check_and_get_label_mapping_matching_ledger_id(self.uid, self.id, id).unwrap();
-                    if !mapped_labels.is_empty() { 
+                    let mapped_labels = self
+                        .db
+                        .check_and_get_label_mapping_matching_ledger_id(self.uid, self.id, id)
+                        .unwrap();
+                    if !mapped_labels.is_empty() {
                         for label in mapped_labels {
-                            self.db.remove_label_mapping(self.uid, self.id, label.id).unwrap();
+                            self.db
+                                .remove_label_mapping(self.uid, self.id, label.id)
+                                .unwrap();
                         }
                     }
                 }
             }
 
             // add labels for transaction
-            let add_label_prompt = Confirm::new("Add labels to withdrawal (y/n)?").prompt().unwrap();
-            if add_label_prompt == true { 
+            let add_label_prompt = Confirm::new("Add labels to withdrawal (y/n)?")
+                .prompt()
+                .unwrap();
+            if add_label_prompt == true {
                 loop {
                     let label = Text::new("Enter label:")
-                        .with_autocomplete(LabelAutoCompleter { 
-                            uid : self.uid, 
-                            db : self.db.clone()
+                        .with_autocomplete(LabelAutoCompleter {
+                            uid: self.uid,
+                            db: self.db.clone(),
                         })
                         .prompt()
                         .unwrap()
                         .to_ascii_uppercase();
                     let label_id = self.db.check_and_add_label(self.uid, label).unwrap();
-                    self.db.add_label_mapping(self.uid, self.id, label_id, id).unwrap();
+                    self.db
+                        .add_label_mapping(self.uid, self.id, label_id, id)
+                        .unwrap();
 
                     let continue_prompt = Confirm::new("Add more labels (y/n)?").prompt().unwrap();
-                    if !continue_prompt { 
+                    if !continue_prompt {
                         break;
                     }
                 }
@@ -300,34 +312,46 @@ impl FixedAccount {
             };
 
             if overwrite {
-                let maintain_labels = Confirm::new("Would you like to maintain all prior labels (y/n)?").prompt().unwrap();
+                let maintain_labels =
+                    Confirm::new("Would you like to maintain all prior labels (y/n)?")
+                        .prompt()
+                        .unwrap();
                 if !maintain_labels {
-                    let mapped_labels = self.db.check_and_get_label_mapping_matching_ledger_id(self.uid, self.id, id).unwrap();
-                    if !mapped_labels.is_empty() { 
+                    let mapped_labels = self
+                        .db
+                        .check_and_get_label_mapping_matching_ledger_id(self.uid, self.id, id)
+                        .unwrap();
+                    if !mapped_labels.is_empty() {
                         for label in mapped_labels {
-                            self.db.remove_label_mapping(self.uid, self.id, label.id).unwrap();
+                            self.db
+                                .remove_label_mapping(self.uid, self.id, label.id)
+                                .unwrap();
                         }
                     }
                 }
             }
 
             // add labels for transaction
-            let add_label_prompt = Confirm::new("Add labels to withdrawal (y/n)?").prompt().unwrap();
-            if add_label_prompt == true { 
+            let add_label_prompt = Confirm::new("Add labels to withdrawal (y/n)?")
+                .prompt()
+                .unwrap();
+            if add_label_prompt == true {
                 loop {
                     let label = Text::new("Enter label:")
-                        .with_autocomplete(LabelAutoCompleter { 
-                            uid : self.uid, 
-                            db : self.db.clone()
+                        .with_autocomplete(LabelAutoCompleter {
+                            uid: self.uid,
+                            db: self.db.clone(),
                         })
                         .prompt()
                         .unwrap()
                         .to_ascii_uppercase();
                     let label_id = self.db.check_and_add_label(self.uid, label).unwrap();
-                    self.db.add_label_mapping(self.uid, self.id, label_id, entry.id).unwrap();
+                    self.db
+                        .add_label_mapping(self.uid, self.id, label_id, entry.id)
+                        .unwrap();
 
                     let continue_prompt = Confirm::new("Add more labels (y/n)?").prompt().unwrap();
-                    if !continue_prompt { 
+                    if !continue_prompt {
                         break;
                     }
                 }
@@ -406,7 +430,7 @@ impl FixedAccount {
                     uid: self.uid,
                     aid: self.id,
                     db: self.db.clone(),
-                    cats : None,
+                    cats: None,
                 })
                 .with_default(
                     self.db
@@ -426,7 +450,7 @@ impl FixedAccount {
                     uid: self.uid,
                     aid: self.id,
                     db: self.db.clone(),
-                    cats : None,
+                    cats: None,
                 })
                 .with_validator(category_validator)
                 .prompt()
@@ -476,7 +500,7 @@ impl FixedAccount {
                         db: self.db.clone(),
                         ptype: ParticipantType::Payer,
                         with_accounts: false,
-                        manually_recorded_only : false,
+                        manually_recorded_only: false,
                     })
                     .with_default(
                         self.db
@@ -497,7 +521,7 @@ impl FixedAccount {
                         db: self.db.clone(),
                         ptype: ParticipantType::Payer,
                         with_accounts: false,
-                        manually_recorded_only : false,
+                        manually_recorded_only: false,
                     })
                     .with_validator(participant_validator)
                     .prompt()
@@ -541,34 +565,46 @@ impl FixedAccount {
             };
 
             if overwrite {
-                let maintain_labels = Confirm::new("Would you like to maintain all prior labels (y/n)?").prompt().unwrap();
+                let maintain_labels =
+                    Confirm::new("Would you like to maintain all prior labels (y/n)?")
+                        .prompt()
+                        .unwrap();
                 if !maintain_labels {
-                    let mapped_labels = self.db.check_and_get_label_mapping_matching_ledger_id(self.uid, self.id, id).unwrap();
-                    if !mapped_labels.is_empty() { 
+                    let mapped_labels = self
+                        .db
+                        .check_and_get_label_mapping_matching_ledger_id(self.uid, self.id, id)
+                        .unwrap();
+                    if !mapped_labels.is_empty() {
                         for label in mapped_labels {
-                            self.db.remove_label_mapping(self.uid, self.id, label.id).unwrap();
+                            self.db
+                                .remove_label_mapping(self.uid, self.id, label.id)
+                                .unwrap();
                         }
                     }
                 }
             }
 
             // add labels for transaction
-            let add_label_prompt = Confirm::new("Add labels to deposit (y/n)?").prompt().unwrap();
-            if add_label_prompt == true { 
+            let add_label_prompt = Confirm::new("Add labels to deposit (y/n)?")
+                .prompt()
+                .unwrap();
+            if add_label_prompt == true {
                 loop {
                     let label = Text::new("Enter label:")
-                        .with_autocomplete(LabelAutoCompleter { 
-                            uid : self.uid, 
-                            db : self.db.clone()
+                        .with_autocomplete(LabelAutoCompleter {
+                            uid: self.uid,
+                            db: self.db.clone(),
                         })
                         .prompt()
                         .unwrap()
                         .to_ascii_uppercase();
                     let label_id = self.db.check_and_add_label(self.uid, label).unwrap();
-                    self.db.add_label_mapping(self.uid, self.id, label_id, id).unwrap();
+                    self.db
+                        .add_label_mapping(self.uid, self.id, label_id, id)
+                        .unwrap();
 
                     let continue_prompt = Confirm::new("Add more labels (y/n)?").prompt().unwrap();
-                    if !continue_prompt { 
+                    if !continue_prompt {
                         break;
                     }
                 }
@@ -632,34 +668,46 @@ impl FixedAccount {
             };
 
             if overwrite {
-                let maintain_labels = Confirm::new("Would you like to maintain all prior labels (y/n)?").prompt().unwrap();
+                let maintain_labels =
+                    Confirm::new("Would you like to maintain all prior labels (y/n)?")
+                        .prompt()
+                        .unwrap();
                 if !maintain_labels {
-                    let mapped_labels = self.db.check_and_get_label_mapping_matching_ledger_id(self.uid, self.id, id).unwrap();
-                    if !mapped_labels.is_empty() { 
+                    let mapped_labels = self
+                        .db
+                        .check_and_get_label_mapping_matching_ledger_id(self.uid, self.id, id)
+                        .unwrap();
+                    if !mapped_labels.is_empty() {
                         for label in mapped_labels {
-                            self.db.remove_label_mapping(self.uid, self.id, label.id).unwrap();
+                            self.db
+                                .remove_label_mapping(self.uid, self.id, label.id)
+                                .unwrap();
                         }
                     }
                 }
             }
 
             // add labels for transaction
-            let add_label_prompt = Confirm::new("Add labels to deposit (y/n)?").prompt().unwrap();
-            if add_label_prompt == true { 
+            let add_label_prompt = Confirm::new("Add labels to deposit (y/n)?")
+                .prompt()
+                .unwrap();
+            if add_label_prompt == true {
                 loop {
                     let label = Text::new("Enter label:")
-                        .with_autocomplete(LabelAutoCompleter { 
-                            uid : self.uid, 
-                            db : self.db.clone()
+                        .with_autocomplete(LabelAutoCompleter {
+                            uid: self.uid,
+                            db: self.db.clone(),
                         })
                         .prompt()
                         .unwrap()
                         .to_ascii_uppercase();
                     let label_id = self.db.check_and_add_label(self.uid, label).unwrap();
-                    self.db.add_label_mapping(self.uid, self.id, label_id, entry.id).unwrap();
+                    self.db
+                        .add_label_mapping(self.uid, self.id, label_id, entry.id)
+                        .unwrap();
 
                     let continue_prompt = Confirm::new("Add more labels (y/n)?").prompt().unwrap();
-                    if !continue_prompt { 
+                    if !continue_prompt {
                         break;
                     }
                 }
@@ -674,8 +722,7 @@ impl FixedAccount {
     }
 
     pub fn modify(&self, selected_record: LedgerRecord) -> LedgerRecord {
-
-        if selected_record.info.transfer_type == TransferType::ZeroSumChange { 
+        if selected_record.info.transfer_type == TransferType::ZeroSumChange {
             println!("Unable to modify a zero-sum change!");
             return selected_record;
         }
@@ -877,7 +924,7 @@ impl FixedAccount {
                     db: self.db.clone(),
                     ptype: ParticipantType::Both,
                     with_accounts: true,
-                    manually_recorded_only : false
+                    manually_recorded_only: false,
                 })
                 .with_default(initial_account.as_str())
                 .prompt()
@@ -890,7 +937,7 @@ impl FixedAccount {
                     db: self.db.clone(),
                     ptype: ParticipantType::Both,
                     with_accounts: true,
-                    manually_recorded_only : false,
+                    manually_recorded_only: false,
                 })
                 .prompt()
                 .unwrap()
@@ -923,11 +970,14 @@ impl FixedAccount {
         return self.db.get_current_value(self.uid, self.id).unwrap();
     }
 
-    pub fn get_value_on_day(&self, day : NaiveDate) -> f32 {
-        let value_opt = self.db.get_cumulative_total_of_ledger_before_date(self.uid, self.id, day).unwrap();
-        if let Some(value) = value_opt { 
+    pub fn get_value_on_day(&self, day: NaiveDate) -> f32 {
+        let value_opt = self
+            .db
+            .get_cumulative_total_of_ledger_before_date(self.uid, self.id, day)
+            .unwrap();
+        if let Some(value) = value_opt {
             return value;
-        } else { 
+        } else {
             return 0.0;
         }
     }
@@ -940,18 +990,18 @@ impl FixedAccount {
             .db
             .get_cumulative_total_of_ledger_before_date(self.uid, self.id, start_date)
             .unwrap();
-        if starting_amount_opt.is_some() { 
+        if starting_amount_opt.is_some() {
             starting_amount = starting_amount_opt.unwrap();
-        } else { 
+        } else {
             return f32::NAN;
         }
         let ending_amount_opt = self
             .db
             .get_cumulative_total_of_ledger_before_date(self.uid, self.id, end_date)
             .unwrap();
-        if ending_amount_opt.is_some() { 
+        if ending_amount_opt.is_some() {
             ending_amount = ending_amount_opt.unwrap();
-        } else { 
+        } else {
             return f32::NAN;
         }
         rate = (ending_amount - starting_amount) / (starting_amount);
@@ -966,18 +1016,18 @@ impl FixedAccount {
             .db
             .get_cumulative_total_of_ledger_before_date(self.uid, self.id, start_date)
             .unwrap();
-        if starting_amount_opt.is_some() { 
+        if starting_amount_opt.is_some() {
             starting_amount = starting_amount_opt.unwrap();
-        } else { 
+        } else {
             return f32::NAN;
         }
         let ending_amount_opt = self
             .db
             .get_cumulative_total_of_ledger_before_date(self.uid, self.id, end_date)
             .unwrap();
-        if ending_amount_opt.is_some() { 
+        if ending_amount_opt.is_some() {
             ending_amount = ending_amount_opt.unwrap();
-        } else { 
+        } else {
             return f32::NAN;
         }
         let date_diff: i32 = end_date.num_days_from_ce() - start_date.num_days_from_ce();

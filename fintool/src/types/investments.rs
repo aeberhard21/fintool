@@ -1,8 +1,8 @@
 // use super::DbConn;
 use crate::database::DbConn;
-use shared_lib::stocks::get_stock_at_close;
 use chrono::{Days, NaiveDate};
 use rusqlite::{Error, Result};
+use shared_lib::stocks::get_stock_at_close;
 use shared_lib::TransferType;
 use std::collections::VecDeque;
 use std::collections::{HashMap, HashSet};
@@ -1564,13 +1564,13 @@ impl DbConn {
 
         let conn_lock = self.conn.lock().unwrap();
         let mut stmt = conn_lock.prepare(sql)?;
-        let exists = stmt.exists(p)?; 
-        match exists { 
+        let exists = stmt.exists(p)?;
+        match exists {
             true => {
                 sum = stmt.query_row(p, |row| row.get(0))?;
                 return Ok(Some(sum));
             }
-            false => { 
+            false => {
                 return Ok(None);
             }
         }
@@ -1624,7 +1624,11 @@ impl DbConn {
         }
     }
 
-    pub fn get_positions_by_ledger(&self, aid : u32, uid : u32) -> Result<Option<Vec<(String, String, f32)>>, rusqlite::Error> { 
+    pub fn get_positions_by_ledger(
+        &self,
+        aid: u32,
+        uid: u32,
+    ) -> Result<Option<Vec<(String, String, f32)>>, rusqlite::Error> {
         let p = rusqlite::params![uid, aid];
         let sql = "
             WITH stock_ledger AS (

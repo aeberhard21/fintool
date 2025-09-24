@@ -13,8 +13,8 @@ use crate::accounts::base::AccountOperations;
 use crate::accounts::base::AnalysisPeriod;
 use crate::accounts::certificate_of_deposit::CertificateOfDepositAccount;
 use crate::accounts::credit_card_account::CreditCardAccount;
-use crate::accounts::investment_account_manager::InvestmentAccountManager;
 use crate::accounts::health_savings_account::HealthSavingsAccount;
+use crate::accounts::investment_account_manager::InvestmentAccountManager;
 use crate::accounts::retirement_401k_plan::Retirement401kPlan;
 use crate::accounts::roth_ira::RothIraAccount;
 use crate::accounts::wallet::Wallet;
@@ -38,7 +38,13 @@ pub fn menu(_db: &mut DbConn) {
 
     let menu_options: Vec<&str>;
     if _db.is_admin(uid).unwrap() {
-        menu_options = vec!["Create User", "Change User", "Access Account(s)", "Modify Labels", "Exit"];
+        menu_options = vec![
+            "Create User",
+            "Change User",
+            "Access Account(s)",
+            "Modify Labels",
+            "Exit",
+        ];
     } else {
         menu_options = vec!["Change User", "Access Account(s)", "Modify Labels", "Exit"];
     }
@@ -82,7 +88,8 @@ fn access_account(uid: u32, db: &mut DbConn) {
     let mut acct: Box<dyn Account>;
     let mut choice;
     let mut new_account;
-    const ACCT_ACTIONS: [&'static str; 6] = ["Import", "Export", "Modify", "Record", "Report", "None"];
+    const ACCT_ACTIONS: [&'static str; 6] =
+        ["Import", "Export", "Modify", "Record", "Report", "None"];
 
     let mut accounts_is_empty = accounts.is_empty();
 
@@ -224,7 +231,7 @@ fn access_account(uid: u32, db: &mut DbConn) {
                 "Import" => {
                     acct.import();
                 }
-                "Export" => { 
+                "Export" => {
                     acct.export();
                 }
                 "Modify" => {
@@ -265,7 +272,9 @@ pub fn decode_and_init_account_type(
         AccountType::CD => Box::new(CertificateOfDepositAccount::new(uid, account.id, db)),
         AccountType::Wallet => Box::new(Wallet::new(uid, account.id, db)),
         AccountType::RetirementRothIra => Box::new(RothIraAccount::new(uid, account.id, db)),
-        AccountType::HealthSavingsAccount => Box::new(HealthSavingsAccount::new(uid, account.id, db)),
+        AccountType::HealthSavingsAccount => {
+            Box::new(HealthSavingsAccount::new(uid, account.id, db))
+        }
         AccountType::Retirement401k => Box::new(Retirement401kPlan::new(uid, account.id, db)),
     }
 }
@@ -283,7 +292,9 @@ pub fn select_analysis_period() -> AnalysisPeriod {
     return duration;
 }
 
-pub fn query_user_for_analysis_period(open_date : NaiveDate) -> (NaiveDate, NaiveDate, AnalysisPeriod) {
+pub fn query_user_for_analysis_period(
+    open_date: NaiveDate,
+) -> (NaiveDate, NaiveDate, AnalysisPeriod) {
     let duration = select_analysis_period();
     let period_start;
     let period_end;
@@ -301,7 +312,7 @@ pub fn query_user_for_analysis_period(open_date : NaiveDate) -> (NaiveDate, Naiv
 }
 
 pub fn get_analysis_period_dates(
-    open_date : NaiveDate,
+    open_date: NaiveDate,
     duration: &AnalysisPeriod,
 ) -> (NaiveDate, NaiveDate) {
     let period_end = Local::now().date_naive();
@@ -341,9 +352,7 @@ pub fn get_analysis_period_dates(
             period_start = period_start.with_day(1).unwrap();
             period_start = period_start.with_month(1).unwrap();
         }
-        AnalysisPeriod::AllTime => {
-            period_start = open_date
-        }
+        AnalysisPeriod::AllTime => period_start = open_date,
         _ => {
             panic!("Not found!");
         }
@@ -402,13 +411,13 @@ pub fn create_account(
         AccountType::Wallet => {
             new_account = Wallet::create(uid, name, db);
         }
-        AccountType::RetirementRothIra => { 
+        AccountType::RetirementRothIra => {
             new_account = RothIraAccount::create(uid, name, db);
         }
-        AccountType::HealthSavingsAccount => { 
+        AccountType::HealthSavingsAccount => {
             new_account = HealthSavingsAccount::create(uid, name, db);
         }
-        AccountType::Retirement401k => { 
+        AccountType::Retirement401k => {
             new_account = Retirement401kPlan::create(uid, name, db);
         }
     }
@@ -444,12 +453,12 @@ pub fn rename_account(db: &DbConn, uid: u32, id: u32) {
     db.rename_account(uid, id, new_name).unwrap();
 }
 
-pub fn modify_labels(uid : u32, db : &DbConn) { 
+pub fn modify_labels(uid: u32, db: &DbConn) {
     loop {
         let label = Text::new("Enter label to modify (or \"none\" to exit):")
-            .with_autocomplete(LabelAutoCompleter { 
-                uid : uid, 
-                db : db.clone()
+            .with_autocomplete(LabelAutoCompleter {
+                uid: uid,
+                db: db.clone(),
             })
             .prompt()
             .unwrap()
@@ -462,11 +471,11 @@ pub fn modify_labels(uid : u32, db : &DbConn) {
             panic!("Labels not returned!");
         }
         let info_opt = labels.iter().find(|x| x.label == label);
-        if let Some(info) = info_opt { 
+        if let Some(info) = info_opt {
             let new_label = Text::new("Enter new label:")
-                .with_autocomplete(LabelAutoCompleter { 
-                    uid : uid, 
-                    db : db.clone()
+                .with_autocomplete(LabelAutoCompleter {
+                    uid: uid,
+                    db: db.clone(),
                 })
                 .prompt()
                 .unwrap()

@@ -3,11 +3,11 @@ use core::panic;
 use crate::accounts::base::liquid_account::{self, LiquidAccount};
 use crate::database::{self, *};
 // use crate::tui::tui_budgets::create_budget;
-use crate::types::accounts::*;
-use crate::types::accounts::AccountType;
 use crate::tui::BankAccount;
-use inquire::*;
+use crate::types::accounts::AccountType;
+use crate::types::accounts::*;
 use crate::Account;
+use inquire::*;
 
 pub fn select_account_by_type(
     _uid: u32,
@@ -49,26 +49,24 @@ pub fn select_account_by_filter(_uid: u32, _db: &mut DbConn, filter: AccountFilt
 }
 
 #[cfg(feature = "ratatui_support")]
-pub fn get_total_assets(accounts : &Vec<Box<dyn Account>>) -> f32 {
+pub fn get_total_assets(accounts: &Vec<Box<dyn Account>>) -> f32 {
     let mut assets = 0.0;
     for account in accounts {
-        match account.kind() { 
-            AccountType::CreditCard => { assets = assets },
-            _ => { 
-                assets = assets + account.get_value()
-            }
+        match account.kind() {
+            AccountType::CreditCard => assets = assets,
+            _ => assets = assets + account.get_value(),
         }
     }
     return assets;
 }
 
 #[cfg(feature = "ratatui_support")]
-pub fn get_total_liabilities(accounts : &Vec<Box<dyn Account>>) -> f32 {
+pub fn get_total_liabilities(accounts: &Vec<Box<dyn Account>>) -> f32 {
     let mut liabilities = 0.0;
     for account in accounts {
-        match account.kind() { 
-            AccountType::CreditCard => { liabilities = liabilities + account.get_value() },
-            _ => { liabilities = liabilities }
+        match account.kind() {
+            AccountType::CreditCard => liabilities = liabilities + account.get_value(),
+            _ => liabilities = liabilities,
         }
     }
     return liabilities;

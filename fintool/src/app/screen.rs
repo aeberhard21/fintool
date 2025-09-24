@@ -1,4 +1,11 @@
-use ratatui::{layout::Rect, style::palette::tailwind, style::Color, text::Line, Frame, widgets::{Tabs, Block}};
+use ratatui::{
+    layout::Rect,
+    style::palette::tailwind,
+    style::Color,
+    text::Line,
+    widgets::{Block, Tabs},
+    Frame,
+};
 use strum::{Display, EnumIter, EnumString, FromRepr, IntoEnumIterator};
 use unicode_width::UnicodeWidthStr;
 
@@ -15,7 +22,7 @@ pub trait TabMenu {
     fn previous(self) -> Self;
     fn next(self) -> Self;
     fn to_tab_title(value: Self) -> Line<'static>;
-    fn render(frame: &mut Frame, area: Rect, selected_tab: usize, title: String, color : Color);
+    fn render(frame: &mut Frame, area: Rect, selected_tab: usize, title: String, color: Color);
 }
 
 #[derive(Display, Debug, Clone, Copy, FromRepr, PartialEq, Eq, EnumIter, PartialOrd)]
@@ -45,7 +52,6 @@ impl CurrentlySelecting {
     }
 }
 
-
 #[derive(Debug, Clone, Copy, FromRepr, PartialEq, Eq)]
 pub enum UserLoadedState {
     NotLoaded,
@@ -74,19 +80,20 @@ impl TabMenu for Pages {
         let text = format!("  {value}  ");
         text.into()
     }
-    fn render(frame: &mut Frame, area: Rect, selected_tab: usize, title: String, color : Color) {
-        let atype_tabs = 
-            Tabs::new(Pages::iter()
+    fn render(frame: &mut Frame, area: Rect, selected_tab: usize, title: String, color: Color) {
+        let atype_tabs = Tabs::new(
+            Pages::iter()
                 // filter out login screen
                 .filter(|x| *x >= Pages::Main)
                 .collect::<Vec<Pages>>()
                 .iter()
-                .map(|x|Pages::to_tab_title(*x)))
-            .highlight_style(color)
-            .select(selected_tab)
-            .block(Block::bordered().title(title))
-            .padding("", "")
-            .divider(" ");
+                .map(|x| Pages::to_tab_title(*x)),
+        )
+        .highlight_style(color)
+        .select(selected_tab)
+        .block(Block::bordered().title(title))
+        .padding("", "")
+        .divider(" ");
         frame.render_widget(atype_tabs, area);
     }
 }
@@ -182,6 +189,6 @@ pub fn ledger_table_constraint_len_calculator(
         cat_len as u16,
         peer_len as u16,
         desc_len as u16,
-        labels_len as u16
+        labels_len as u16,
     )
 }

@@ -11,8 +11,8 @@ use inquire::*;
 use rusqlite::types::Value;
 use rustyline::validate::Validator;
 use time::OffsetDateTime;
-use yahoo_finance_api::YahooError;
 use yahoo_finance_api::Quote;
+use yahoo_finance_api::YahooError;
 
 use crate::accounts::base::{SharesOwned, StockData};
 use crate::database::DbConn;
@@ -25,8 +25,8 @@ use crate::types::participants::ParticipantAutoCompleter;
 use crate::types::participants::ParticipantType;
 use crate::types::stock_prices::StockPriceInfo;
 use crate::types::stock_prices::StockPriceRecord;
+use shared_lib::stocks::{self, get_stock_history};
 use shared_lib::{LedgerEntry, TransferType};
-use shared_lib::stocks::{self, get_stock_history};  
 
 use super::fixed_account::FixedAccount;
 
@@ -35,19 +35,19 @@ pub struct VariableAccount {
     pub uid: u32,
     pub db: DbConn,
     pub fixed: FixedAccount,
-    pub buffer : Option<Vec<StockData>>,
-    pub open_date : NaiveDate,
+    pub buffer: Option<Vec<StockData>>,
+    pub open_date: NaiveDate,
 }
 
 impl VariableAccount {
-    pub fn new(uid: u32, id: u32, db: &DbConn, open_date : NaiveDate) -> Self {
+    pub fn new(uid: u32, id: u32, db: &DbConn, open_date: NaiveDate) -> Self {
         let mut acct: VariableAccount = Self {
             id: id,
             uid: uid,
             db: db.clone(),
             fixed: FixedAccount::new(uid, id, db.clone()),
-            buffer : None,
-            open_date : open_date,
+            buffer: None,
+            open_date: open_date,
         };
         acct.initialize_buffer();
         acct
@@ -63,30 +63,62 @@ impl VariableAccount {
             let x = x.unwrap();
             let mut tickers = x.iter().map(|x| x.0.clone()).collect::<Vec<String>>();
             tickers.dedup();
-            let mut data : Vec<StockData> = Vec::new();
+            let mut data: Vec<StockData> = Vec::new();
 
-            let buffer = if let Some(buffer) = self.buffer.take() { 
+            let buffer = if let Some(buffer) = self.buffer.take() {
                 buffer
-            } else { 
+            } else {
                 Vec::new()
             };
 
-            for ticker in tickers { 
-                let date_shares = x.iter().filter(|data| data.0 == ticker).map(|x: &(String, String, f32)| (SharesOwned { date : NaiveDate::parse_from_str(&&x.1, "%Y-%m-%d").expect(format!("Unable to decode {}", &x.1).as_str()), shares :  x.2.clone()})).collect::<Vec<SharesOwned>>();
-                let quotes = buffer.iter().find(|x| { x.ticker == ticker }).and_then(|x| Some(x.quotes.clone()));
-                let quotes = quotes.or_else(|| {Some({
-
-                    let pid = self.db.get_participant_id(self.uid, self.id, ticker.clone(), ParticipantType::Payee).unwrap();
-                    let manual_prices = self.db.check_and_get_stock_price_record_matching_from_participant_id(self.uid, self.id, pid).unwrap();
-                    if manual_prices.is_empty() {
-                        get_stock_history(ticker.clone(), earliest_date, latest_date).unwrap()
-                    } else { 
-                       Self::convert_stock_price_record_to_quotes(&manual_prices)
-                    }
-
-                })} ).unwrap();
-                data.push(StockData { ticker: ticker.clone(), quotes: quotes, history: date_shares });
-
+            for ticker in tickers {
+                let date_shares = x
+                    .iter()
+                    .filter(|data| data.0 == ticker)
+                    .map(|x: &(String, String, f32)| {
+                        (SharesOwned {
+                            date: NaiveDate::parse_from_str(&&x.1, "%Y-%m-%d")
+                                .expect(format!("Unable to decode {}", &x.1).as_str()),
+                            shares: x.2.clone(),
+                        })
+                    })
+                    .collect::<Vec<SharesOwned>>();
+                let quotes = buffer
+                    .iter()
+                    .find(|x| x.ticker == ticker)
+                    .and_then(|x| Some(x.quotes.clone()));
+                let quotes = quotes
+                    .or_else(|| {
+                        Some({
+                            let pid = self
+                                .db
+                                .get_participant_id(
+                                    self.uid,
+                                    self.id,
+                                    ticker.clone(),
+                                    ParticipantType::Payee,
+                                )
+                                .unwrap();
+                            let manual_prices = self
+                                .db
+                                .check_and_get_stock_price_record_matching_from_participant_id(
+                                    self.uid, self.id, pid,
+                                )
+                                .unwrap();
+                            if manual_prices.is_empty() {
+                                get_stock_history(ticker.clone(), earliest_date, latest_date)
+                                    .unwrap()
+                            } else {
+                                Self::convert_stock_price_record_to_quotes(&manual_prices)
+                            }
+                        })
+                    })
+                    .unwrap();
+                data.push(StockData {
+                    ticker: ticker.clone(),
+                    quotes: quotes,
+                    history: date_shares,
+                });
             }
             self.buffer = Some(data);
         }
@@ -265,14 +297,16 @@ impl VariableAccount {
             ledger_id: ledger_id,
         };
 
-        if manual_entry { 
-            let stock_price_info = StockPriceInfo { 
-                date : date_input.clone(), 
-                stock_ticker_peer_id : pid,
-                price_per_unit_share : costbasis.clone()
+        if manual_entry {
+            let stock_price_info = StockPriceInfo {
+                date: date_input.clone(),
+                stock_ticker_peer_id: pid,
+                price_per_unit_share: costbasis.clone(),
             };
 
-            self.db.add_stock_price(self.uid, self.id, stock_price_info).unwrap();
+            self.db
+                .add_stock_price(self.uid, self.id, stock_price_info)
+                .unwrap();
         }
 
         self.db
@@ -518,7 +552,7 @@ impl VariableAccount {
                 .to_string()
         };
 
-        if ticker == "None" { 
+        if ticker == "None" {
             return None;
         }
 
@@ -574,14 +608,16 @@ impl VariableAccount {
             "stock dividend/split".to_ascii_uppercase(),
         );
 
-        // if split is for a manually entered stock, 
-        // then all previous stock price records 
+        // if split is for a manually entered stock,
+        // then all previous stock price records
         // need to be updated
         let price_records = self
             .db
-            .check_and_get_stock_price_record_matching_from_participant_id(self.uid, self.id, pid).unwrap();
+            .check_and_get_stock_price_record_matching_from_participant_id(self.uid, self.id, pid)
+            .unwrap();
         if !price_records.is_empty() {
-            self.db.apply_stock_split_to_stock_prices(self.uid, self.id, pid, split);
+            self.db
+                .apply_stock_split_to_stock_prices(self.uid, self.id, pid, split);
         }
 
         let ledger_entry = LedgerInfo {
@@ -1092,69 +1128,79 @@ impl VariableAccount {
         }
     }
 
-    pub fn get_current_value(&self) -> f32 { 
+    pub fn get_current_value(&self) -> f32 {
         let today = Local::now().date_naive();
-        return self.db.get_cumulative_total_of_ledger_on_date(self.uid, self.id, today).unwrap().unwrap() + self.get_value_of_positions_on_day(&today);
+        return self
+            .db
+            .get_cumulative_total_of_ledger_on_date(self.uid, self.id, today)
+            .unwrap()
+            .unwrap()
+            + self.get_value_of_positions_on_day(&today);
     }
 
     pub fn time_weighted_return(&self, period_start: NaiveDate, period_end: NaiveDate) -> f32 {
         let mut cf: f32 = 0.0;
         let mut hps: Vec<f32> = Vec::new();
         let mut hp: f32;
-        let mut vf; 
+        let mut vf;
         let mut vi;
-        let mut rate  = 0.0;
+        let mut rate = 0.0;
 
         // println!("Beginning of analysis: {} - {}", period_start, period_end);
 
-        let starting_fixed_value_opt = self.db
-        .get_cumulative_total_of_ledger_on_date(
-            self.uid,
-            self.id,
-            period_start).unwrap();
-        
+        let starting_fixed_value_opt = self
+            .db
+            .get_cumulative_total_of_ledger_on_date(self.uid, self.id, period_start)
+            .unwrap();
+
         let starting_fixed_value;
-        if starting_fixed_value_opt.is_some() { 
+        if starting_fixed_value_opt.is_some() {
             starting_fixed_value = starting_fixed_value_opt.unwrap();
-        } else { 
+        } else {
             return f32::NAN;
         }
 
-        let starting_variable_value = self.get_value_of_positions_on_day(&period_start
+        let starting_variable_value = self.get_value_of_positions_on_day(
+            &period_start
                 .checked_sub_days(Days::new(1))
-                .expect("Invalid date!"));
+                .expect("Invalid date!"),
+        );
 
         vi = starting_fixed_value + starting_variable_value;
 
         // println!("Day: {}, Fixed: {}, Variable: {}", period_start.to_string(), starting_fixed_value, starting_variable_value);
-        
-        let external_transactions = Some(self.db.get_ledger_entries_within_timestamps(self.uid, self.id, period_start, period_end).unwrap());
+
+        let external_transactions = Some(
+            self.db
+                .get_ledger_entries_within_timestamps(self.uid, self.id, period_start, period_end)
+                .unwrap(),
+        );
         if let Some(transactions) = external_transactions {
-            if !transactions.is_empty() {  
+            if !transactions.is_empty() {
                 vf = 0.0;
-                for txn in transactions { 
-                    let end_period = NaiveDate::parse_from_str(&txn.info.date, "%Y-%m-%d").expect(format!("Invalid date format: {}", txn.info.date).as_str());
-                    cf = match txn.info.transfer_type { 
-                        TransferType::DepositFromExternalAccount => txn.info.amount, 
+                for txn in transactions {
+                    let end_period = NaiveDate::parse_from_str(&txn.info.date, "%Y-%m-%d")
+                        .expect(format!("Invalid date format: {}", txn.info.date).as_str());
+                    cf = match txn.info.transfer_type {
+                        TransferType::DepositFromExternalAccount => txn.info.amount,
                         TransferType::WithdrawalToExternalAccount => -txn.info.amount,
-                        _ => 0.0
+                        _ => 0.0,
                     };
-                    let final_fixed_value_opt = self.db
-                    .get_cumulative_total_of_ledger_on_date(
-                        self.uid,
-                        self.id,
-                        end_period).unwrap();
+                    let final_fixed_value_opt = self
+                        .db
+                        .get_cumulative_total_of_ledger_on_date(self.uid, self.id, end_period)
+                        .unwrap();
                     let final_fixed_value;
                     if final_fixed_value_opt.is_some() {
                         final_fixed_value = final_fixed_value_opt.unwrap();
-                    } else { 
+                    } else {
                         return f32::NAN;
                     }
 
                     let final_variable_value = self.get_value_of_positions_on_day(&end_period);
                     // println!("Day: {}, Fixed: {}, Variable: {}", end_period.to_string(), final_fixed_value, final_variable_value);
                     vf = final_fixed_value + final_variable_value;
-                    hp = (vf - (cf + vi) ) / (cf + vi);
+                    hp = (vf - (cf + vi)) / (cf + vi);
                     hps.push(hp);
 
                     vi = vf;
@@ -1162,22 +1208,21 @@ impl VariableAccount {
             }
         }
 
-        let final_fixed_value_opt = self.db
-        .get_cumulative_total_of_ledger_on_date(
-            self.uid,
-            self.id,
-            period_end).unwrap();
+        let final_fixed_value_opt = self
+            .db
+            .get_cumulative_total_of_ledger_on_date(self.uid, self.id, period_end)
+            .unwrap();
         let final_fixed_value;
         if final_fixed_value_opt.is_some() {
             final_fixed_value = final_fixed_value_opt.unwrap();
-        } else { 
+        } else {
             return f32::NAN;
         }
-        
+
         let final_variable_value = self.get_value_of_positions_on_day(&period_end);
         // println!("Day: {}, Fixed: {}, Variable: {}", period_end.to_string(), final_fixed_value, final_variable_value);
         vf = final_fixed_value + final_variable_value;
-        hp = (vf - vi)/vi;
+        hp = (vf - vi) / vi;
         hps.push(hp);
 
         let hp1 = hps.pop().expect("No valid cash flow periods!");
@@ -1191,24 +1236,39 @@ impl VariableAccount {
         return self.db.get_positions(self.uid, self.id).unwrap();
     }
 
-    pub fn get_value_of_positions_on_day(&self, day : &NaiveDate) -> f32 { 
+    pub fn get_value_of_positions_on_day(&self, day: &NaiveDate) -> f32 {
         let mut value: f32 = 0.0;
-        if let Some(buffer) = self.buffer.as_ref() { 
-            for e in buffer { 
-                let mut owned_shares = e.history.iter().filter(|x| { x.date <= *day }).collect::<Vec<&SharesOwned>>(); 
-                if owned_shares.is_empty() { 
+        if let Some(buffer) = self.buffer.as_ref() {
+            for e in buffer {
+                let mut owned_shares = e
+                    .history
+                    .iter()
+                    .filter(|x| x.date <= *day)
+                    .collect::<Vec<&SharesOwned>>();
+                if owned_shares.is_empty() {
                     // if no shares owned before date, then just continue 0
                     continue;
                 }
-                owned_shares.sort_by(|x,y| { (x.date).cmp(&y.date) });
+                owned_shares.sort_by(|x, y| (x.date).cmp(&y.date));
                 let most_recently_owned = owned_shares.last().unwrap();
-                let quotes = e.quotes.iter().filter(|x| { 
-                    let date = OffsetDateTime::from_unix_timestamp(x.timestamp as i64).unwrap().date();
-                    let ndate = NaiveDate::from_ymd_opt(date.year(), date.month() as u32, date.day() as u32).unwrap();
-                    ndate < *day
-                }).collect::<Vec<&Quote>>();
+                let quotes = e
+                    .quotes
+                    .iter()
+                    .filter(|x| {
+                        let date = OffsetDateTime::from_unix_timestamp(x.timestamp as i64)
+                            .unwrap()
+                            .date();
+                        let ndate = NaiveDate::from_ymd_opt(
+                            date.year(),
+                            date.month() as u32,
+                            date.day() as u32,
+                        )
+                        .unwrap();
+                        ndate < *day
+                    })
+                    .collect::<Vec<&Quote>>();
                 let quote_opt = quotes.last();
-                if quote_opt.is_none() { 
+                if quote_opt.is_none() {
                     continue;
                 }
                 let quote = quote_opt.unwrap();
@@ -1219,32 +1279,53 @@ impl VariableAccount {
         return value;
     }
 
-    pub fn get_account_value_on_day(&self, day : &NaiveDate) -> Option<f32> { 
+    pub fn get_account_value_on_day(&self, day: &NaiveDate) -> Option<f32> {
         let mut value: f32 = 0.0;
-        if let Some(buffer) = self.buffer.as_ref() { 
-            for e in buffer { 
-                let mut owned_shares = e.history.iter().filter(|x| { x.date <= *day }).collect::<Vec<&SharesOwned>>(); 
-                if owned_shares.is_empty() { 
+        if let Some(buffer) = self.buffer.as_ref() {
+            for e in buffer {
+                let mut owned_shares = e
+                    .history
+                    .iter()
+                    .filter(|x| x.date <= *day)
+                    .collect::<Vec<&SharesOwned>>();
+                if owned_shares.is_empty() {
                     // if no shares owned before date, then just continue 0
                     continue;
                 }
-                owned_shares.sort_by(|x,y| { (x.date).cmp(&y.date) });
+                owned_shares.sort_by(|x, y| (x.date).cmp(&y.date));
                 let most_recently_owned = owned_shares.last().unwrap();
-                let quote = e.quotes.iter().filter(|x| { 
-                    let date = OffsetDateTime::from_unix_timestamp(x.timestamp as i64).unwrap().date();
-                    let ndate = NaiveDate::from_ymd_opt(date.year(), date.month() as u32, date.day() as u32).unwrap();
-                    ndate < *day
-                }).last().expect(format!("No quote matching date {}", most_recently_owned.date).as_str());
+                let quote = e
+                    .quotes
+                    .iter()
+                    .filter(|x| {
+                        let date = OffsetDateTime::from_unix_timestamp(x.timestamp as i64)
+                            .unwrap()
+                            .date();
+                        let ndate = NaiveDate::from_ymd_opt(
+                            date.year(),
+                            date.month() as u32,
+                            date.day() as u32,
+                        )
+                        .unwrap();
+                        ndate < *day
+                    })
+                    .last()
+                    .expect(
+                        format!("No quote matching date {}", most_recently_owned.date).as_str(),
+                    );
                 let partial_value = (quote.close * most_recently_owned.shares as f64) as f32;
                 // println!("\tTicker: {}, Shares: {}, Price: {}, Total : {}", e.ticker, most_recently_owned.shares, quote.close, partial_value);
                 // println!("\t\tMost recent date: {}", OffsetDateTime::from_unix_timestamp(quote.timestamp as i64).unwrap().date());
                 value = value + partial_value
             }
         }
-        let fixed_value = self.db.get_cumulative_total_of_ledger_on_date(self.uid, self.id, *day).unwrap();
-        if let Some(fixed) = fixed_value { 
+        let fixed_value = self
+            .db
+            .get_cumulative_total_of_ledger_on_date(self.uid, self.id, *day)
+            .unwrap();
+        if let Some(fixed) = fixed_value {
             value = value + fixed;
-        } else { 
+        } else {
             return None;
         }
         return Some(value);
@@ -1253,55 +1334,65 @@ impl VariableAccount {
     pub fn manually_record_stock_close_price(&self) {
         let ticker = Text::new("What ticker are you recording for?")
             .with_autocomplete(ParticipantAutoCompleter {
-                uid : self.uid, 
-                aid : self.id,
-                db : self.db.clone(), 
-                ptype : ParticipantType::Payee, 
-                with_accounts : false,
-                manually_recorded_only : true,
-            }).prompt().unwrap();
-
-        let peer_id = self.db.check_and_add_participant(self.uid, self.id, ticker.clone(), ParticipantType::Payee, false);
-
-        let date = DateSelect::new("Enter date to record:")
+                uid: self.uid,
+                aid: self.id,
+                db: self.db.clone(),
+                ptype: ParticipantType::Payee,
+                with_accounts: false,
+                manually_recorded_only: true,
+            })
             .prompt()
             .unwrap();
+
+        let peer_id = self.db.check_and_add_participant(
+            self.uid,
+            self.id,
+            ticker.clone(),
+            ParticipantType::Payee,
+            false,
+        );
+
+        let date = DateSelect::new("Enter date to record:").prompt().unwrap();
         let close_price = CustomType::<f32>::new(
-            format!("Enter close price per unit share on {}:", date.to_string().clone()).as_str())
-            .prompt()
-            .unwrap();
-        let info : StockPriceInfo = StockPriceInfo { 
-            stock_ticker_peer_id: peer_id, 
-            price_per_unit_share: close_price, 
-            date: date.to_string()
+            format!(
+                "Enter close price per unit share on {}:",
+                date.to_string().clone()
+            )
+            .as_str(),
+        )
+        .prompt()
+        .unwrap();
+        let info: StockPriceInfo = StockPriceInfo {
+            stock_ticker_peer_id: peer_id,
+            price_per_unit_share: close_price,
+            date: date.to_string(),
         };
         self.db.add_stock_price(self.uid, self.id, info).unwrap();
     }
 
-    fn convert_stock_price_record_to_quotes( stock_prices : &Vec<StockPriceRecord> ) -> Vec<yahoo_finance_api::Quote> { 
-        
-        let mut quotes : Vec<yahoo_finance_api::Quote> = Vec::new();
+    fn convert_stock_price_record_to_quotes(
+        stock_prices: &Vec<StockPriceRecord>,
+    ) -> Vec<yahoo_finance_api::Quote> {
+        let mut quotes: Vec<yahoo_finance_api::Quote> = Vec::new();
         for r in stock_prices {
-            let timestamp =
-                NaiveDate::parse_from_str(&r.info.date, "%Y-%m-%d")
+            let timestamp = NaiveDate::parse_from_str(&r.info.date, "%Y-%m-%d")
                 .unwrap()
                 .and_time(NaiveTime::from_num_seconds_from_midnight_opt(0, 0).unwrap())
                 .and_utc()
                 .timestamp() as u64;
 
             quotes.push(Quote {
-                timestamp : timestamp,
+                timestamp: timestamp,
                 // right now, the user doesn't store this information in the database
-                // because it might not be available, so set it to the known value. 
-                open : r.info.price_per_unit_share as f64,
-                high : r.info.price_per_unit_share as f64,
-                low : r.info.price_per_unit_share as f64, 
-                close : r.info.price_per_unit_share as f64,
-                volume : 0, 
-                adjclose :r.info.price_per_unit_share as f64
+                // because it might not be available, so set it to the known value.
+                open: r.info.price_per_unit_share as f64,
+                high: r.info.price_per_unit_share as f64,
+                low: r.info.price_per_unit_share as f64,
+                close: r.info.price_per_unit_share as f64,
+                volume: 0,
+                adjclose: r.info.price_per_unit_share as f64,
             });
         }
         return quotes;
     }
-
 }

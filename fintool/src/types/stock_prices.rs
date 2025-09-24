@@ -4,20 +4,20 @@ use rusqlite::{Error, Result};
 use crate::database::DbConn;
 
 #[derive(Debug, Clone)]
-pub struct StockPriceInfo { 
-    pub stock_ticker_peer_id : u32, 
-    pub price_per_unit_share : f32,
-    pub date : String,
+pub struct StockPriceInfo {
+    pub stock_ticker_peer_id: u32,
+    pub price_per_unit_share: f32,
+    pub date: String,
 }
 
 #[derive(Debug, Clone)]
-pub struct StockPriceRecord { 
-    pub id : u32, 
-    pub info : StockPriceInfo,
+pub struct StockPriceRecord {
+    pub id: u32,
+    pub info: StockPriceInfo,
 }
 
-impl DbConn { 
-    pub fn create_stock_prices_table(&self) -> Result<()> { 
+impl DbConn {
+    pub fn create_stock_prices_table(&self) -> Result<()> {
         let sql = "CREATE TABLE IF NOT EXISTS stock_prices (
             id              INTEGER NOT NULL, 
             stock_ticker_peer_id INTEGER NOT NULL, 
@@ -34,24 +34,21 @@ impl DbConn {
         match conn_lock.execute(sql, ()) {
             Ok(_) => {}
             Err(error) => {
-                panic!(
-                    "Unable to create table 'stock_prices' because: {}",
-                    error
-                );
+                panic!("Unable to create table 'stock_prices' because: {}", error);
             }
         }
         Ok(())
     }
 
-    pub fn add_stock_price(&self, uid : u32, aid : u32, info : StockPriceInfo) -> Result<u32> { 
+    pub fn add_stock_price(&self, uid: u32, aid: u32, info: StockPriceInfo) -> Result<u32> {
         let id = self.get_next_stock_price_id(uid, aid).unwrap();
         let p = rusqlite::params!(
             id,
-            info.stock_ticker_peer_id, 
-            info.price_per_unit_share, 
+            info.stock_ticker_peer_id,
+            info.price_per_unit_share,
             info.date,
             uid,
-            aid, 
+            aid,
         );
         let sql = "INSERT INTO stock_prices (id, stock_ticker_peer_id, price, date, uid, aid) VALUES (?1, ?2, ?3, ?4, ?5, ?6)";
         let conn_lock = self.conn.lock().unwrap();
@@ -84,21 +81,22 @@ impl DbConn {
         let conn_lock = self.conn.lock().unwrap();
         let mut stmt = conn_lock.prepare(sql)?;
         let exists = stmt.exists(p)?;
-        let mut entries : Vec<StockPriceRecord> = Vec::new();
+        let mut entries: Vec<StockPriceRecord> = Vec::new();
         match exists {
             true => {
-                let found_entries = stmt.query_map(p, |row| {
-                    Ok(StockPriceRecord {
-                        id: row.get(0)?,
-                        info: StockPriceInfo { 
-                            stock_ticker_peer_id: row.get(1)?, 
-                            price_per_unit_share: row.get(2)?,
-                            date: row.get(3)? 
-                        },
+                let found_entries = stmt
+                    .query_map(p, |row| {
+                        Ok(StockPriceRecord {
+                            id: row.get(0)?,
+                            info: StockPriceInfo {
+                                stock_ticker_peer_id: row.get(1)?,
+                                price_per_unit_share: row.get(2)?,
+                                date: row.get(3)?,
+                            },
+                        })
                     })
-                })
-                .unwrap()
-                .collect::<Vec<_>>();
+                    .unwrap()
+                    .collect::<Vec<_>>();
 
                 for entry in found_entries {
                     entries.push(entry.unwrap());
@@ -109,7 +107,12 @@ impl DbConn {
         }
     }
 
-    pub fn remove_stock_price(&self, uid : u32, aid : u32, stock_price_id : u32) -> Result<Option<u32>, rusqlite::Error> { 
+    pub fn remove_stock_price(
+        &self,
+        uid: u32,
+        aid: u32,
+        stock_price_id: u32,
+    ) -> Result<Option<u32>, rusqlite::Error> {
         let p = rusqlite::params![stock_price_id, uid, aid];
         let id_sql = "SELECT id FROM stock_prices WHERE lid = (?1) and uid = (?2) and aid = (?3)";
         let conn_lock = self.conn.lock().unwrap();
@@ -155,30 +158,46 @@ impl DbConn {
         return Ok(Some(id));
     }
 
-    pub fn update_stock_price_record( &self, uid : u32, aid : u32, price_record : StockPriceRecord ) -> u32 { 
-        let p = rusqlite::params![uid, aid, price_record.id, price_record.info.date, price_record.info.price_per_unit_share];
+    pub fn update_stock_price_record(
+        &self,
+        uid: u32,
+        aid: u32,
+        price_record: StockPriceRecord,
+    ) -> u32 {
+        let p = rusqlite::params![
+            uid,
+            aid,
+            price_record.id,
+            price_record.info.date,
+            price_record.info.price_per_unit_share
+        ];
         let sql = "UPDATE stock_prices SET date = (?4) and price = (?5) WHERE uid = (?1) and aid = (?2) and id = (?3)";
         let conn_lock = self.conn.lock().unwrap();
         let rs = conn_lock.execute(sql, p);
-        match rs { 
-            Ok(_usize) => {price_record.id}, 
-            Err(error) => { 
-                panic!("Unable to update stock price record: {}!",error);
+        match rs {
+            Ok(_usize) => price_record.id,
+            Err(error) => {
+                panic!("Unable to update stock price record: {}!", error);
             }
         }
     }
 
-    pub fn apply_stock_split_to_stock_prices( &self, uid : u32, aid : u32, peer_id : u32, split : f32 ) -> u32 { 
+    pub fn apply_stock_split_to_stock_prices(
+        &self,
+        uid: u32,
+        aid: u32,
+        peer_id: u32,
+        split: f32,
+    ) -> u32 {
         let p = rusqlite::params![uid, aid, peer_id, split];
         let sql = "UPDATE stock_prices SET price = price / (?4) WHERE uid = (?1) and aid = (?2) and stock_ticker_peer_id = (?3)";
         let conn_lock = self.conn.lock().unwrap();
         let rs = conn_lock.execute(sql, p);
-        match rs { 
-            Ok(_usize) => {peer_id}, 
-            Err(error) => { 
-                panic!("Unable to update stock price record: {}!",error);
+        match rs {
+            Ok(_usize) => peer_id,
+            Err(error) => {
+                panic!("Unable to update stock price record: {}!", error);
             }
         }
     }
-
 }

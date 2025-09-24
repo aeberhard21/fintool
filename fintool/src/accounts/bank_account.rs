@@ -1,5 +1,5 @@
 use chrono::Local;
-use chrono::{NaiveDate, NaiveTime, Days};
+use chrono::{Days, NaiveDate, NaiveTime};
 use csv::ReaderBuilder;
 use inquire::Confirm;
 use inquire::Select;
@@ -36,6 +36,7 @@ use std::hash::Hash;
 use std::path::Path;
 use std::{option, rc};
 
+use crate::accounts::base::budget::Budget;
 use crate::accounts::base::liquid_account::LiquidAccount;
 #[cfg(feature = "ratatui_support")]
 use crate::accounts::base::AnalysisPeriod;
@@ -59,7 +60,6 @@ use crate::types::participants::ParticipantType;
 #[cfg(feature = "ratatui_support")]
 use crate::ui::{centered_rect, float_range};
 use shared_lib::TransferType;
-use crate::accounts::base::budget::Budget;
 
 use super::base::fixed_account::FixedAccount;
 use super::base::Account;
@@ -74,8 +74,8 @@ pub struct BankAccount {
     id: u32,
     db: DbConn,
     fixed: FixedAccount,
-    open_date : NaiveDate,
-    budget : Option<Budget>
+    open_date: NaiveDate,
+    budget: Option<Budget>,
 }
 
 #[derive(Helper, Completer, Hinter, Highlighter, Validator)]
@@ -98,12 +98,12 @@ impl BankAccount {
             id: id,
             db: db.clone(),
             fixed: FixedAccount::new(uid, id, db.clone()),
-            open_date : Local::now().date_naive(), 
-            budget : None
+            open_date: Local::now().date_naive(),
+            budget: None,
         };
 
         let mut ledger = acct.get_ledger();
-        if !ledger.is_empty() { 
+        if !ledger.is_empty() {
             ledger.sort_by(|l1, l2| (&l1.info.date).cmp(&l2.info.date));
             acct.open_date = NaiveDate::parse_from_str(&ledger[0].info.date, "%Y-%m-%d").unwrap();
         }
@@ -137,7 +137,7 @@ impl AccountCreation for BankAccount {
             .with_default(false)
             .prompt()
             .unwrap();
-        if add_budget { 
+        if add_budget {
             let x = Self::new(uid, aid, _db);
             let budget = Budget::new(uid, aid, _db);
             budget.create_budget();
@@ -170,18 +170,18 @@ impl AccountOperations for BankAccount {
                     self.fixed.withdrawal(None, false);
                 }
                 "Budget" => {
-                    if self.budget.is_none() { 
+                    if self.budget.is_none() {
                         let add_budget = Confirm::new("A budget for this account does not exist, would you like to create one (y/n)?")
                             .with_default(false)
                             .prompt()
                             .unwrap();
-                        if !add_budget { 
+                        if !add_budget {
                             continue;
                         }
                         let budget = Budget::new(self.uid, self.id, &self.db);
                         self.budget = Some(budget);
                     }
-                    if let Some(budget) = &self.budget { 
+                    if let Some(budget) = &self.budget {
                         budget.record();
                     }
                 }
@@ -221,7 +221,9 @@ impl AccountOperations for BankAccount {
         let mut bad_path;
         let mut csv: String = String::new();
         loop {
-            csv = rl.readline("Enter path to CSV file (or none to quit): ").unwrap();
+            csv = rl
+                .readline("Enter path to CSV file (or none to quit): ")
+                .unwrap();
             if csv.to_string() == "none" {
                 return;
             }
@@ -298,16 +300,16 @@ impl AccountOperations for BankAccount {
 
     fn modify(&mut self) {
         const MODIFY_OPTIONS: [&'static str; 4] = ["Ledger", "Categories", "People", "None"];
-        const MODIFY_OPTIONS_WITH_BUDGET: [&'static str; 5] = ["Ledger", "Categories", "People", "Budget", "None"];
-        let options = match self.has_budget() { 
-            true => { MODIFY_OPTIONS_WITH_BUDGET.to_vec() } , 
-            false => { MODIFY_OPTIONS.to_vec() }
+        const MODIFY_OPTIONS_WITH_BUDGET: [&'static str; 5] =
+            ["Ledger", "Categories", "People", "Budget", "None"];
+        let options = match self.has_budget() {
+            true => MODIFY_OPTIONS_WITH_BUDGET.to_vec(),
+            false => MODIFY_OPTIONS.to_vec(),
         };
 
-        let modify_choice =
-            Select::new("\nWhat would you like to modify:", options)
-                .prompt()
-                .unwrap();
+        let modify_choice = Select::new("\nWhat would you like to modify:", options)
+            .prompt()
+            .unwrap();
         match modify_choice {
             "Ledger" => {
                 let record_or_none = self.fixed.select_ledger_entry();
@@ -532,12 +534,12 @@ impl AccountOperations for BankAccount {
             "Budget" => {
                 if let Some(budget) = &self.budget {
                     budget.modify();
-                } else { 
+                } else {
                     let add_budget = Confirm::new("A budget for this account does not exist, would you like to create one (y/n)?")
                         .with_default(false)
                         .prompt()
                         .unwrap();
-                    if !add_budget { 
+                    if !add_budget {
                         return;
                     }
                     let budget = Budget::new(self.uid, self.id, &self.db);
@@ -570,19 +572,26 @@ impl AccountOperations for BankAccount {
         let mut rl = Editor::with_config(config).unwrap();
         rl.set_helper(Some(g));
 
-        let mut wtr = csv::Writer::from_path(rl.readline("Enter path to CSV file: ").unwrap()).unwrap();
+        let mut wtr =
+            csv::Writer::from_path(rl.readline("Enter path to CSV file: ").unwrap()).unwrap();
         let ledger = self.get_ledger();
         if !ledger.is_empty() {
-            for record in ledger { 
-                let csv_ledger_record : shared_lib::LedgerEntry = LedgerEntry { 
-                    date: record.info.date, 
+            for record in ledger {
+                let csv_ledger_record: shared_lib::LedgerEntry = LedgerEntry {
+                    date: record.info.date,
                     amount: record.info.amount,
-                    transfer_type: record.info.transfer_type, 
-                    participant: self.db.get_participant(self.uid, self.id, record.info.participant).unwrap(), 
-                    category: self.db.get_category_name(self.uid, self.id, record.info.category_id).unwrap(), 
-                    description: record.info.description, 
-                    ancillary_f32: record.info.ancillary_f32data, 
-                    stock_info: None 
+                    transfer_type: record.info.transfer_type,
+                    participant: self
+                        .db
+                        .get_participant(self.uid, self.id, record.info.participant)
+                        .unwrap(),
+                    category: self
+                        .db
+                        .get_category_name(self.uid, self.id, record.info.category_id)
+                        .unwrap(),
+                    description: record.info.description,
+                    ancillary_f32: record.info.ancillary_f32data,
+                    stock_info: None,
                 };
                 let flattened = FlatLedgerEntry::from(csv_ledger_record);
                 wtr.serialize(flattened).unwrap();
@@ -603,7 +612,8 @@ impl AccountOperations for BankAccount {
                 println!("\tTotal Account Value: {}", value);
             }
             "Simple Growth Rate" => {
-                let (period_start, period_end,_) = query_user_for_analysis_period(self.get_open_date());
+                let (period_start, period_end, _) =
+                    query_user_for_analysis_period(self.get_open_date());
                 let rate = self.fixed.simple_rate_of_return(period_start, period_end);
                 println!("\tRate of return: {}%", rate);
             }
@@ -730,8 +740,8 @@ impl AccountOperations for BankAccount {
 
 #[cfg(feature = "ratatui_support")]
 impl BankAccount {
-    fn get_growth(&self, start_period : NaiveDate, end_period : NaiveDate) -> f32 {
-        return self.fixed.simple_rate_of_return(start_period,   end_period);
+    fn get_growth(&self, start_period: NaiveDate, end_period: NaiveDate) -> f32 {
+        return self.fixed.simple_rate_of_return(start_period, end_period);
     }
 
     fn render_simple_growth(&self, frame: &mut Frame, area: Rect, app: &mut App) {
@@ -756,7 +766,16 @@ impl BankAccount {
                     .borders(Borders::ALL)
                     .title(format!(" Growth - {} ", app.analysis_period))
                     .title_alignment(layout::Alignment::Center)
-                    .padding(Padding::new(0,0,  (if area.height > 4 { area.height/2 -2 } else {0}), 0)),
+                    .padding(Padding::new(
+                        0,
+                        0,
+                        (if area.height > 4 {
+                            area.height / 2 - 2
+                        } else {
+                            0
+                        }),
+                        0,
+                    )),
             )
             .bg(tailwind::SLATE.c900);
         frame.render_widget(display, area);
@@ -764,13 +783,37 @@ impl BankAccount {
 
     fn render_growth_chart(&self, frame: &mut Frame, area: Rect, app: &mut App) {
         let (start, end) = (app.analysis_start, app.analysis_end);
-        let starting_amount_opt = self.db.get_cumulative_total_of_ledger_before_date(self.uid, self.id, start).unwrap();
-        let mut entries : Vec<LedgerRecord> = 
-        if starting_amount_opt.is_some() { 
+        let starting_amount_opt = self
+            .db
+            .get_cumulative_total_of_ledger_before_date(self.uid, self.id, start)
+            .unwrap();
+        let mut entries: Vec<LedgerRecord> = if starting_amount_opt.is_some() {
             let starting_amount = starting_amount_opt.unwrap();
-            vec![LedgerRecord{ id : 0, info : LedgerInfo { date: start.checked_add_days(Days::new(1)).unwrap().to_string(), amount: starting_amount, transfer_type: TransferType::ZeroSumChange, participant: 0, category_id: 0, description: "initial".to_string(), ancillary_f32data: 0.0 }}]
+            vec![LedgerRecord {
+                id: 0,
+                info: LedgerInfo {
+                    date: start.checked_add_days(Days::new(1)).unwrap().to_string(),
+                    amount: starting_amount,
+                    transfer_type: TransferType::ZeroSumChange,
+                    participant: 0,
+                    category_id: 0,
+                    description: "initial".to_string(),
+                    ancillary_f32data: 0.0,
+                },
+            }]
         } else {
-            vec![LedgerRecord{ id : 0, info : LedgerInfo { date: start.checked_add_days(Days::new(1)).unwrap().to_string(), amount: 0.0, transfer_type: TransferType::ZeroSumChange, participant: 0, category_id: 0, description: "initial".to_string(), ancillary_f32data: 0.0 }}]
+            vec![LedgerRecord {
+                id: 0,
+                info: LedgerInfo {
+                    date: start.checked_add_days(Days::new(1)).unwrap().to_string(),
+                    amount: 0.0,
+                    transfer_type: TransferType::ZeroSumChange,
+                    participant: 0,
+                    category_id: 0,
+                    description: "initial".to_string(),
+                    ancillary_f32data: 0.0,
+                },
+            }]
         };
         entries.append(&mut self.get_ledger_within_dates(start, end));
         if !(entries.len() == 1) {
@@ -833,7 +876,8 @@ impl BankAccount {
 
             let chart = Chart::new(datasets)
                 .block(
-                    Block::bordered().title(Line::from(" Value Over Time ").cyan().bold().centered()),
+                    Block::bordered()
+                        .title(Line::from(" Value Over Time ").cyan().bold().centered()),
                 )
                 .x_axis(
                     Axis::default()
@@ -869,7 +913,16 @@ impl BankAccount {
                         .borders(Borders::ALL)
                         .title("Value Over Time")
                         .title_alignment(layout::Alignment::Center)
-                        .padding(Padding::new(0,0, (if area.height > 4 { area.height/2 -2 } else {0}), 0)),
+                        .padding(Padding::new(
+                            0,
+                            0,
+                            (if area.height > 4 {
+                                area.height / 2 - 2
+                            } else {
+                                0
+                            }),
+                            0,
+                        )),
                 )
                 .bg(tailwind::SLATE.c900);
 
@@ -900,16 +953,16 @@ impl AccountData for BankAccount {
     fn get_value(&self) -> f32 {
         return self.fixed.get_current_value();
     }
-    fn get_value_on_day(&self, day : NaiveDate) -> f32 {
+    fn get_value_on_day(&self, day: NaiveDate) -> f32 {
         return self.fixed.get_value_on_day(day);
     }
     fn get_open_date(&self) -> NaiveDate {
-        return self.open_date
+        return self.open_date;
     }
 }
 
-impl LiquidAccount for BankAccount { 
-    fn get_positive_cash_flow(&self, start : NaiveDate, end : NaiveDate) -> f32 {
+impl LiquidAccount for BankAccount {
+    fn get_positive_cash_flow(&self, start: NaiveDate, end: NaiveDate) -> f32 {
         let ledger = self.get_ledger_within_dates(start, end);
         if ledger.is_empty() {
             return 0.0;
@@ -917,14 +970,22 @@ impl LiquidAccount for BankAccount {
 
         let mut amt = 0.0;
         for txn in ledger {
-
             if !txn.info.transfer_type.is_deposit() {
                 continue;
             }
 
-            if let Some(link) = self.db.check_and_get_account_transaction_record_matching_to_ledger_id(self.uid, self.id, txn.id).unwrap() { 
+            if let Some(link) = self
+                .db
+                .check_and_get_account_transaction_record_matching_to_ledger_id(
+                    self.uid, self.id, txn.id,
+                )
+                .unwrap()
+            {
                 // if linked, checked to see that the account is not another liquid account (if liquid, then skip because cash is still available)
-                let peer_account = self.db.get_account(self.uid, link.info.from_account).unwrap();
+                let peer_account = self
+                    .db
+                    .get_account(self.uid, link.info.from_account)
+                    .unwrap();
                 if !peer_account.is_liquid_account() {
                     continue;
                 }
@@ -935,7 +996,7 @@ impl LiquidAccount for BankAccount {
         amt
     }
 
-    fn get_negative_cash_flow(&self, start : NaiveDate, end : NaiveDate) -> f32 {
+    fn get_negative_cash_flow(&self, start: NaiveDate, end: NaiveDate) -> f32 {
         let ledger = self.get_ledger_within_dates(start, end);
         if ledger.is_empty() {
             return 0.0;
@@ -943,14 +1004,22 @@ impl LiquidAccount for BankAccount {
 
         let mut amt = 0.0;
         for txn in ledger {
-
             if !txn.info.transfer_type.is_withdrawal() {
                 continue;
             }
 
-            if let Some(link) = self.db.check_and_get_account_transaction_record_matching_to_ledger_id(self.uid, self.id, txn.id).unwrap() { 
+            if let Some(link) = self
+                .db
+                .check_and_get_account_transaction_record_matching_to_ledger_id(
+                    self.uid, self.id, txn.id,
+                )
+                .unwrap()
+            {
                 // if linked, checked to see that the account is not another liquid account (if liquid, then skip because cash is still available)
-                let peer_account = self.db.get_account(self.uid, link.info.from_account).unwrap();
+                let peer_account = self
+                    .db
+                    .get_account(self.uid, link.info.from_account)
+                    .unwrap();
                 if !peer_account.is_liquid_account() {
                     continue;
                 }
@@ -960,8 +1029,8 @@ impl LiquidAccount for BankAccount {
 
         amt
     }
-    
-    fn get_cash_flow(&self, start : NaiveDate, end : NaiveDate) -> f32 {
+
+    fn get_cash_flow(&self, start: NaiveDate, end: NaiveDate) -> f32 {
         return self.get_positive_cash_flow(start, end) - self.get_negative_cash_flow(start, end);
     }
 }
@@ -992,7 +1061,7 @@ impl AccountUI for BankAccount {
 }
 
 impl Account for BankAccount {
-    fn kind(&self) -> AccountType { 
+    fn kind(&self) -> AccountType {
         return AccountType::Bank;
     }
     #[cfg(feature = "ratatui_support")]
@@ -1006,6 +1075,9 @@ impl Account for BankAccount {
     fn set_budget(&self) {
         let mut acct = self.db.get_account(self.uid, self.id).unwrap();
         acct.info.has_budget = true;
-        let _ = self.db.update_account(self.uid, self.id, &acct.info).unwrap();
+        let _ = self
+            .db
+            .update_account(self.uid, self.id, &acct.info)
+            .unwrap();
     }
 }

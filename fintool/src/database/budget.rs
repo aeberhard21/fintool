@@ -8,9 +8,9 @@ pub struct BudgetItem {
 }
 
 #[derive(Debug, Clone)]
-pub struct BudgetRecord { 
-    pub id : u32, 
-    pub item : BudgetItem
+pub struct BudgetRecord {
+    pub id: u32,
+    pub item: BudgetItem,
 }
 
 impl DbConn {
@@ -33,7 +33,7 @@ impl DbConn {
         Ok(())
     }
 
-    pub fn add_budget_item(&self, uid : u32, aid: u32, item: BudgetItem) -> Result<u32> {
+    pub fn add_budget_item(&self, uid: u32, aid: u32, item: BudgetItem) -> Result<u32> {
         let id = self.get_next_budget_item_id(uid, aid).unwrap();
         let p = rusqlite::params!(id, item.category_id, item.value, aid, uid);
         let sql = "INSERT INTO budgets (id, cid, value, aid, uid ) VALUES (?1, ?2, ?3, ?4, ?5)";
@@ -49,7 +49,11 @@ impl DbConn {
         }
     }
 
-    pub fn get_budget(&self, uid: u32, aid: u32) -> Result<Option<Vec<BudgetRecord>>, rusqlite::Error> {
+    pub fn get_budget(
+        &self,
+        uid: u32,
+        aid: u32,
+    ) -> Result<Option<Vec<BudgetRecord>>, rusqlite::Error> {
         let p = rusqlite::params![aid, uid];
         let sql = "SELECT * FROM budgets WHERE aid = (?1) and uid = (?2)";
         let conn_lock = self.conn.lock().unwrap();
@@ -61,12 +65,13 @@ impl DbConn {
                 stmt = conn_lock.prepare(sql)?;
                 let items: Vec<Result<BudgetRecord, Error>> = stmt
                     .query_map(p, |row| {
-                        Ok(BudgetRecord{
-                            id : row.get(0)?, 
-                            item : BudgetItem {
-                            category_id: row.get(0)?,
-                            value: row.get(1)?,
-                        }})
+                        Ok(BudgetRecord {
+                            id: row.get(0)?,
+                            item: BudgetItem {
+                                category_id: row.get(0)?,
+                                value: row.get(1)?,
+                            },
+                        })
                     })
                     .unwrap()
                     .collect::<Vec<_>>();
@@ -75,9 +80,7 @@ impl DbConn {
                 }
                 Ok(Some(budget_items))
             }
-            false => {
-                Ok(None)
-            }
+            false => Ok(None),
         }
     }
 
@@ -119,8 +122,15 @@ impl DbConn {
         aid: u32,
         updated_item: BudgetRecord,
     ) -> Result<(), rusqlite::Error> {
-        let p = rusqlite::params![aid, uid, updated_item.id, updated_item.item.category_id, updated_item.item.value];
-        let sql = "UPDATE budgets SET cid = ?4, value = ?5 WHERE aid = (?1) and id = (?3) and uid = (?2)";
+        let p = rusqlite::params![
+            aid,
+            uid,
+            updated_item.id,
+            updated_item.item.category_id,
+            updated_item.item.value
+        ];
+        let sql =
+            "UPDATE budgets SET cid = ?4, value = ?5 WHERE aid = (?1) and id = (?3) and uid = (?2)";
         let conn_lock = self.conn.lock().unwrap();
         match conn_lock.execute(sql, p) {
             Ok(_) => Ok(()),
@@ -138,7 +148,7 @@ impl DbConn {
         let sql = "DELETE FROM budgets WHERE uid = ?1 and aid = ?2 AND cid = ?3";
         let conn_lock = self.conn.lock().unwrap();
         match conn_lock.execute(sql, p) {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(error) => {
                 panic!(
                     "Unable to update budget item {} for account {}: {}",

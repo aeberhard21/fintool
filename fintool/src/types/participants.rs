@@ -413,7 +413,7 @@ pub struct ParticipantAutoCompleter {
     pub db: DbConn,
     pub ptype: ParticipantType,
     pub with_accounts: bool,
-    pub manually_recorded_only : bool,
+    pub manually_recorded_only: bool,
 }
 
 impl Autocomplete for ParticipantAutoCompleter {
@@ -422,25 +422,31 @@ impl Autocomplete for ParticipantAutoCompleter {
         if !self.with_accounts {
             suggestions = match self.ptype {
                 ParticipantType::Payee => {
-                    let (mut x, mut y) = if self.manually_recorded_only { 
-                        let x : Vec<String> = self.db.get_participants_by_transfer_type_who_exist_in_stock_price_table(
-                            self.uid, 
-                            self.aid, 
-                            TransferType::WithdrawalToExternalAccount
-                        ).unwrap()
-                        .into_iter()
-                        .filter(|name| name.starts_with(input.to_ascii_uppercase().as_str()))
-                        .collect();
-                        let y : Vec<String> = self.db.get_participants_by_transfer_type_who_exist_in_stock_price_table(
-                            self.uid, 
-                            self.aid, 
-                            TransferType::WithdrawalToInternalAccount
-                        ).unwrap()
-                        .into_iter()
-                        .filter(|name| name.starts_with(input.to_ascii_uppercase().as_str()))
-                        .collect();
+                    let (mut x, mut y) = if self.manually_recorded_only {
+                        let x: Vec<String> = self
+                            .db
+                            .get_participants_by_transfer_type_who_exist_in_stock_price_table(
+                                self.uid,
+                                self.aid,
+                                TransferType::WithdrawalToExternalAccount,
+                            )
+                            .unwrap()
+                            .into_iter()
+                            .filter(|name| name.starts_with(input.to_ascii_uppercase().as_str()))
+                            .collect();
+                        let y: Vec<String> = self
+                            .db
+                            .get_participants_by_transfer_type_who_exist_in_stock_price_table(
+                                self.uid,
+                                self.aid,
+                                TransferType::WithdrawalToInternalAccount,
+                            )
+                            .unwrap()
+                            .into_iter()
+                            .filter(|name| name.starts_with(input.to_ascii_uppercase().as_str()))
+                            .collect();
                         (x, y)
-                    } else { 
+                    } else {
                         let mut x: Vec<String> = self
                             .db
                             .get_participants_by_transfer_type(

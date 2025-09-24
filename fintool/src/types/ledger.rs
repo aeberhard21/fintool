@@ -32,7 +32,7 @@ pub struct DisplayableLedgerInfo {
     pub category: String,
     pub description: String,
     pub ancillary_f32data: String,
-    pub labels : String
+    pub labels: String,
 }
 
 #[derive(Clone, Debug)]
@@ -275,7 +275,7 @@ impl DbConn {
                                 category: row.get(5)?,
                                 description: row.get(6)?,
                                 ancillary_f32data: row.get::<_, f32>(7)?.to_string(),
-                                labels : row.get(8)?
+                                labels: row.get(8)?,
                             },
                         })
                     })
@@ -553,13 +553,13 @@ impl DbConn {
 
         let conn_lock = self.conn.lock().unwrap();
         let mut stmt = conn_lock.prepare(sql)?;
-        let exists = stmt.exists(p)?; 
-        match exists { 
+        let exists = stmt.exists(p)?;
+        match exists {
             true => {
                 sum = stmt.query_row(p, |row| row.get(0))?;
                 return Ok(Some(sum));
             }
-            false => { 
+            false => {
                 return Ok(None);
             }
         }
@@ -581,19 +581,25 @@ impl DbConn {
 
         let conn_lock = self.conn.lock().unwrap();
         let mut stmt = conn_lock.prepare(sql)?;
-        let exists = stmt.exists(p)?; 
-        match exists { 
+        let exists = stmt.exists(p)?;
+        match exists {
             true => {
                 sum = stmt.query_row(p, |row| row.get(0))?;
                 return Ok(Some(sum));
             }
-            false => { 
+            false => {
                 return Ok(None);
             }
         }
     }
 
-    pub fn get_external_transactions_between_timestamps(&self, uid : u32, aid : u32, start : NaiveDate, end : NaiveDate) -> Result<Option<Vec<LedgerRecord>>, rusqlite::Error> {
+    pub fn get_external_transactions_between_timestamps(
+        &self,
+        uid: u32,
+        aid: u32,
+        start: NaiveDate,
+        end: NaiveDate,
+    ) -> Result<Option<Vec<LedgerRecord>>, rusqlite::Error> {
         let p = rusqlite::params![
             aid,
             start.format("%Y-%m-%d").to_string(),
@@ -641,8 +647,8 @@ impl DbConn {
         &self,
         uid: u32,
         aid: u32,
-        start_date : NaiveDate, 
-        end_date : NaiveDate
+        start_date: NaiveDate,
+        end_date: NaiveDate,
     ) -> Result<Option<Vec<Expenditure>>, rusqlite::Error> {
         let p = rusqlite::params![uid, aid, start_date.to_string(), end_date.to_string()];
         let sql = "
@@ -706,13 +712,13 @@ impl DbConn {
 
         let conn_lock = self.conn.lock().unwrap();
         let mut stmt = conn_lock.prepare(sql)?;
-        let exists = stmt.exists(p)?; 
-        match exists { 
+        let exists = stmt.exists(p)?;
+        match exists {
             true => {
                 sum = stmt.query_row(p, |row| row.get(0))?;
                 return Ok(Some(sum));
             }
-            false => { 
+            false => {
                 return Ok(None);
             }
         }

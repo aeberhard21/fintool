@@ -21,16 +21,16 @@ use std::io::Error;
 use std::path::{Path, PathBuf};
 use std::result;
 
+use crate::accounts::base::Account;
 #[cfg(feature = "ratatui_support")]
 use crate::app::app::App;
 #[cfg(feature = "ratatui_support")]
-use crate::app::screen::{CurrentScreen, CurrentlySelecting, UserLoadedState, Pages};
+use crate::app::screen::{CurrentScreen, CurrentlySelecting, Pages, UserLoadedState};
 #[cfg(feature = "ratatui_support")]
 use crate::app::ui;
 use crate::database::DbConn;
 use crate::tui::tui_user::create_user;
 use crate::tui::*;
-use crate::accounts::base::Account;
 use crate::types::accounts::AccountType;
 
 mod accounts;
@@ -116,8 +116,8 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                 let mut profiles_loaded = 0;
                 let account_records = app.db.get_user_accounts(app.user_id.unwrap()).unwrap();
                 let number_of_accounts = account_records.len();
-                
-                if number_of_accounts == 0 { 
+
+                if number_of_accounts == 0 {
                     app.load_profile_progress = 1.;
                     terminal.draw(|f| ui::ui(f, app))?;
                     app.current_screen = CurrentScreen::Landing;
@@ -126,11 +126,12 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                 }
 
                 let mut accounts = Vec::new();
-                for record in account_records { 
+                for record in account_records {
                     let acct = decode_and_init_account_type(app.user_id.unwrap(), &app.db, &record);
                     profiles_loaded = profiles_loaded + 1;
-                    app.load_profile_progress = (profiles_loaded as f64 / number_of_accounts as f64);
-                    
+                    app.load_profile_progress =
+                        (profiles_loaded as f64 / number_of_accounts as f64);
+
                     // force update to progress bar
                     terminal.draw(|f| ui::ui(f, app))?;
                     accounts.push(acct);
@@ -140,7 +141,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
 
                 terminal.draw(|f: &mut ratatui::Frame<'_>| ui::ui(f, app))?;
 
-                if profiles_loaded == number_of_accounts { 
+                if profiles_loaded == number_of_accounts {
                     app.current_screen = CurrentScreen::Landing;
                     app.user_load_state = UserLoadedState::Loaded;
                 }
@@ -206,25 +207,35 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                                 // get accounts for filter
                                 app.restore_account();
                                 app.advance_account_type();
-                                    app.accounts_for_type = if !app.accounts.is_empty() {
-                                        let filtered_accounts = app.accounts.iter().filter(|x| {
-                                                is_account_type(x, app.selected_atype_tab)
-                                        }).collect::<Vec<&Box<dyn Account>>>();
-                                        let names = filtered_accounts.iter().map(|x| x.get_name()).collect::<Vec<String>>();
-                                        names
-                                    } else {
-                                        Vec::new()
-                                    };
-                                    app.get_account();
-                                }
+                                app.accounts_for_type = if !app.accounts.is_empty() {
+                                    let filtered_accounts = app
+                                        .accounts
+                                        .iter()
+                                        .filter(|x| is_account_type(x, app.selected_atype_tab))
+                                        .collect::<Vec<&Box<dyn Account>>>();
+                                    let names = filtered_accounts
+                                        .iter()
+                                        .map(|x| x.get_name())
+                                        .collect::<Vec<String>>();
+                                    names
+                                } else {
+                                    Vec::new()
+                                };
+                                app.get_account();
+                            }
                             Some(CurrentlySelecting::MainTabs) => {
                                 // moving to accounts tab
                                 if let Pages::Main = app.selected_page_tab {
                                     app.accounts_for_type = if !app.accounts.is_empty() {
-                                        let filtered_accounts = app.accounts.iter().filter(|x| {
-                                                is_account_type(x, app.selected_atype_tab)
-                                        }).collect::<Vec<&Box<dyn Account>>>();
-                                        let names = filtered_accounts.iter().map(|x| x.get_name()).collect::<Vec<String>>();
+                                        let filtered_accounts = app
+                                            .accounts
+                                            .iter()
+                                            .filter(|x| is_account_type(x, app.selected_atype_tab))
+                                            .collect::<Vec<&Box<dyn Account>>>();
+                                        let names = filtered_accounts
+                                            .iter()
+                                            .map(|x| x.get_name())
+                                            .collect::<Vec<String>>();
                                         names
                                     } else {
                                         Vec::new()
@@ -245,15 +256,20 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                         Some(CurrentlySelecting::AccountTypeTabs) => {
                             app.restore_account();
                             app.retreat_account_type();
-                                    app.accounts_for_type = if !app.accounts.is_empty() {
-                                        let filtered_accounts = app.accounts.iter().filter(|x| {
-                                                is_account_type(x, app.selected_atype_tab)
-                                        }).collect::<Vec<&Box<dyn Account>>>();
-                                        let names = filtered_accounts.iter().map(|x| x.get_name()).collect::<Vec<String>>();
-                                        names
-                                    } else {
-                                        Vec::new()
-                                    };
+                            app.accounts_for_type = if !app.accounts.is_empty() {
+                                let filtered_accounts = app
+                                    .accounts
+                                    .iter()
+                                    .filter(|x| is_account_type(x, app.selected_atype_tab))
+                                    .collect::<Vec<&Box<dyn Account>>>();
+                                let names = filtered_accounts
+                                    .iter()
+                                    .map(|x| x.get_name())
+                                    .collect::<Vec<String>>();
+                                names
+                            } else {
+                                Vec::new()
+                            };
                             app.get_account();
                         }
                         Some(CurrentlySelecting::MainTabs) => {
@@ -261,7 +277,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                             app.retreat_page_tab();
                         }
                         _ => {}
-                    }
+                    },
                     (_, KeyCode::Backspace) => {
                         if let Some(select_mode) = &app.currently_selected {
                             match select_mode {
@@ -269,10 +285,15 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                                     app.restore_account();
                                     app.retreat_currently_selecting();
                                     app.accounts_for_type = if !app.accounts.is_empty() {
-                                        let filtered_accounts = app.accounts.iter().filter(|x| {
-                                                is_account_type(x, app.selected_atype_tab)
-                                        }).collect::<Vec<&Box<dyn Account>>>();
-                                        let names = filtered_accounts.iter().map(|x| x.get_name()).collect::<Vec<String>>();
+                                        let filtered_accounts = app
+                                            .accounts
+                                            .iter()
+                                            .filter(|x| is_account_type(x, app.selected_atype_tab))
+                                            .collect::<Vec<&Box<dyn Account>>>();
+                                        let names = filtered_accounts
+                                            .iter()
+                                            .map(|x| x.get_name())
+                                            .collect::<Vec<String>>();
                                         names
                                     } else {
                                         Vec::new()
@@ -285,7 +306,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                                     // app.restore_account();
                                     app.retreat_currently_selecting();
                                 }
-                                CurrentlySelecting::AccountTypeTabs => { 
+                                CurrentlySelecting::AccountTypeTabs => {
                                     app.retreat_currently_selecting();
                                 }
                                 _ => {}
@@ -337,10 +358,15 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                                     terminal.clear().unwrap();
 
                                     app.accounts_for_type = if !app.accounts.is_empty() {
-                                        let filtered_accounts = app.accounts.iter().filter(|x| {
-                                                is_account_type(x, app.selected_atype_tab)
-                                        }).collect::<Vec<&Box<dyn Account>>>();
-                                        let names = filtered_accounts.iter().map(|x| x.get_name()).collect::<Vec<String>>();
+                                        let filtered_accounts = app
+                                            .accounts
+                                            .iter()
+                                            .filter(|x| is_account_type(x, app.selected_atype_tab))
+                                            .collect::<Vec<&Box<dyn Account>>>();
+                                        let names = filtered_accounts
+                                            .iter()
+                                            .map(|x| x.get_name())
+                                            .collect::<Vec<String>>();
                                         names
                                     } else {
                                         Vec::new()
@@ -382,7 +408,8 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                                             app.user_id.unwrap(),
                                             app.selected_atype_tab,
                                         )
-                                        .unwrap().unwrap();
+                                        .unwrap()
+                                        .unwrap();
 
                                     enable_raw_mode()?;
                                     terminal.clear().unwrap();
@@ -395,7 +422,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                         // modify ledger
                         if let Some(select_mode) = &app.currently_selected {
                             match select_mode {
-                                CurrentlySelecting::MainTabs => { 
+                                CurrentlySelecting::MainTabs => {
                                     if Pages::Main == app.selected_page_tab {
                                         disable_raw_mode()?;
                                         execute!(
@@ -412,7 +439,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                                         }
 
                                         enable_raw_mode()?;
-                                        terminal.clear().unwrap();           
+                                        terminal.clear().unwrap();
                                     }
                                 }
                                 CurrentlySelecting::Account => {
@@ -499,7 +526,8 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                         .unwrap();
                         // app.analysis_period = select_analysis_period();
                         if let Some(acct) = &app.account {
-                            (app.analysis_start, app.analysis_end, app.analysis_period) = query_user_for_analysis_period(acct.get_open_date());
+                            (app.analysis_start, app.analysis_end, app.analysis_period) =
+                                query_user_for_analysis_period(acct.get_open_date());
                         }
                         enable_raw_mode()?;
                         terminal.clear().unwrap();
@@ -557,18 +585,18 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
 }
 
 #[cfg(feature = "ratatui_support")]
-pub fn is_account_type( x : &Box<dyn Account>, atype : AccountType) -> bool { 
+pub fn is_account_type(x: &Box<dyn Account>, atype: AccountType) -> bool {
     use crate::accounts::bank_account::BankAccount;
     use crate::accounts::certificate_of_deposit::CertificateOfDepositAccount;
     use crate::accounts::credit_card_account::CreditCardAccount;
-    use crate::accounts::investment_account_manager::InvestmentAccountManager;
     use crate::accounts::health_savings_account::HealthSavingsAccount;
+    use crate::accounts::investment_account_manager::InvestmentAccountManager;
     use crate::accounts::retirement_401k_plan::Retirement401kPlan;
     use crate::accounts::roth_ira::RothIraAccount;
     use crate::accounts::wallet::Wallet;
     use crate::types::accounts::AccountType;
-    match atype { 
-        AccountType::Bank => x.as_any().is::<BankAccount>(),                                    
+    match atype {
+        AccountType::Bank => x.as_any().is::<BankAccount>(),
         AccountType::Investment => x.as_any().is::<InvestmentAccountManager>(),
         AccountType::Wallet => x.as_any().is::<Wallet>(),
         AccountType::CD => x.as_any().is::<CertificateOfDepositAccount>(),

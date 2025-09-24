@@ -93,7 +93,7 @@ impl ChargeAccount {
                     uid: self.uid,
                     aid: self.id,
                     db: self.db.clone(),
-                    cats : None,
+                    cats: None,
                 })
                 .with_default(
                     self.db
@@ -110,7 +110,7 @@ impl ChargeAccount {
                     uid: self.uid,
                     aid: self.id,
                     db: self.db.clone(),
-                    cats : None,
+                    cats: None,
                 })
                 .prompt()
                 .unwrap()
@@ -145,7 +145,7 @@ impl ChargeAccount {
                     db: self.db.clone(),
                     ptype: ParticipantType::Payee,
                     with_accounts: false,
-                    manually_recorded_only : false
+                    manually_recorded_only: false,
                 })
                 .with_default(
                     self.db
@@ -163,7 +163,7 @@ impl ChargeAccount {
                     db: self.db.clone(),
                     ptype: ParticipantType::Payee,
                     with_accounts: false,
-                    manually_recorded_only : false
+                    manually_recorded_only: false,
                 })
                 .prompt()
                 .unwrap()
@@ -269,7 +269,7 @@ impl ChargeAccount {
                     uid: self.uid,
                     aid: self.id,
                     db: self.db.clone(),
-                    cats : None,
+                    cats: None,
                 })
                 .with_default(
                     self.db
@@ -289,7 +289,7 @@ impl ChargeAccount {
                     uid: self.uid,
                     aid: self.id,
                     db: self.db.clone(),
-                    cats : None,
+                    cats: None,
                 })
                 .with_validator(category_validator)
                 .prompt()
@@ -339,7 +339,7 @@ impl ChargeAccount {
                         db: self.db.clone(),
                         ptype: ParticipantType::Payer,
                         with_accounts: false,
-                        manually_recorded_only : false
+                        manually_recorded_only: false,
                     })
                     .with_default(
                         self.db
@@ -360,7 +360,7 @@ impl ChargeAccount {
                         db: self.db.clone(),
                         ptype: ParticipantType::Payer,
                         with_accounts: false,
-                        manually_recorded_only : false,
+                        manually_recorded_only: false,
                     })
                     .with_validator(participant_validator)
                     .prompt()
@@ -668,7 +668,7 @@ impl ChargeAccount {
                     db: self.db.clone(),
                     ptype: ParticipantType::Both,
                     with_accounts: true,
-                    manually_recorded_only : false
+                    manually_recorded_only: false,
                 })
                 .with_default(initial_account.as_str())
                 .prompt()
@@ -681,7 +681,7 @@ impl ChargeAccount {
                     db: self.db.clone(),
                     ptype: ParticipantType::Both,
                     with_accounts: true,
-                    manually_recorded_only : false
+                    manually_recorded_only: false,
                 })
                 .prompt()
                 .unwrap()
@@ -715,10 +715,14 @@ impl ChargeAccount {
         return -self.db.get_current_value(self.uid, self.id).unwrap();
     }
 
-    pub fn get_balance_on_day(&self, day : NaiveDate) -> f32 { 
-        if let Some(value) = self.db.get_cumulative_total_of_ledger_on_date(self.uid, self.id, day).unwrap() {
+    pub fn get_balance_on_day(&self, day: NaiveDate) -> f32 {
+        if let Some(value) = self
+            .db
+            .get_cumulative_total_of_ledger_on_date(self.uid, self.id, day)
+            .unwrap()
+        {
             -value
-        } else { 
+        } else {
             0.0
         }
     }

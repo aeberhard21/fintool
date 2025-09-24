@@ -1,10 +1,9 @@
-use std::path::Path;
+use chrono::{Datelike, Days, Local, NaiveDate, NaiveTime};
 use core::f64;
-use chrono::{NaiveDate, NaiveTime, Local, Days, Datelike};
 use inquire::Confirm;
+use inquire::CustomType;
 use inquire::Select;
 use inquire::Text;
-use inquire::CustomType;
 #[cfg(feature = "ratatui_support")]
 use ratatui::{
     buffer::Buffer,
@@ -14,8 +13,8 @@ use ratatui::{
     text::{Line, Span, Text as ratatuiText},
     widgets::{
         Axis, Bar, BarChart, BarGroup, Block, Borders, Cell, Chart, Clear, Dataset, GraphType,
-        HighlightSpacing, List, ListItem, Padding, Paragraph, Row, Table, Tabs, Widget, Wrap,
-        LegendPosition
+        HighlightSpacing, LegendPosition, List, ListItem, Padding, Paragraph, Row, Table, Tabs,
+        Widget, Wrap,
     },
     Frame,
 };
@@ -31,15 +30,16 @@ use rustyline::Helper;
 use rustyline::Highlighter;
 use rustyline::Hinter;
 use rustyline::Validator;
-use shared_lib::{LedgerEntry, FlatLedgerEntry};
+use shared_lib::{FlatLedgerEntry, LedgerEntry};
+use std::path::Path;
 
 #[cfg(feature = "ratatui_support")]
 use crate::app::app::App;
 #[cfg(feature = "ratatui_support")]
 use crate::app::screen::ledger_table_constraint_len_calculator;
 use crate::database::DbConn;
-use crate::tui::query_user_for_analysis_period;
 use crate::tui::get_analysis_period_dates;
+use crate::tui::query_user_for_analysis_period;
 use crate::types::accounts::AccountInfo;
 use crate::types::accounts::AccountRecord;
 use crate::types::accounts::AccountTransaction;
@@ -71,7 +71,7 @@ pub struct HealthSavingsAccount {
     id: u32,
     db: DbConn,
     variable: VariableAccount,
-    open_date : NaiveDate
+    open_date: NaiveDate,
 }
 
 #[derive(Helper, Completer, Hinter, Highlighter, Validator)]
@@ -113,7 +113,7 @@ impl AccountCreation for HealthSavingsAccount {
             .unwrap();
 
         let hsa_info = HsaInfo {
-            contribution_limit : contribution_limit
+            contribution_limit: contribution_limit,
         };
 
         _db.add_hsa_account(uid, aid, hsa_info).unwrap();
@@ -127,12 +127,11 @@ impl AccountCreation for HealthSavingsAccount {
 
 impl HealthSavingsAccount {
     pub fn new(uid: u32, id: u32, db: &DbConn) -> Self {
-
         let mut ledger = db.get_ledger(uid, id).unwrap();
-        let open_date = if !ledger.is_empty() { 
+        let open_date = if !ledger.is_empty() {
             ledger.sort_by(|l1, l2| (&l1.info.date).cmp(&l2.info.date));
             NaiveDate::parse_from_str(&ledger[0].info.date, "%Y-%m-%d").unwrap()
-        } else { 
+        } else {
             Local::now().date_naive()
         };
 
@@ -141,7 +140,7 @@ impl HealthSavingsAccount {
             id: id,
             db: db.clone(),
             variable: VariableAccount::new(uid, id, db, open_date),
-            open_date : open_date,
+            open_date: open_date,
         };
 
         acct
@@ -477,7 +476,13 @@ impl AccountOperations for HealthSavingsAccount {
     }
 
     fn modify(&mut self) {
-        const MODIFY_OPTIONS: [&'static str; 5] = ["Ledger", "Categories", "Contribution Limit", "Participant", "None"];
+        const MODIFY_OPTIONS: [&'static str; 5] = [
+            "Ledger",
+            "Categories",
+            "Contribution Limit",
+            "Participant",
+            "None",
+        ];
         let modify_choice =
             Select::new("\nWhat would you like to modify:", MODIFY_OPTIONS.to_vec())
                 .prompt()
@@ -491,14 +496,16 @@ impl AccountOperations for HealthSavingsAccount {
                 let selected_record = record_or_none.unwrap();
                 self.variable.modify(selected_record);
             }
-            "Contribution Limit" => { 
+            "Contribution Limit" => {
                 let hsa = self.db.get_hsa(self.uid, self.id).unwrap();
-                let new_contribution_limit = CustomType::<f32>::new("Enter new contribution limit:")
-                    .with_default(hsa.info.contribution_limit)
-                    .with_error_message("Please type a valid amount!")
-                    .prompt()
-                    .unwrap();
-                self.db.update_hsa_contribution_limit(self.uid, self.id, new_contribution_limit);
+                let new_contribution_limit =
+                    CustomType::<f32>::new("Enter new contribution limit:")
+                        .with_default(hsa.info.contribution_limit)
+                        .with_error_message("Please type a valid amount!")
+                        .prompt()
+                        .unwrap();
+                self.db
+                    .update_hsa_contribution_limit(self.uid, self.id, new_contribution_limit);
             }
             "Categories" => {
                 let records = self.db.get_categories(self.uid, self.id).unwrap();
@@ -737,71 +744,91 @@ impl AccountOperations for HealthSavingsAccount {
         let mut rl = Editor::with_config(config).unwrap();
         rl.set_helper(Some(g));
 
-        let mut wtr = csv::Writer::from_path(rl.readline("Enter path to CSV file: ").unwrap()).unwrap();
+        let mut wtr =
+            csv::Writer::from_path(rl.readline("Enter path to CSV file: ").unwrap()).unwrap();
         let ledger = self.get_ledger();
         if !ledger.is_empty() {
             for record in ledger {
-                let stock_record_opt = match record.info.transfer_type { 
-                    TransferType::ZeroSumChange => { 
+                let stock_record_opt = match record.info.transfer_type {
+                    TransferType::ZeroSumChange => {
                         // this is a stock split
-                        let stock_split_opt = self.db.check_and_get_stock_split_record_matching_from_ledger_id(self.uid, self.id, record.id).unwrap();
+                        let stock_split_opt = self
+                            .db
+                            .check_and_get_stock_split_record_matching_from_ledger_id(
+                                self.uid, self.id, record.id,
+                            )
+                            .unwrap();
                         if let Some(ss_record) = stock_split_opt {
                             Some(shared_lib::StockInfo {
-                                shares : 0.0, 
-                                costbasis : 0.0, 
-                                remaining : 0.0, 
-                                is_buy : true, 
-                                is_split : true
+                                shares: 0.0,
+                                costbasis: 0.0,
+                                remaining: 0.0,
+                                is_buy: true,
+                                is_split: true,
                             })
-                        } else { 
+                        } else {
                             None
                         }
                     }
                     TransferType::DepositFromInternalAccount => {
                         // this could either be a sale or a dividend, if dividend than expect to return none
-                        let stock_sale_opt = self.db.check_and_get_stock_sale_record_matching_from_ledger_id(self.uid, self.id, record.id).unwrap();
-                        if let Some(stock_sale) = stock_sale_opt { 
-                            Some(shared_lib::StockInfo { 
-                                shares: stock_sale.info.shares, 
-                                costbasis: stock_sale.info.costbasis, 
-                                remaining: 0.0, 
-                                is_buy: false, 
-                                is_split: false 
-                            })
-                        } else { 
-                            None
-                        }
-                    }
-                    TransferType::WithdrawalToInternalAccount => { 
-                        // this is purchase
-                        let purchase_opt = self.db.check_and_get_stock_purchase_record_matching_from_ledger_id(self.uid, self.id, self.id).unwrap();
-                        if let Some(purchase) = purchase_opt { 
-                            Some(shared_lib::StockInfo { 
-                                shares: purchase.info.shares, 
-                                costbasis: purchase.info.costbasis, 
-                                remaining: 0.0, 
-                                is_buy: false, 
+                        let stock_sale_opt = self
+                            .db
+                            .check_and_get_stock_sale_record_matching_from_ledger_id(
+                                self.uid, self.id, record.id,
+                            )
+                            .unwrap();
+                        if let Some(stock_sale) = stock_sale_opt {
+                            Some(shared_lib::StockInfo {
+                                shares: stock_sale.info.shares,
+                                costbasis: stock_sale.info.costbasis,
+                                remaining: 0.0,
+                                is_buy: false,
                                 is_split: false,
                             })
                         } else {
                             None
                         }
                     }
-                    TransferType::DepositFromExternalAccount|TransferType::WithdrawalToExternalAccount => { 
-                        None
+                    TransferType::WithdrawalToInternalAccount => {
+                        // this is purchase
+                        let purchase_opt = self
+                            .db
+                            .check_and_get_stock_purchase_record_matching_from_ledger_id(
+                                self.uid, self.id, self.id,
+                            )
+                            .unwrap();
+                        if let Some(purchase) = purchase_opt {
+                            Some(shared_lib::StockInfo {
+                                shares: purchase.info.shares,
+                                costbasis: purchase.info.costbasis,
+                                remaining: 0.0,
+                                is_buy: false,
+                                is_split: false,
+                            })
+                        } else {
+                            None
+                        }
                     }
-                    
+                    TransferType::DepositFromExternalAccount
+                    | TransferType::WithdrawalToExternalAccount => None,
                 };
 
-                let csv_ledger_record : shared_lib::LedgerEntry = LedgerEntry { 
-                    date: record.info.date, 
+                let csv_ledger_record: shared_lib::LedgerEntry = LedgerEntry {
+                    date: record.info.date,
                     amount: record.info.amount,
-                    transfer_type: record.info.transfer_type, 
-                    participant: self.db.get_participant(self.uid, self.id, record.info.participant).unwrap(), 
-                    category: self.db.get_category_name(self.uid, self.id, record.info.category_id).unwrap(), 
-                    description: record.info.description, 
-                    ancillary_f32: record.info.ancillary_f32data, 
-                    stock_info: stock_record_opt 
+                    transfer_type: record.info.transfer_type,
+                    participant: self
+                        .db
+                        .get_participant(self.uid, self.id, record.info.participant)
+                        .unwrap(),
+                    category: self
+                        .db
+                        .get_category_name(self.uid, self.id, record.info.category_id)
+                        .unwrap(),
+                    description: record.info.description,
+                    ancillary_f32: record.info.ancillary_f32data,
+                    stock_info: stock_record_opt,
                 };
                 let flattened = FlatLedgerEntry::from(csv_ledger_record);
                 wtr.serialize(flattened).unwrap();
@@ -847,7 +874,8 @@ impl AccountOperations for HealthSavingsAccount {
                 );
             }
             "Time-Weighted Rate of Return" => {
-                let (period_start, period_end, _) = query_user_for_analysis_period(self.get_open_date());
+                let (period_start, period_end, _) =
+                    query_user_for_analysis_period(self.get_open_date());
                 let twr = self.variable.time_weighted_return(period_start, period_end);
                 println!("\tRate of return: {}%", twr);
             }
@@ -984,7 +1012,7 @@ impl AccountData for HealthSavingsAccount {
         return ledger;
     }
     fn get_ledger_within_dates(&self, start: NaiveDate, end: NaiveDate) -> Vec<LedgerRecord> {
-        let ledger =  self
+        let ledger = self
             .db
             .get_ledger_entries_within_timestamps(self.uid, self.id, start, end)
             .unwrap();
@@ -996,15 +1024,15 @@ impl AccountData for HealthSavingsAccount {
     fn get_value(&self) -> f32 {
         return self.variable.get_current_value();
     }
-    fn get_value_on_day(&self, day : NaiveDate) -> f32 {
-        if let Some(value) = self.variable.get_account_value_on_day(&day) { 
+    fn get_value_on_day(&self, day: NaiveDate) -> f32 {
+        if let Some(value) = self.variable.get_account_value_on_day(&day) {
             value
-        } else { 
+        } else {
             0.0
         }
     }
     fn get_open_date(&self) -> NaiveDate {
-        return self.open_date
+        return self.open_date;
     }
 }
 
@@ -1013,99 +1041,135 @@ impl HealthSavingsAccount {
     fn render_growth_chart(&self, frame: &mut Frame, area: Rect, app: &mut App) {
         let (start, end) = (app.analysis_start, app.analysis_end);
         let mut ledger = self.get_ledger_within_dates(start, end);
-        ledger.push(LedgerRecord { id : 0 , info : LedgerInfo { date: Local::now().date_naive().to_string(), amount: 0.0, transfer_type: TransferType::ZeroSumChange, participant: 0, category_id: 0, description: "".to_string(), ancillary_f32data: 0.0 }});
-        let external_transfers = self.variable.db.get_external_transactions_between_timestamps(self.uid, self.id, start, end).unwrap();
+        ledger.push(LedgerRecord {
+            id: 0,
+            info: LedgerInfo {
+                date: Local::now().date_naive().to_string(),
+                amount: 0.0,
+                transfer_type: TransferType::ZeroSumChange,
+                participant: 0,
+                category_id: 0,
+                description: "".to_string(),
+                ancillary_f32data: 0.0,
+            },
+        });
+        let external_transfers = self
+            .variable
+            .db
+            .get_external_transactions_between_timestamps(self.uid, self.id, start, end)
+            .unwrap();
 
-        let mut tstamp_min =  f64::MAX;
+        let mut tstamp_min = f64::MAX;
         let mut tstamp_max = f64::MIN;
         let mut min_total = f64::MAX;
         let mut max_total = f64::MIN;
-        
+
         // time period starting amount
         let time_period_investments_opt = if let Some(mut transactions) = external_transfers {
-            if !transactions.is_empty() { 
+            if !transactions.is_empty() {
                 // this has to return a value because it will be inclusive of first entry
-                let tpi_starting_amount = self.db.get_cumulative_total_of_ledger_of_external_transactions_on_date(self.uid, self.id, start).unwrap().unwrap();
+                let tpi_starting_amount = self
+                    .db
+                    .get_cumulative_total_of_ledger_of_external_transactions_on_date(
+                        self.uid, self.id, start,
+                    )
+                    .unwrap()
+                    .unwrap();
                 let initial = transactions.remove(0);
-                let timestamp = NaiveDate::parse_from_str(&initial.info.date, "%Y-%m-%d").expect(format!("Unexpected data: {}", initial.info.date).as_str())
+                let timestamp = NaiveDate::parse_from_str(&initial.info.date, "%Y-%m-%d")
+                    .expect(format!("Unexpected data: {}", initial.info.date).as_str())
                     .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
                     .and_utc()
                     .timestamp_millis() as f64;
                 let mut aggregate = tpi_starting_amount as f64;
                 let mut dataset = vec![(timestamp, aggregate)];
-                transactions.push(LedgerRecord { id : 0 , info : LedgerInfo { date: Local::now().date_naive().to_string(), amount: 0.0, transfer_type: TransferType::ZeroSumChange, participant: 0, category_id: 0, description: "".to_string(), ancillary_f32data: 0.0 }});
+                transactions.push(LedgerRecord {
+                    id: 0,
+                    info: LedgerInfo {
+                        date: Local::now().date_naive().to_string(),
+                        amount: 0.0,
+                        transfer_type: TransferType::ZeroSumChange,
+                        participant: 0,
+                        category_id: 0,
+                        description: "".to_string(),
+                        ancillary_f32data: 0.0,
+                    },
+                });
                 min_total = aggregate;
                 max_total = aggregate;
                 tstamp_min = timestamp;
                 tstamp_max = tstamp_min;
 
-                dataset.append(&mut
-                    transactions.iter().map(|record| {
-                        let date = NaiveDate::parse_from_str(&record.info.date, "%Y-%m-%d").unwrap();
-                        let dt = date.and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap());
-                        let tstamp = dt.and_utc().timestamp_millis() as f64;
-                        aggregate = match record.info.transfer_type {
-                            TransferType::DepositFromExternalAccount => {
-                                aggregate + record.info.amount as f64
-                            }
-                            TransferType::WithdrawalToExternalAccount => {
-                                aggregate - record.info.amount as f64
-                            }
-                            _ => aggregate,
-                        };
-                        max_total = if aggregate > max_total {
-                            aggregate
-                        } else {
-                            max_total
-                        };
-                        min_total = if aggregate < min_total {
-                            aggregate
-                        } else {
-                            min_total
-                        };
-                        tstamp_max = if tstamp > tstamp_max {
-                            tstamp
-                        } else {
-                            tstamp_max
-                        };
-                        (tstamp, aggregate)
-                    }).collect()
+                dataset.append(
+                    &mut transactions
+                        .iter()
+                        .map(|record| {
+                            let date =
+                                NaiveDate::parse_from_str(&record.info.date, "%Y-%m-%d").unwrap();
+                            let dt = date.and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap());
+                            let tstamp = dt.and_utc().timestamp_millis() as f64;
+                            aggregate = match record.info.transfer_type {
+                                TransferType::DepositFromExternalAccount => {
+                                    aggregate + record.info.amount as f64
+                                }
+                                TransferType::WithdrawalToExternalAccount => {
+                                    aggregate - record.info.amount as f64
+                                }
+                                _ => aggregate,
+                            };
+                            max_total = if aggregate > max_total {
+                                aggregate
+                            } else {
+                                max_total
+                            };
+                            min_total = if aggregate < min_total {
+                                aggregate
+                            } else {
+                                min_total
+                            };
+                            tstamp_max = if tstamp > tstamp_max {
+                                tstamp
+                            } else {
+                                tstamp_max
+                            };
+                            (tstamp, aggregate)
+                        })
+                        .collect(),
                 );
                 Some(dataset)
-            } else { 
+            } else {
                 None
             }
-        } else { 
+        } else {
             None
         };
 
-        if let Some(time_period_investments) = time_period_investments_opt { 
-            let mut datasets = vec![               
-                Dataset::default()
+        if let Some(time_period_investments) = time_period_investments_opt {
+            let mut datasets = vec![Dataset::default()
                 .name("Time Period Investment")
                 .marker(symbols::Marker::Braille)
                 .style(Style::default().fg(tailwind::LIME.c400))
                 .graph_type(GraphType::Line)
                 .data(&time_period_investments)];
 
-                
             let mut date = start;
             let mut total_account_values = Vec::new();
-            while date < end { 
+            while date < end {
                 let value = self.variable.get_account_value_on_day(&date.clone());
-                if value.is_none() { 
+                if value.is_none() {
                     break;
                 } else {
                     use crate::accounts::base::AnalysisPeriod;
 
-                    let tstamp = NaiveDate::parse_from_str(&date.to_string(), "%Y-%m-%d").expect(format!("Unexpected data: {}", date).as_str())
-                    .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
-                    .and_utc()
-                    .timestamp_millis() as f64;
+                    let tstamp = NaiveDate::parse_from_str(&date.to_string(), "%Y-%m-%d")
+                        .expect(format!("Unexpected data: {}", date).as_str())
+                        .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
+                        .and_utc()
+                        .timestamp_millis() as f64;
 
                     let partial_value = self.variable.get_account_value_on_day(&date);
                     let mut aggregate = 0.0;
-                    if partial_value.is_none() { 
+                    if partial_value.is_none() {
                         aggregate = aggregate;
                     } else {
                         aggregate = partial_value.unwrap() as f64;
@@ -1127,56 +1191,50 @@ impl HealthSavingsAccount {
                     };
                     total_account_values.push((tstamp, aggregate));
 
-
                     date = match app.analysis_period {
-                        AnalysisPeriod::OneDay|AnalysisPeriod::OneWeek => { 
+                        AnalysisPeriod::OneDay | AnalysisPeriod::OneWeek => {
                             date.checked_add_days(Days::new(1)).unwrap()
                         }
-                        AnalysisPeriod::OneMonth => { 
-                            date.checked_add_days(Days::new(2)).unwrap()
-                        }
-                        AnalysisPeriod::OneYear|AnalysisPeriod::ThreeMonths|AnalysisPeriod::SixMonths|AnalysisPeriod::YTD => { 
-                            date.checked_add_days(Days::new(7)).unwrap()
-                        }
-                        AnalysisPeriod::TwoYears => { 
-                            date.checked_add_days(Days::new(20)).unwrap()
-                        }
-                        AnalysisPeriod::FiveYears => { 
-                            date.checked_add_days(Days::new(50)).unwrap()
-                        }
-                        AnalysisPeriod::TenYears => { 
-                            date.checked_add_days(Days::new(100)).unwrap()
-                        }
-                        AnalysisPeriod::Custom|AnalysisPeriod::AllTime => {
+                        AnalysisPeriod::OneMonth => date.checked_add_days(Days::new(2)).unwrap(),
+                        AnalysisPeriod::OneYear
+                        | AnalysisPeriod::ThreeMonths
+                        | AnalysisPeriod::SixMonths
+                        | AnalysisPeriod::YTD => date.checked_add_days(Days::new(7)).unwrap(),
+                        AnalysisPeriod::TwoYears => date.checked_add_days(Days::new(20)).unwrap(),
+                        AnalysisPeriod::FiveYears => date.checked_add_days(Days::new(50)).unwrap(),
+                        AnalysisPeriod::TenYears => date.checked_add_days(Days::new(100)).unwrap(),
+                        AnalysisPeriod::Custom | AnalysisPeriod::AllTime => {
                             let diff = (end.num_days_from_ce() - start.num_days_from_ce()) as u32;
                             let days_to_add: u32 = if diff <= 365 {
                                 1
                             } else if diff <= (365 * 2) {
                                 2
-                            } else if diff <= (365 * 5) { 
+                            } else if diff <= (365 * 5) {
                                 5
-                            } else { 
+                            } else {
                                 10
                             };
-                            date.checked_add_days(Days::new(days_to_add as u64)).unwrap()
+                            date.checked_add_days(Days::new(days_to_add as u64))
+                                .unwrap()
                         }
                     };
                     // date = date.checked_add_days(Days::new(10)).unwrap();
                 }
             }
 
-            datasets.push(                
+            datasets.push(
                 Dataset::default()
-                .name("Total Value")
-                .marker(symbols::Marker::Braille)
-                .style(Style::default().fg(tailwind::BLUE.c400))
-                .graph_type(GraphType::Line)
-                .data(&total_account_values)
+                    .name("Total Value")
+                    .marker(symbols::Marker::Braille)
+                    .style(Style::default().fg(tailwind::BLUE.c400))
+                    .graph_type(GraphType::Line)
+                    .data(&total_account_values),
             );
 
             let chart = Chart::new(datasets)
                 .block(
-                    Block::bordered().title(Line::from(" Value Over Time ").cyan().bold().centered()),
+                    Block::bordered()
+                        .title(Line::from(" Value Over Time ").cyan().bold().centered()),
                 )
                 .legend_position(Some(LegendPosition::TopLeft))
                 .x_axis(
@@ -1199,7 +1257,7 @@ impl HealthSavingsAccount {
                 );
 
             frame.render_widget(chart, area);
-        } else { 
+        } else {
             let value = ratatuiText::styled(
                 "No data to display!",
                 Style::default().fg(tailwind::ROSE.c400).bold(),
@@ -1213,7 +1271,16 @@ impl HealthSavingsAccount {
                         .borders(Borders::ALL)
                         .title("Current Balance")
                         .title_alignment(layout::Alignment::Center)
-                        .padding(Padding::new(0,0, (if area.height > 4 { area.height/2 -2 } else {0}), 0)),
+                        .padding(Padding::new(
+                            0,
+                            0,
+                            (if area.height > 4 {
+                                area.height / 2 - 2
+                            } else {
+                                0
+                            }),
+                            0,
+                        )),
                 )
                 .bg(tailwind::SLATE.c900);
 
@@ -1240,9 +1307,21 @@ impl HealthSavingsAccount {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .title(format!(" Time-Weighted Rate of Return - {} ", app.analysis_period))
+                    .title(format!(
+                        " Time-Weighted Rate of Return - {} ",
+                        app.analysis_period
+                    ))
                     .title_alignment(layout::Alignment::Center)
-                    .padding(Padding::new(0,0, (if area.height > 4 { area.height/2 -2 } else {0}), 0)),
+                    .padding(Padding::new(
+                        0,
+                        0,
+                        (if area.height > 4 {
+                            area.height / 2 - 2
+                        } else {
+                            0
+                        }),
+                        0,
+                    )),
             )
             .bg(tailwind::SLATE.c900);
         // let centered_area = centered_rect(10, 10, area);
@@ -1250,7 +1329,6 @@ impl HealthSavingsAccount {
         // frame.render_widget(growth, centered_area);
         frame.render_widget(display, area);
     }
-
 }
 
 #[cfg(feature = "ratatui_support")]
@@ -1276,7 +1354,7 @@ impl AccountUI for HealthSavingsAccount {
             .direction(Direction::Vertical)
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
             .split(report_area);
-        
+
         let value_area = reports_chunks[0];
         let twrr_area = reports_chunks[1];
 
@@ -1285,11 +1363,10 @@ impl AccountUI for HealthSavingsAccount {
         self.render_current_value(frame, value_area, app);
         self.render_time_weighted_rate_of_return(frame, twrr_area, app);
     }
-
 }
 
 impl Account for HealthSavingsAccount {
-    fn kind(&self) -> AccountType { 
+    fn kind(&self) -> AccountType {
         return AccountType::HealthSavingsAccount;
     }
     #[cfg(feature = "ratatui_support")]
@@ -1303,6 +1380,9 @@ impl Account for HealthSavingsAccount {
     fn set_budget(&self) {
         let mut acct = self.db.get_account(self.uid, self.id).unwrap();
         acct.info.has_budget = true;
-        let _ = self.db.update_account(self.uid, self.id, &acct.info).unwrap();
+        let _ = self
+            .db
+            .update_account(self.uid, self.id, &acct.info)
+            .unwrap();
     }
 }

@@ -1,16 +1,16 @@
 use chrono::{Datelike, Local, NaiveDate};
 use ratatui::widgets::{ScrollbarState, TableState};
 
-use crate::{accounts, is_account_type};
 use crate::accounts::base::AnalysisPeriod;
 use crate::app::screen::PALETTES;
 use crate::database::DbConn;
 use crate::tui::decode_and_init_account_type;
 use crate::types::accounts::AccountType;
 use crate::types::ledger::{DisplayableLedgerRecord, LedgerRecord};
+use crate::{accounts, is_account_type};
 use crate::{accounts::base::Account, app::screen::TabMenu};
 
-use super::screen::{CurrentScreen, CurrentlySelecting, LedgerColors, UserLoadedState, Pages};
+use super::screen::{CurrentScreen, CurrentlySelecting, LedgerColors, Pages, UserLoadedState};
 
 const ITEM_HEIGHT: usize = 2;
 
@@ -22,7 +22,7 @@ pub struct App {
     pub accounts_for_type: Vec<String>,
     pub selected_page_tab: Pages,
     pub selected_account_tab: usize,
-    pub account_index_to_restore : usize,
+    pub account_index_to_restore: usize,
     pub currently_selected: Option<CurrentlySelecting>,
     pub db: DbConn,
     pub user_id: Option<u32>,
@@ -32,10 +32,10 @@ pub struct App {
     pub ledger_table_colors: LedgerColors,
     pub ledger_entries: Option<Vec<DisplayableLedgerRecord>>,
     pub analysis_period: AnalysisPeriod,
-    pub analysis_start : NaiveDate, 
-    pub analysis_end : NaiveDate,
-    pub user_load_state : UserLoadedState,
-    pub load_profile_progress : f64,
+    pub analysis_start: NaiveDate,
+    pub analysis_end: NaiveDate,
+    pub user_load_state: UserLoadedState,
+    pub load_profile_progress: f64,
 }
 
 impl App {
@@ -53,15 +53,15 @@ impl App {
             db: db.clone(),
             user_id: None,
             account: None,
-            accounts : Vec::new(),
+            accounts: Vec::new(),
             ledger_table_state: TableState::default().with_selected(0),
             ledger_table_colors: LedgerColors::new(&PALETTES[1]),
             ledger_entries: None,
             analysis_period: AnalysisPeriod::YTD,
-            analysis_start : NaiveDate::from_ymd_opt(Local::now().year(), 1, 1).unwrap(),
-            analysis_end : Local::now().date_naive(),
-            user_load_state : UserLoadedState::NotLoaded,
-            load_profile_progress : 0.0,
+            analysis_start: NaiveDate::from_ymd_opt(Local::now().year(), 1, 1).unwrap(),
+            analysis_end: Local::now().date_naive(),
+            user_load_state: UserLoadedState::NotLoaded,
+            load_profile_progress: 0.0,
         }
     }
 
@@ -81,11 +81,11 @@ impl App {
         }
     }
 
-    pub fn advance_page_tab(&mut self) { 
+    pub fn advance_page_tab(&mut self) {
         self.selected_page_tab = self.selected_page_tab.next();
     }
 
-    pub fn retreat_page_tab(&mut self) { 
+    pub fn retreat_page_tab(&mut self) {
         self.selected_page_tab = self.selected_page_tab.previous();
     }
 
@@ -124,7 +124,8 @@ impl App {
 
     pub fn get_account(&mut self) {
         self.account = if !self.accounts.is_empty() {
-            let matching_indexes : Vec<usize> = self.accounts
+            let matching_indexes: Vec<usize> = self
+                .accounts
                 .iter()
                 .enumerate()
                 .filter(|(_, acc)| is_account_type(acc, self.selected_atype_tab))
@@ -137,7 +138,7 @@ impl App {
             } else {
                 None
             }
-        } else { 
+        } else {
             None
         };
     }

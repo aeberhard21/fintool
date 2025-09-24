@@ -10,7 +10,7 @@ pub struct HsaRecord {
 
 #[derive(Clone)]
 pub struct HsaInfo {
-    pub contribution_limit : f32,
+    pub contribution_limit: f32,
 }
 
 impl DbConn {
@@ -45,17 +45,19 @@ impl DbConn {
         }
     }
 
-    pub fn update_hsa_contribution_limit(&self, uid: u32, aid: u32, new_contribution_lmit: f32) -> Result<f32> {
+    pub fn update_hsa_contribution_limit(
+        &self,
+        uid: u32,
+        aid: u32,
+        new_contribution_lmit: f32,
+    ) -> Result<f32> {
         let p = rusqlite::params!(uid, aid, new_contribution_lmit);
         let sql = "UPDATE hsas SET contribution_limit = (?3) WHERE uid = (?1) and aid = (?2)";
         let conn_lock = self.conn.lock().unwrap();
         match conn_lock.execute(sql, p) {
             Ok(_) => Ok(new_contribution_lmit),
             Err(error) => {
-                panic!(
-                    "Unable to update hsa for hsa {}: {}!",
-                    aid, error
-                );
+                panic!("Unable to update hsa for hsa {}: {}!", aid, error);
             }
         }
     }
@@ -80,10 +82,7 @@ impl DbConn {
                 match cc_wrap {
                     Ok(cc) => return Ok(cc),
                     Err(error) => {
-                        panic!(
-                            "Unable to retrieve hsa info for account {}: {}",
-                            aid, error
-                        )
+                        panic!("Unable to retrieve hsa info for account {}: {}", aid, error)
                     }
                 }
             }
@@ -92,5 +91,4 @@ impl DbConn {
             }
         }
     }
-
 }

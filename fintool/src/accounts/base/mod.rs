@@ -1,4 +1,3 @@
-use std::any::Any;
 #[cfg(feature = "ratatui_support")]
 use crate::app::app::App;
 #[cfg(feature = "ratatui_support")]
@@ -10,7 +9,6 @@ use crate::types::ledger::{DisplayableLedgerRecord, LedgerRecord};
 #[cfg(feature = "ratatui_support")]
 use crate::ui::centered_rect;
 use chrono::{naive, NaiveDate, NaiveDateTime};
-use yahoo_finance_api::Quote;
 #[cfg(feature = "ratatui_support")]
 use ratatui::{
     buffer::Buffer,
@@ -25,13 +23,15 @@ use ratatui::{
     Frame,
 };
 use rusqlite::config::DbConfig;
+use std::any::Any;
 use strum::{Display, EnumIter, EnumString, FromRepr};
+use yahoo_finance_api::Quote;
 
+pub mod budget;
 pub mod charge_account;
 pub mod fixed_account;
-pub mod variable_account;
-pub mod budget;
 pub mod liquid_account;
+pub mod variable_account;
 
 pub trait AccountCreation {
     fn create(uid: u32, name: String, _db: &DbConn) -> AccountRecord;
@@ -53,7 +53,7 @@ pub trait AccountData {
     fn get_ledger_within_dates(&self, start: NaiveDate, end: NaiveDate) -> Vec<LedgerRecord>;
     fn get_displayable_ledger(&self) -> Vec<DisplayableLedgerRecord>;
     fn get_value(&self) -> f32;
-    fn get_value_on_day(&self, day : NaiveDate) -> f32;
+    fn get_value_on_day(&self, day: NaiveDate) -> f32;
     fn get_open_date(&self) -> NaiveDate;
 }
 
@@ -124,7 +124,7 @@ pub trait AccountUI: AccountData {
                 Constraint::Min(constraint_lens.5 + 1),
                 // don't take more than 25% of screen when display descriptions
                 Constraint::Min(area.width / 4),
-                Constraint::Min(constraint_lens.7 + 1)
+                Constraint::Min(constraint_lens.7 + 1),
             ],
         )
         .header(header)
@@ -160,7 +160,16 @@ pub trait AccountUI: AccountData {
                     .borders(Borders::ALL)
                     .title("Current Value")
                     .title_alignment(layout::Alignment::Center)
-                    .padding(Padding::new(0,0, ((if area.height > 4 { area.height/2 -2 } else {0})), 0)),
+                    .padding(Padding::new(
+                        0,
+                        0,
+                        (if area.height > 4 {
+                            area.height / 2 - 2
+                        } else {
+                            0
+                        }),
+                        0,
+                    )),
             )
             .bg(tailwind::SLATE.c900);
 
@@ -219,13 +228,13 @@ impl AnalysisPeriod {
 
 #[derive(Debug, Clone)]
 struct StockData {
-    ticker: String, 
-    quotes : Vec<Quote>,
-    history : Vec<SharesOwned>
+    ticker: String,
+    quotes: Vec<Quote>,
+    history: Vec<SharesOwned>,
 }
 
 #[derive(Debug, Clone)]
-struct SharesOwned { 
-    date : NaiveDate, 
-    shares : f32
+struct SharesOwned {
+    date: NaiveDate,
+    shares: f32,
 }
