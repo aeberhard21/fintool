@@ -563,6 +563,7 @@ pub fn is_account_type( x : &Box<dyn Account>, atype : AccountType) -> bool {
     use crate::accounts::credit_card_account::CreditCardAccount;
     use crate::accounts::investment_account_manager::InvestmentAccountManager;
     use crate::accounts::health_savings_account::HealthSavingsAccount;
+    use crate::accounts::retirement_401k_plan::Retirement401kPlan;
     use crate::accounts::roth_ira::RothIraAccount;
     use crate::accounts::wallet::Wallet;
     use crate::types::accounts::AccountType;
@@ -574,5 +575,6 @@ pub fn is_account_type( x : &Box<dyn Account>, atype : AccountType) -> bool {
         AccountType::CreditCard => x.as_any().is::<CreditCardAccount>(),
         AccountType::RetirementRothIra => (x.as_any().is::<RothIraAccount>()),
         AccountType::HealthSavingsAccount => (x.as_any().is::<HealthSavingsAccount>()),
+        AccountType::Retirement401k => (x.as_any().is::<Retirement401kPlan>()),
     }
 }

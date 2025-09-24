@@ -135,12 +135,13 @@ impl InvestmentAccountManager {
 
 impl AccountOperations for InvestmentAccountManager {
     fn record(&mut self) {
-        const RECORD_OPTIONS: [&'static str; 6] = [
+        const RECORD_OPTIONS: [&'static str; 7] = [
             "Deposit",
             "Withdrawal",
             "Purchase",
             "Sale",
             "Stock Split",
+            "Stock Price",
             "None",
         ];
         loop {
@@ -166,6 +167,9 @@ impl AccountOperations for InvestmentAccountManager {
                 }
                 "Stock Split" => {
                     self.variable.split_stock(None, false);
+                }
+                "Stock Price" => {
+                    self.variable.manually_record_stock_close_price();
                 }
                 "None" => {
                     return;
@@ -328,7 +332,7 @@ impl AccountOperations for InvestmentAccountManager {
                         // if buy, confirm it is a valid ticker
                         let ticker_valid = self
                             .variable
-                            .confirm_valid_ticker(entry.participant.clone());
+                            .confirm_public_ticker(entry.participant.clone());
                         if ticker_valid == false {
                             panic!("Stock symbol invalid!");
                         }
@@ -807,12 +811,10 @@ impl AccountOperations for InvestmentAccountManager {
                     "\t\tFixed Account Value: {}",
                     self.variable.fixed.get_current_value()
                 );
+                let today = Local::now().date_naive();
                 println!(
                     "\t\tVariable Account Value: {}",
-                    self.variable
-                        .db
-                        .get_stock_current_value(self.uid, self.variable.id)
-                        .unwrap()
+                    self.variable.get_value_of_positions_on_day(&today)
                 );
             }
             "Time-Weighted Rate of Return" => {
@@ -1130,7 +1132,6 @@ impl InvestmentAccountManager {
                             date.checked_add_days(Days::new(days_to_add as u64)).unwrap()
                         }
                     };
-                    // date = date.checked_add_days(Days::new(10)).unwrap();
                 }
             }
 
@@ -1214,9 +1215,6 @@ impl InvestmentAccountManager {
                     .padding(Padding::new(0,0, (if area.height > 4 { area.height/2 -2 } else {0}), 0)),
             )
             .bg(tailwind::SLATE.c900);
-        // let centered_area = centered_rect(10, 10, area);
-        // let growth = Paragraph::new(value);
-        // frame.render_widget(growth, centered_area);
         frame.render_widget(display, area);
     }
 

@@ -156,12 +156,13 @@ impl RothIraAccount {
 
 impl AccountOperations for RothIraAccount {
     fn record(&mut self) {
-        const RECORD_OPTIONS: [&'static str; 6] = [
+        const RECORD_OPTIONS: [&'static str; 7] = [
             "Deposit",
             "Withdrawal",
             "Purchase",
             "Sale",
             "Stock Split",
+            "Stock Price",
             "None",
         ];
         loop {
@@ -187,6 +188,9 @@ impl AccountOperations for RothIraAccount {
                 }
                 "Stock Split" => {
                     self.variable.split_stock(None, false);
+                }
+                "Stock Price" => {
+                    self.variable.manually_record_stock_close_price();
                 }
                 "None" => {
                     return;
@@ -349,7 +353,7 @@ impl AccountOperations for RothIraAccount {
                         // if buy, confirm it is a valid ticker
                         let ticker_valid = self
                             .variable
-                            .confirm_valid_ticker(entry.participant.clone());
+                            .confirm_public_ticker(entry.participant.clone());
                         if ticker_valid == false {
                             panic!("Stock symbol invalid!");
                         }
@@ -838,12 +842,10 @@ impl AccountOperations for RothIraAccount {
                     "\t\tFixed Account Value: {}",
                     self.variable.fixed.get_current_value()
                 );
+                let today = Local::now().date_naive();
                 println!(
                     "\t\tVariable Account Value: {}",
-                    self.variable
-                        .db
-                        .get_stock_current_value(self.uid, self.variable.id)
-                        .unwrap()
+                    self.variable.get_value_of_positions_on_day(&today)
                 );
             }
             "Time-Weighted Rate of Return" => {

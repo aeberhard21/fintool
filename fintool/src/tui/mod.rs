@@ -15,6 +15,7 @@ use crate::accounts::certificate_of_deposit::CertificateOfDepositAccount;
 use crate::accounts::credit_card_account::CreditCardAccount;
 use crate::accounts::investment_account_manager::InvestmentAccountManager;
 use crate::accounts::health_savings_account::HealthSavingsAccount;
+use crate::accounts::retirement_401k_plan::Retirement401kPlan;
 use crate::accounts::roth_ira::RothIraAccount;
 use crate::accounts::wallet::Wallet;
 use crate::database::DbConn;
@@ -265,6 +266,7 @@ pub fn decode_and_init_account_type(
         AccountType::Wallet => Box::new(Wallet::new(uid, account.id, db)),
         AccountType::RetirementRothIra => Box::new(RothIraAccount::new(uid, account.id, db)),
         AccountType::HealthSavingsAccount => Box::new(HealthSavingsAccount::new(uid, account.id, db)),
+        AccountType::Retirement401k => Box::new(Retirement401kPlan::new(uid, account.id, db)),
     }
 }
 
@@ -405,6 +407,9 @@ pub fn create_account(
         }
         AccountType::HealthSavingsAccount => { 
             new_account = HealthSavingsAccount::create(uid, name, db);
+        }
+        AccountType::Retirement401k => { 
+            new_account = Retirement401kPlan::create(uid, name, db);
         }
     }
 

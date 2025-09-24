@@ -4,10 +4,12 @@ use std::collections::HashMap;
 use std::io::Read;
 use std::sync::Arc;
 
+use chrono::NaiveTime;
 use chrono::{Date, Days, Local, NaiveDate, NaiveDateTime};
 use csv::DeserializeError;
 use inquire::*;
 use rusqlite::types::Value;
+use rustyline::validate::Validator;
 use time::OffsetDateTime;
 use yahoo_finance_api::YahooError;
 use yahoo_finance_api::Quote;
@@ -19,7 +21,10 @@ use crate::types::investments::{
     StockSplitInfo, StockSplitRecord,
 };
 use crate::types::ledger::{LedgerInfo, LedgerRecord};
+use crate::types::participants::ParticipantAutoCompleter;
 use crate::types::participants::ParticipantType;
+use crate::types::stock_prices::StockPriceInfo;
+use crate::types::stock_prices::StockPriceRecord;
 use shared_lib::{LedgerEntry, TransferType};
 use shared_lib::stocks::{self, get_stock_history};  
 
@@ -70,7 +75,15 @@ impl VariableAccount {
                 let date_shares = x.iter().filter(|data| data.0 == ticker).map(|x: &(String, String, f32)| (SharesOwned { date : NaiveDate::parse_from_str(&&x.1, "%Y-%m-%d").expect(format!("Unable to decode {}", &x.1).as_str()), shares :  x.2.clone()})).collect::<Vec<SharesOwned>>();
                 let quotes = buffer.iter().find(|x| { x.ticker == ticker }).and_then(|x| Some(x.quotes.clone()));
                 let quotes = quotes.or_else(|| {Some({
-                    get_stock_history(ticker.clone(), earliest_date, latest_date).unwrap()
+
+                    let pid = self.db.get_participant_id(self.uid, self.id, ticker.clone(), ParticipantType::Payee).unwrap();
+                    let manual_prices = self.db.check_and_get_stock_price_record_matching_from_participant_id(self.uid, self.id, pid).unwrap();
+                    if manual_prices.is_empty() {
+                        get_stock_history(ticker.clone(), earliest_date, latest_date).unwrap()
+                    } else { 
+                       Self::convert_stock_price_record_to_quotes(&manual_prices)
+                    }
+
                 })} ).unwrap();
                 data.push(StockData { ticker: ticker.clone(), quotes: quotes, history: date_shares });
 
@@ -83,7 +96,7 @@ impl VariableAccount {
         &mut self,
         initial_opt: Option<StockRecord>,
         overwrite_entry: bool,
-    ) -> LedgerRecord {
+    ) -> Option<LedgerRecord> {
         let purchase: LedgerInfo;
         let defaults_to_use: bool;
         let mut initial: StockRecord = StockRecord {
@@ -105,33 +118,53 @@ impl VariableAccount {
         }
 
         let ticker_msg = "Enter stock ticker:";
-        let ticker = if defaults_to_use {
+        let (ticker, manual_entry) = if defaults_to_use {
             let pid = initial
                 .clone()
                 .txn_opt
                 .expect("Ledger information not populated!")
                 .participant;
             let initial_ticker = self.db.get_participant(self.uid, self.id, pid).unwrap();
-            Text::new(ticker_msg)
+            let entered_ticker = Text::new(ticker_msg)
                 .with_default(initial_ticker.as_str())
                 .prompt()
                 .unwrap()
                 .to_ascii_uppercase()
                 .trim()
-                .to_string()
+                .to_string();
+
+            (entered_ticker, false)
         } else {
-            Text::new(ticker_msg)
+            let entered_ticker = Text::new(ticker_msg)
                 .prompt()
                 .unwrap()
                 .to_ascii_uppercase()
                 .trim()
-                .to_string()
+                .to_string();
+
+            let public_ticker = self.confirm_public_ticker(entered_ticker.clone());
+            if !public_ticker {
+                let manual_entry = Confirm::new(
+                    format!("Ticker {} was not publicly found. Would you like to enter its price manually?", entered_ticker.clone())
+                    .as_str())
+                    .prompt()
+                    .unwrap();
+                if !manual_entry {
+                    println!("Stock was not purchased!");
+                    return None;
+                }
+            }
+
+            (entered_ticker, true)
         };
 
-        let ticker_valid = self.confirm_valid_ticker(ticker.clone());
-        if ticker_valid == false {
-            panic!("Invalid stock ticker entered!");
-        }
+        let pid = self.db.check_and_add_participant(
+            self.uid,
+            self.id,
+            ticker.clone(),
+            ParticipantType::Payee,
+            false,
+        );
 
         let date_msg = "Enter date of purchase:";
         let date_input = if defaults_to_use {
@@ -188,13 +221,6 @@ impl VariableAccount {
                 .unwrap()
         };
 
-        let pid = self.db.check_and_add_participant(
-            self.uid,
-            self.id,
-            ticker.clone(),
-            ParticipantType::Payee,
-            false,
-        );
         let cid = self
             .db
             .check_and_add_category(self.uid, self.id, "buy".to_ascii_uppercase());
@@ -203,13 +229,13 @@ impl VariableAccount {
             date: date_input.clone(),
             amount: shares * costbasis,
             transfer_type: TransferType::WithdrawalToInternalAccount,
-            participant: pid,
+            participant: pid.clone(),
             category_id: cid,
             description: format!(
                 "[Internal] Purchase {} shares of {} at ${} on {}.",
                 shares,
                 ticker,
-                costbasis,
+                costbasis.clone(),
                 date_input.clone()
             ),
             ancillary_f32data: 0.0,
@@ -239,23 +265,33 @@ impl VariableAccount {
             ledger_id: ledger_id,
         };
 
+        if manual_entry { 
+            let stock_price_info = StockPriceInfo { 
+                date : date_input.clone(), 
+                stock_ticker_peer_id : pid,
+                price_per_unit_share : costbasis.clone()
+            };
+
+            self.db.add_stock_price(self.uid, self.id, stock_price_info).unwrap();
+        }
+
         self.db
             .add_stock_purchase(self.uid, self.id, stock_record)
             .unwrap();
 
         self.initialize_buffer();
 
-        return LedgerRecord {
+        return Some(LedgerRecord {
             id: ledger_id,
             info: purchase.clone(),
-        };
+        });
     }
 
     pub fn sell_stock(
         &mut self,
         initial_opt: Option<StockRecord>,
         overwrite_entry: bool,
-    ) -> LedgerRecord {
+    ) -> Option<LedgerRecord> {
         let defaults_to_use: bool;
         let mut initial: StockRecord = StockRecord {
             id: 0,
@@ -429,17 +465,17 @@ impl VariableAccount {
         self.allocate_sale_stock(sale_info, sell_method);
         self.initialize_buffer();
 
-        return LedgerRecord {
+        return Some(LedgerRecord {
             id: ledger_id,
             info: sale.clone(),
-        };
+        });
     }
 
     pub fn split_stock(
         &mut self,
         initial_opt: Option<StockSplitRecord>,
         overwrite_entry: bool,
-    ) -> LedgerRecord {
+    ) -> Option<LedgerRecord> {
         let defaults_to_use: bool;
         let mut initial: StockSplitRecord = StockSplitRecord {
             id: 0,
@@ -460,7 +496,8 @@ impl VariableAccount {
         let mut tickers_undup = self.db.get_stock_tickers(self.uid, self.id).unwrap();
         tickers_undup.sort();
         tickers_undup.dedup();
-        let tickers = tickers_undup;
+        tickers_undup.push("None".to_string());
+        let mut tickers = tickers_undup;
         let ticker_msg = "Select which stock you would like to report a split of:";
         let ticker = if defaults_to_use {
             let pid = initial
@@ -480,6 +517,10 @@ impl VariableAccount {
                 .unwrap()
                 .to_string()
         };
+
+        if ticker == "None" { 
+            return None;
+        }
 
         let split_msg = "Enter split factor:";
         let split: f32 = if defaults_to_use {
@@ -532,6 +573,16 @@ impl VariableAccount {
             self.id,
             "stock dividend/split".to_ascii_uppercase(),
         );
+
+        // if split is for a manually entered stock, 
+        // then all previous stock price records 
+        // need to be updated
+        let price_records = self
+            .db
+            .check_and_get_stock_price_record_matching_from_participant_id(self.uid, self.id, pid).unwrap();
+        if !price_records.is_empty() {
+            self.db.apply_stock_split_to_stock_prices(self.uid, self.id, pid, split);
+        }
 
         let ledger_entry = LedgerInfo {
             date: split_date.clone(),
@@ -589,13 +640,13 @@ impl VariableAccount {
         self.allocate_stock_split(stock_split_record);
         self.initialize_buffer();
 
-        return LedgerRecord {
+        return Some(LedgerRecord {
             id: lid,
             info: ledger_entry,
-        };
+        });
     }
 
-    pub fn modify(&mut self, record: LedgerRecord) -> LedgerRecord {
+    pub fn modify(&mut self, record: LedgerRecord) -> Option<LedgerRecord> {
         let was_stock_purchase_opt = self
             .db
             .check_and_get_stock_purchase_record_matching_from_ledger_id(
@@ -636,7 +687,7 @@ impl VariableAccount {
             && was_stock_sale_opt.is_none()
             && was_stock_split_opt.is_none()
         {
-            return self.fixed.modify(record);
+            return Some(self.fixed.modify(record));
         }
 
         if was_stock_purchase_opt.is_some() {
@@ -692,10 +743,10 @@ impl VariableAccount {
                         .remove_ledger_item(self.uid, self.id, split_record.info.ledger_id)
                         .unwrap();
                 }
-                return record;
+                return Some(record);
             }
             "None" => {
-                return record;
+                return Some(record);
             }
             _ => {
                 panic!("Input not recognized!");
@@ -1030,12 +1081,13 @@ impl VariableAccount {
             .unwrap();
     }
 
-    pub fn confirm_valid_ticker(&self, ticker: String) -> bool {
+    pub fn confirm_public_ticker(&self, ticker: String) -> bool {
         let rs = stocks::get_stock_at_close(ticker.clone());
         match rs {
             Ok(price) => true,
             Err(error) => {
-                panic!("Fetch failed for ticker '{}': {}!", ticker.clone(), error);
+                // panic!("Fetch failed for ticker '{}': {}!", ticker.clone(), error);
+                false
             }
         }
     }
@@ -1150,14 +1202,16 @@ impl VariableAccount {
                 }
                 owned_shares.sort_by(|x,y| { (x.date).cmp(&y.date) });
                 let most_recently_owned = owned_shares.last().unwrap();
-                let quote = e.quotes.iter().filter(|x| { 
+                let quotes = e.quotes.iter().filter(|x| { 
                     let date = OffsetDateTime::from_unix_timestamp(x.timestamp as i64).unwrap().date();
                     let ndate = NaiveDate::from_ymd_opt(date.year(), date.month() as u32, date.day() as u32).unwrap();
                     ndate < *day
-                }).last()
-                .expect(
-                    format!("No quote matching date {}", most_recently_owned.date).as_str()
-                );
+                }).collect::<Vec<&Quote>>();
+                let quote_opt = quotes.last();
+                if quote_opt.is_none() { 
+                    continue;
+                }
+                let quote = quote_opt.unwrap();
                 let partial_value = (quote.close * most_recently_owned.shares as f64) as f32;
                 value = value + partial_value
             }
@@ -1194,6 +1248,60 @@ impl VariableAccount {
             return None;
         }
         return Some(value);
+    }
+
+    pub fn manually_record_stock_close_price(&self) {
+        let ticker = Text::new("What ticker are you recording for?")
+            .with_autocomplete(ParticipantAutoCompleter {
+                uid : self.uid, 
+                aid : self.id,
+                db : self.db.clone(), 
+                ptype : ParticipantType::Payee, 
+                with_accounts : false,
+                manually_recorded_only : true,
+            }).prompt().unwrap();
+
+        let peer_id = self.db.check_and_add_participant(self.uid, self.id, ticker.clone(), ParticipantType::Payee, false);
+
+        let date = DateSelect::new("Enter date to record:")
+            .prompt()
+            .unwrap();
+        let close_price = CustomType::<f32>::new(
+            format!("Enter close price per unit share on {}:", date.to_string().clone()).as_str())
+            .prompt()
+            .unwrap();
+        let info : StockPriceInfo = StockPriceInfo { 
+            stock_ticker_peer_id: peer_id, 
+            price_per_unit_share: close_price, 
+            date: date.to_string()
+        };
+        self.db.add_stock_price(self.uid, self.id, info).unwrap();
+    }
+
+    fn convert_stock_price_record_to_quotes( stock_prices : &Vec<StockPriceRecord> ) -> Vec<yahoo_finance_api::Quote> { 
+        
+        let mut quotes : Vec<yahoo_finance_api::Quote> = Vec::new();
+        for r in stock_prices {
+            let timestamp =
+                NaiveDate::parse_from_str(&r.info.date, "%Y-%m-%d")
+                .unwrap()
+                .and_time(NaiveTime::from_num_seconds_from_midnight_opt(0, 0).unwrap())
+                .and_utc()
+                .timestamp() as u64;
+
+            quotes.push(Quote {
+                timestamp : timestamp,
+                // right now, the user doesn't store this information in the database
+                // because it might not be available, so set it to the known value. 
+                open : r.info.price_per_unit_share as f64,
+                high : r.info.price_per_unit_share as f64,
+                low : r.info.price_per_unit_share as f64, 
+                close : r.info.price_per_unit_share as f64,
+                volume : 0, 
+                adjclose :r.info.price_per_unit_share as f64
+            });
+        }
+        return quotes;
     }
 
 }

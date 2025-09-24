@@ -256,10 +256,51 @@ impl DbConn {
         let sql;
         let p = rusqlite::params![aid, transfer_type as u32, uid, include_accounts];
         sql = if include_accounts {
-            "SELECT p.name FROM people p JOIN ledgers l ON p.id = l.cid WHERE l.aid = (?1) and l.transfer_type = (?2) and l.uid = (?3) and l.uid = (?4)"
+            "SELECT p.name FROM people p JOIN ledgers l ON p.id = l.pid WHERE l.aid = (?1) and l.transfer_type = (?2) and l.uid = (?3) and l.uid = (?4)"
         } else {
-            "SELECT p.name FROM people p JOIN ledgers l ON p.id = l.cid WHERE l.aid = (?1) and l.transfer_type = (?2) and l.uid = (?3) and l.uid = (?4) and p.is_account = false"
+            "SELECT p.name FROM people p JOIN ledgers l ON p.id = l.pid WHERE l.aid = (?1) and l.transfer_type = (?2) and l.uid = (?3) and l.uid = (?4) and p.is_account = false"
         };
+
+        let conn_lock = self.conn.lock().unwrap();
+        let mut stmt = conn_lock.prepare(sql)?;
+        let exists = stmt.exists(p)?;
+        let mut participants: Vec<String> = Vec::new();
+        match exists {
+            true => {
+                stmt = conn_lock.prepare(sql)?;
+                let party = stmt
+                    .query_map(p, |row| Ok(row.get(0)?))
+                    .unwrap()
+                    .collect::<Vec<_>>();
+                for participant in party {
+                    participants.push(participant.unwrap());
+                }
+            }
+            false => {}
+        }
+        Ok(participants)
+    }
+
+    pub fn get_participants_by_transfer_type_who_exist_in_stock_price_table(
+        &self,
+        uid: u32,
+        aid: u32,
+        transfer_type: TransferType,
+    ) -> Result<Vec<String>, rusqlite::Error> {
+        let sql;
+        let p = rusqlite::params![aid, transfer_type as u32, uid];
+        sql = "SELECT p.name 
+            FROM people p 
+            JOIN ledgers l ON 
+                p.id = l.pid 
+            INNER JOIN stock_prices sp ON
+                p.id = sp.stock_ticker_peer_id
+            WHERE 
+                l.aid = (?1) and 
+                l.transfer_type = (?2) and 
+                l.uid = (?3) and 
+                p.is_account = false
+            ";
 
         let conn_lock = self.conn.lock().unwrap();
         let mut stmt = conn_lock.prepare(sql)?;
@@ -372,6 +413,7 @@ pub struct ParticipantAutoCompleter {
     pub db: DbConn,
     pub ptype: ParticipantType,
     pub with_accounts: bool,
+    pub manually_recorded_only : bool,
 }
 
 impl Autocomplete for ParticipantAutoCompleter {
@@ -380,30 +422,51 @@ impl Autocomplete for ParticipantAutoCompleter {
         if !self.with_accounts {
             suggestions = match self.ptype {
                 ParticipantType::Payee => {
-                    let mut x: Vec<String> = self
-                        .db
-                        .get_participants_by_transfer_type(
-                            self.uid,
-                            self.aid,
-                            TransferType::WithdrawalToExternalAccount,
-                            false,
-                        )
-                        .unwrap()
+                    let (mut x, mut y) = if self.manually_recorded_only { 
+                        let x : Vec<String> = self.db.get_participants_by_transfer_type_who_exist_in_stock_price_table(
+                            self.uid, 
+                            self.aid, 
+                            TransferType::WithdrawalToExternalAccount
+                        ).unwrap()
                         .into_iter()
                         .filter(|name| name.starts_with(input.to_ascii_uppercase().as_str()))
                         .collect();
-                    let mut y: Vec<String> = self
-                        .db
-                        .get_participants_by_transfer_type(
-                            self.uid,
-                            self.aid,
-                            TransferType::WithdrawalToInternalAccount,
-                            false,
-                        )
-                        .unwrap()
+                        let y : Vec<String> = self.db.get_participants_by_transfer_type_who_exist_in_stock_price_table(
+                            self.uid, 
+                            self.aid, 
+                            TransferType::WithdrawalToInternalAccount
+                        ).unwrap()
                         .into_iter()
                         .filter(|name| name.starts_with(input.to_ascii_uppercase().as_str()))
                         .collect();
+                        (x, y)
+                    } else { 
+                        let mut x: Vec<String> = self
+                            .db
+                            .get_participants_by_transfer_type(
+                                self.uid,
+                                self.aid,
+                                TransferType::WithdrawalToExternalAccount,
+                                false,
+                            )
+                            .unwrap()
+                            .into_iter()
+                            .filter(|name| name.starts_with(input.to_ascii_uppercase().as_str()))
+                            .collect();
+                        let mut y: Vec<String> = self
+                            .db
+                            .get_participants_by_transfer_type(
+                                self.uid,
+                                self.aid,
+                                TransferType::WithdrawalToInternalAccount,
+                                false,
+                            )
+                            .unwrap()
+                            .into_iter()
+                            .filter(|name| name.starts_with(input.to_ascii_uppercase().as_str()))
+                            .collect();
+                        (x, y)
+                    };
                     x.dedup();
                     y.dedup();
                     [x, y].concat()

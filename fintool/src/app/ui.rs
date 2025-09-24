@@ -514,7 +514,7 @@ fn render_asset_investment_ratio_chart( app: &App, frame : &mut Frame, area : Re
             AccountType::Investment => {
                 long_term_investments = long_term_investments + account.get_value();
             }
-            AccountType::RetirementRothIra =>  {
+            AccountType::RetirementRothIra|AccountType::Retirement401k =>  {
                 retirement = retirement + account.get_value();
             }
             AccountType::HealthSavingsAccount => { 

@@ -145,6 +145,7 @@ impl ChargeAccount {
                     db: self.db.clone(),
                     ptype: ParticipantType::Payee,
                     with_accounts: false,
+                    manually_recorded_only : false
                 })
                 .with_default(
                     self.db
@@ -162,6 +163,7 @@ impl ChargeAccount {
                     db: self.db.clone(),
                     ptype: ParticipantType::Payee,
                     with_accounts: false,
+                    manually_recorded_only : false
                 })
                 .prompt()
                 .unwrap()
@@ -337,6 +339,7 @@ impl ChargeAccount {
                         db: self.db.clone(),
                         ptype: ParticipantType::Payer,
                         with_accounts: false,
+                        manually_recorded_only : false
                     })
                     .with_default(
                         self.db
@@ -357,6 +360,7 @@ impl ChargeAccount {
                         db: self.db.clone(),
                         ptype: ParticipantType::Payer,
                         with_accounts: false,
+                        manually_recorded_only : false,
                     })
                     .with_validator(participant_validator)
                     .prompt()
@@ -664,6 +668,7 @@ impl ChargeAccount {
                     db: self.db.clone(),
                     ptype: ParticipantType::Both,
                     with_accounts: true,
+                    manually_recorded_only : false
                 })
                 .with_default(initial_account.as_str())
                 .prompt()
@@ -676,6 +681,7 @@ impl ChargeAccount {
                     db: self.db.clone(),
                     ptype: ParticipantType::Both,
                     with_accounts: true,
+                    manually_recorded_only : false
                 })
                 .prompt()
                 .unwrap()
