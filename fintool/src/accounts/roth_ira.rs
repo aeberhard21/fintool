@@ -52,6 +52,7 @@ use crate::types::investments::StockSplitRecord;
 use crate::types::ledger::LedgerInfo;
 use crate::types::ledger::LedgerRecord;
 use crate::types::participants::ParticipantType;
+use crate::types::stock_prices::StockPriceInfo;
 use crate::types::roth_ira::RothIraInfo;
 use csv::ReaderBuilder;
 use rustyline::Editor;
@@ -349,13 +350,16 @@ impl AccountOperations for RothIraAccount {
 
                         self.variable.allocate_stock_split(stock_split_record);
                     } else {
-                        // if buy, confirm it is a valid ticker
-                        let ticker_valid = self
-                            .variable
-                            .confirm_public_ticker(entry.participant.clone());
-                        if ticker_valid == false {
-                            panic!("Stock symbol invalid!");
-                        }
+                        // if buy, confirm it is a public ticker
+                        let public_ticker = self.variable.confirm_public_ticker(entry.participant.clone());
+
+                        let pid = self.db.check_and_add_participant(
+                                self.uid,
+                                self.id,
+                                entry.participant.clone(),
+                                ptype,
+                                false,
+                        );
 
                         txn = LedgerInfo {
                             date: NaiveDate::parse_from_str(entry.date.as_str(), "%Y-%m-%d")
@@ -364,13 +368,7 @@ impl AccountOperations for RothIraAccount {
                                 .to_string(),
                             amount: entry.amount,
                             transfer_type: entry.transfer_type as TransferType,
-                            participant: self.db.check_and_add_participant(
-                                self.uid,
-                                self.id,
-                                entry.participant.clone(),
-                                ptype,
-                                false,
-                            ),
+                            participant: pid,
                             category_id: self.db.check_and_add_category(
                                 self.uid,
                                 self.id,
@@ -390,6 +388,18 @@ impl AccountOperations for RothIraAccount {
                         };
 
                         self.db.add_stock_purchase(self.uid, self.id, my_s).unwrap();
+
+                        if !public_ticker { 
+                            let stock_price_info = StockPriceInfo {
+                                date: entry.date.clone(),
+                                stock_ticker_peer_id: pid,
+                                price_per_unit_share: s.costbasis,
+                            };
+
+                            self.db
+                                .add_stock_price(self.uid, self.id, stock_price_info)
+                                .unwrap();
+                        }
                     }
                 } else {
                     // if sale, check that we own this symbol

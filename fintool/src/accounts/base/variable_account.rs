@@ -150,7 +150,7 @@ impl VariableAccount {
         }
 
         let ticker_msg = "Enter stock ticker:";
-        let (ticker, manual_entry) = if defaults_to_use {
+        let ticker= if defaults_to_use {
             let pid = initial
                 .clone()
                 .txn_opt
@@ -165,7 +165,7 @@ impl VariableAccount {
                 .trim()
                 .to_string();
 
-            (entered_ticker, false)
+            entered_ticker
         } else {
             let entered_ticker = Text::new(ticker_msg)
                 .prompt()
@@ -174,20 +174,35 @@ impl VariableAccount {
                 .trim()
                 .to_string();
 
-            let public_ticker = self.confirm_public_ticker(entered_ticker.clone());
-            if !public_ticker {
+            entered_ticker
+        };
+
+        let public_ticker = self.confirm_public_ticker(ticker.clone());
+        let manual_entry = if !public_ticker {
+            // check if already a member that is being tracked.
+            let pid_opt = self.db.get_participant_id(self.uid, self.id, ticker.clone(), ParticipantType::Payee);
+            if let Some(pid) = pid_opt { 
+                let stock_is_tracked = self.db.check_and_get_stock_price_record_matching_from_participant_id(self.uid, self.id, pid).unwrap();
+                if stock_is_tracked.is_empty() { 
+                    panic!("Non-public ticker does not have a stock price record!");
+                }
+                false
+            } else { 
                 let manual_entry = Confirm::new(
-                    format!("Ticker {} was not publicly found. Would you like to enter its price manually?", entered_ticker.clone())
+                    format!("Ticker {} was not publicly found. Would you like to enter its price manually?", ticker.clone())
                     .as_str())
                     .prompt()
                     .unwrap();
+
                 if !manual_entry {
                     println!("Stock was not purchased!");
                     return None;
                 }
-            }
 
-            (entered_ticker, true)
+                true
+            }
+        } else { 
+            false
         };
 
         let pid = self.db.check_and_add_participant(

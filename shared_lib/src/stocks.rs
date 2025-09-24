@@ -1,9 +1,9 @@
 use chrono::{Datelike, Days, Duration, NaiveDate, NaiveTime, Weekday};
+use std::time::Instant;
 use time::OffsetDateTime;
 use tokio_test;
 use yahoo::{YahooConnector, YahooError};
 use yahoo_finance_api::{self as yahoo, Quote};
-use std::time::Instant;
 
 // use crate::types::investments::StockInfo;
 
@@ -90,7 +90,7 @@ pub fn get_stock_quote(ticker: String, date: NaiveDate) -> Result<Quote, YahooEr
         }
     }
     let quote;
-    loop { 
+    loop {
         // should return 1 quote only, the day requested. End date is not inclusive (despite what documentation states)
         let quotes = get_stock_history(
             ticker.clone(),
@@ -100,13 +100,12 @@ pub fn get_stock_quote(ticker: String, date: NaiveDate) -> Result<Quote, YahooEr
                 .expect("Invalid day!"),
         );
         if let Ok(quotes) = quotes {
-            quote = quotes
-                .get(0)
-                .expect("Quote not found!")
-                .to_owned();
+            quote = quotes.get(0).expect("Quote not found!").to_owned();
             break;
-        } else { 
-            start_date = start_date.checked_sub_days(Days::new(1)).expect("Invalid day!"); 
+        } else {
+            start_date = start_date
+                .checked_sub_days(Days::new(1))
+                .expect("Invalid day!");
         }
     }
     Ok(quote)
