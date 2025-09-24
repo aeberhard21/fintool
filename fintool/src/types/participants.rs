@@ -322,6 +322,47 @@ impl DbConn {
         Ok(participants)
     }
 
+    pub fn get_participants_by_transfer_type_who_exist_in_stock_purchase_table(
+        &self,
+        uid: u32,
+        aid: u32,
+        transfer_type: TransferType,
+    ) -> Result<Vec<String>, rusqlite::Error> {
+        let sql;
+        let p = rusqlite::params![aid, transfer_type as u32, uid];
+        sql = "SELECT p.name 
+            FROM people p 
+            JOIN ledgers l ON 
+                p.id = l.pid
+            INNER JOIN stock_purchases sp ON
+                sp.lid = l.id
+            WHERE 
+                l.aid = (?1) and 
+                l.transfer_type = (?2) and 
+                l.uid = (?3) and 
+                p.is_account = false
+            ";
+
+        let conn_lock = self.conn.lock().unwrap();
+        let mut stmt = conn_lock.prepare(sql)?;
+        let exists = stmt.exists(p)?;
+        let mut participants: Vec<String> = Vec::new();
+        match exists {
+            true => {
+                stmt = conn_lock.prepare(sql)?;
+                let party = stmt
+                    .query_map(p, |row| Ok(row.get(0)?))
+                    .unwrap()
+                    .collect::<Vec<_>>();
+                for participant in party {
+                    participants.push(participant.unwrap());
+                }
+            }
+            false => {}
+        }
+        Ok(participants)
+    }
+
     pub fn update_participant_name(
         &self,
         uid: u32,
@@ -413,6 +454,7 @@ pub struct ParticipantAutoCompleter {
     pub db: DbConn,
     pub ptype: ParticipantType,
     pub with_accounts: bool,
+    pub stock_tickers_only : bool,
     pub manually_recorded_only: bool,
 }
 
@@ -422,30 +464,56 @@ impl Autocomplete for ParticipantAutoCompleter {
         if !self.with_accounts {
             suggestions = match self.ptype {
                 ParticipantType::Payee => {
-                    let (mut x, mut y) = if self.manually_recorded_only {
-                        let x: Vec<String> = self
-                            .db
-                            .get_participants_by_transfer_type_who_exist_in_stock_price_table(
-                                self.uid,
-                                self.aid,
-                                TransferType::WithdrawalToExternalAccount,
-                            )
-                            .unwrap()
-                            .into_iter()
-                            .filter(|name| name.starts_with(input.to_ascii_uppercase().as_str()))
-                            .collect();
-                        let y: Vec<String> = self
-                            .db
-                            .get_participants_by_transfer_type_who_exist_in_stock_price_table(
-                                self.uid,
-                                self.aid,
-                                TransferType::WithdrawalToInternalAccount,
-                            )
-                            .unwrap()
-                            .into_iter()
-                            .filter(|name| name.starts_with(input.to_ascii_uppercase().as_str()))
-                            .collect();
-                        (x, y)
+                    let (mut x, mut y) = if self.stock_tickers_only { 
+                        if self.manually_recorded_only {
+                            let x: Vec<String> = self
+                                .db
+                                .get_participants_by_transfer_type_who_exist_in_stock_price_table(
+                                    self.uid,
+                                    self.aid,
+                                    TransferType::WithdrawalToExternalAccount,
+                                )
+                                .unwrap()
+                                .into_iter()
+                                .filter(|name| name.starts_with(input.to_ascii_uppercase().as_str()))
+                                .collect();
+                            let y: Vec<String> = self
+                                .db
+                                .get_participants_by_transfer_type_who_exist_in_stock_price_table(
+                                    self.uid,
+                                    self.aid,
+                                    TransferType::WithdrawalToInternalAccount,
+                                )
+                                .unwrap()
+                                .into_iter()
+                                .filter(|name| name.starts_with(input.to_ascii_uppercase().as_str()))
+                                .collect();
+                            (x, y)
+                        } else { 
+                            let x: Vec<String> = self
+                                .db
+                                .get_participants_by_transfer_type_who_exist_in_stock_purchase_table(
+                                    self.uid,
+                                    self.aid,
+                                    TransferType::WithdrawalToExternalAccount,
+                                )
+                                .unwrap()
+                                .into_iter()
+                                .filter(|name| name.starts_with(input.to_ascii_uppercase().as_str()))
+                                .collect();
+                            let y: Vec<String> = self
+                                .db
+                                .get_participants_by_transfer_type_who_exist_in_stock_purchase_table(
+                                    self.uid,
+                                    self.aid,
+                                    TransferType::WithdrawalToInternalAccount,
+                                )
+                                .unwrap()
+                                .into_iter()
+                                .filter(|name| name.starts_with(input.to_ascii_uppercase().as_str()))
+                                .collect();
+                            (x, y)
+                        }
                     } else {
                         let mut x: Vec<String> = self
                             .db

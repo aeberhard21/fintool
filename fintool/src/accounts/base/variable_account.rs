@@ -159,6 +159,16 @@ impl VariableAccount {
             let initial_ticker = self.db.get_participant(self.uid, self.id, pid).unwrap();
             let entered_ticker = Text::new(ticker_msg)
                 .with_default(initial_ticker.as_str())
+                .with_autocomplete(ParticipantAutoCompleter { 
+                        uid : self.uid, 
+                        aid : self.id, 
+                        db : self.db.clone(), 
+                        ptype : ParticipantType::Payee, 
+                        with_accounts : false, 
+                        stock_tickers_only : true,
+                        manually_recorded_only : false
+                    }
+                )
                 .prompt()
                 .unwrap()
                 .to_ascii_uppercase()
@@ -168,6 +178,16 @@ impl VariableAccount {
             entered_ticker
         } else {
             let entered_ticker = Text::new(ticker_msg)
+                .with_autocomplete(ParticipantAutoCompleter { 
+                        uid : self.uid, 
+                        aid : self.id, 
+                        db : self.db.clone(), 
+                        ptype : ParticipantType::Payee, 
+                        with_accounts : false, 
+                        stock_tickers_only : true,
+                        manually_recorded_only : false
+                    }
+                )
                 .prompt()
                 .unwrap()
                 .to_ascii_uppercase()
@@ -186,7 +206,6 @@ impl VariableAccount {
                 if stock_is_tracked.is_empty() { 
                     panic!("Non-public ticker does not have a stock price record!");
                 }
-                false
             } else { 
                 let manual_entry = Confirm::new(
                     format!("Ticker {} was not publicly found. Would you like to enter its price manually?", ticker.clone())
@@ -199,8 +218,8 @@ impl VariableAccount {
                     return None;
                 }
 
-                true
             }
+            true
         } else { 
             false
         };
@@ -1354,6 +1373,7 @@ impl VariableAccount {
                 db: self.db.clone(),
                 ptype: ParticipantType::Payee,
                 with_accounts: false,
+                stock_tickers_only : true,
                 manually_recorded_only: true,
             })
             .prompt()

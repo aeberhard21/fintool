@@ -150,6 +150,7 @@ impl FixedAccount {
                         db: self.db.clone(),
                         ptype: ParticipantType::Payee,
                         with_accounts: false,
+                        stock_tickers_only : false,
                         manually_recorded_only: false,
                     })
                     .with_default(
@@ -168,6 +169,7 @@ impl FixedAccount {
                         db: self.db.clone(),
                         ptype: ParticipantType::Payee,
                         with_accounts: false,
+                        stock_tickers_only : false,
                         manually_recorded_only: false,
                     })
                     .prompt()
@@ -500,6 +502,7 @@ impl FixedAccount {
                         db: self.db.clone(),
                         ptype: ParticipantType::Payer,
                         with_accounts: false,
+                        stock_tickers_only : false,
                         manually_recorded_only: false,
                     })
                     .with_default(
@@ -521,6 +524,7 @@ impl FixedAccount {
                         db: self.db.clone(),
                         ptype: ParticipantType::Payer,
                         with_accounts: false,
+                        stock_tickers_only : false,
                         manually_recorded_only: false,
                     })
                     .with_validator(participant_validator)
@@ -924,6 +928,7 @@ impl FixedAccount {
                     db: self.db.clone(),
                     ptype: ParticipantType::Both,
                     with_accounts: true,
+                    stock_tickers_only : false,
                     manually_recorded_only: false,
                 })
                 .with_default(initial_account.as_str())
@@ -937,6 +942,7 @@ impl FixedAccount {
                     db: self.db.clone(),
                     ptype: ParticipantType::Both,
                     with_accounts: true,
+                    stock_tickers_only : false,
                     manually_recorded_only: false,
                 })
                 .prompt()
