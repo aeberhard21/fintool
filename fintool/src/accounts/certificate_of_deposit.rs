@@ -199,7 +199,6 @@ impl AccountCreation for CertificateOfDepositAccount {
                     "Open {} APY {} month CD with ${}",
                     cd_info.apy, cd_info.length_months, cd_info.principal
                 ),
-                ancillary_f32data: 0.0,
             };
 
             let lid = _db.add_ledger_entry(uid, aid, initial.clone()).unwrap();
@@ -341,7 +340,6 @@ impl AccountOperations for CertificateOfDepositAccount {
                     rcrd.category.to_ascii_uppercase(),
                 ),
                 description: rcrd.description,
-                ancillary_f32data: 0.0,
             };
             let _lid: u32 = self.db.add_ledger_entry(self.uid, self.id, entry).unwrap();
         }
@@ -723,7 +721,6 @@ impl AccountOperations for CertificateOfDepositAccount {
                         .get_category_name(self.uid, self.id, record.info.category_id)
                         .unwrap(),
                     description: record.info.description,
-                    ancillary_f32: record.info.ancillary_f32data,
                     stock_info: None,
                 };
                 let flattened = FlatLedgerEntry::from(csv_ledger_record);
@@ -835,7 +832,6 @@ impl AccountOperations for CertificateOfDepositAccount {
             participant: pid,
             category_id: cid,
             description: description,
-            ancillary_f32data: 0.0,
         };
 
         let (from_ledger_id, to_ledger_id) = match new_ttype {
@@ -1059,7 +1055,6 @@ impl CertificateOfDepositAccount {
                     participant: 0,
                     category_id: 0,
                     description: "initial".to_string(),
-                    ancillary_f32data: 0.0,
                 },
             }]
         } else {
@@ -1072,7 +1067,6 @@ impl CertificateOfDepositAccount {
                     participant: 0,
                     category_id: 0,
                     description: "initial".to_string(),
-                    ancillary_f32data: 0.0,
                 },
             }]
         };

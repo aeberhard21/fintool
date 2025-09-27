@@ -281,7 +281,6 @@ impl AccountOperations for Wallet {
                     rcrd.category.to_ascii_uppercase(),
                 ),
                 description: rcrd.description,
-                ancillary_f32data: 0.0,
             };
             let _lid: u32 = self.db.add_ledger_entry(self.uid, self.id, entry).unwrap();
         }
@@ -579,7 +578,6 @@ impl AccountOperations for Wallet {
                         .get_category_name(self.uid, self.id, record.info.category_id)
                         .unwrap(),
                     description: record.info.description,
-                    ancillary_f32: record.info.ancillary_f32data,
                     stock_info: None,
                 };
                 let flattened = FlatLedgerEntry::from(csv_ledger_record);
@@ -691,7 +689,6 @@ impl AccountOperations for Wallet {
             participant: pid,
             category_id: cid,
             description: description,
-            ancillary_f32data: 0.0,
         };
 
         let (from_ledger_id, to_ledger_id) = match new_ttype {

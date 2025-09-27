@@ -265,7 +265,6 @@ impl DbConn {
                 l.pid, 
                 l.cid,
                 l.desc,
-                l.ancillary_f32
             FROM stock_purchases p 
             INNER JOIN ledgers l ON 
                 p.aid = l.aid and  
@@ -295,7 +294,6 @@ impl DbConn {
                             participant: row.get(8)?,
                             category_id: row.get(9)?,
                             description: row.get(10)?,
-                            ancillary_f32data: row.get(11)?,
                         }),
                     })
                 });
@@ -357,7 +355,6 @@ impl DbConn {
                 l.pid, 
                 l.cid,
                 l.desc,
-                l.ancillary_f32
             FROM stock_sales s 
             INNER JOIN ledgers l ON 
                 s.aid = l.aid and  
@@ -388,7 +385,6 @@ impl DbConn {
                             participant: row.get(7)?,
                             category_id: row.get(8)?,
                             description: row.get(9)?,
-                            ancillary_f32data: row.get(10)?,
                         }),
                     })
                 });
@@ -416,7 +412,6 @@ impl DbConn {
                 l.pid, 
                 l.cid,
                 l.desc,
-                l.ancillary_f32
             FROM stock_splits s 
             INNER JOIN ledgers l ON 
                 s.aid = l.aid and  
@@ -445,7 +440,6 @@ impl DbConn {
                             participant: row.get(6)?,
                             category_id: row.get(7)?,
                             description: row.get(8)?,
-                            ancillary_f32data: row.get(9)?,
                         }),
                     })
                 });

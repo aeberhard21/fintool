@@ -96,7 +96,6 @@ fn main() {
                 participant: peer,
                 category: cat,
                 description: format!("\"{}\"", description),
-                ancillary_f32: ancillary_data,
                 stock_info: Some(stock_txn),
             };
 
@@ -108,7 +107,6 @@ fn main() {
         ledger_entry.participant,
         ledger_entry.category,
         ledger_entry.description,
-        ledger_entry.ancillary_f32,
         ledger_entry.stock_info.clone().unwrap().shares,
         ledger_entry.stock_info.clone().unwrap().costbasis,
         ledger_entry.stock_info.clone().unwrap().remaining,

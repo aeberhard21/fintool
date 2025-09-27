@@ -41,7 +41,6 @@ impl ChargeAccount {
                 participant: 0,
                 category_id: 0,
                 description: "".to_string(),
-                ancillary_f32data: 0.0,
             },
         };
 
@@ -185,7 +184,6 @@ impl ChargeAccount {
             participant: pid,
             category_id: cid,
             description: description_input,
-            ancillary_f32data: 0.0,
         };
 
         let id = if default_to_use && overwrite {
@@ -217,7 +215,6 @@ impl ChargeAccount {
                 participant: 0,
                 category_id: 0,
                 description: "".to_string(),
-                ancillary_f32data: 0.0,
             },
         };
 
@@ -387,7 +384,6 @@ impl ChargeAccount {
                 participant: pid,
                 category_id: cid,
                 description: description_input,
-                ancillary_f32data: 0.0,
             };
 
             let id = if default_to_use && overwrite {
@@ -434,7 +430,6 @@ impl ChargeAccount {
                 participant: pid,
                 category_id: cid,
                 description: description_input,
-                ancillary_f32data: 0.0,
             };
 
             let id = if default_to_use && overwrite {

@@ -19,7 +19,6 @@ pub struct LedgerEntry {
     pub participant: String,
     pub category: String,
     pub description: String,
-    pub ancillary_f32: f32,
     #[serde(serialize_with = "serialize_stock_info")]
     pub stock_info: Option<StockInfo>,
 }
@@ -42,7 +41,6 @@ pub struct FlatLedgerEntry {
     pub participant: String,
     pub category: String,
     pub description: String,
-    pub ancillary_f32: f32,
     pub shares: Option<String>,
     pub costbasis: Option<String>,
     pub remaining: Option<String>,
@@ -60,7 +58,6 @@ impl From<LedgerEntry> for FlatLedgerEntry {
                 participant: l.participant,
                 category: l.category,
                 description: l.description,
-                ancillary_f32: l.ancillary_f32,
                 shares: Some(s.shares.to_string()),
                 costbasis: Some(s.costbasis.to_string()),
                 remaining: Some(s.remaining.to_string()),
@@ -74,7 +71,6 @@ impl From<LedgerEntry> for FlatLedgerEntry {
                 participant: l.participant,
                 category: l.category,
                 description: l.description,
-                ancillary_f32: l.ancillary_f32,
                 shares: None,
                 costbasis: None,
                 remaining: None,

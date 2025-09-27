@@ -14,7 +14,6 @@ pub struct LedgerInfo {
     pub participant: u32,
     pub category_id: u32,
     pub description: String,
-    pub ancillary_f32data: f32,
 }
 
 #[derive(Clone, Debug)]
@@ -31,7 +30,6 @@ pub struct DisplayableLedgerInfo {
     pub participant: String,
     pub category: String,
     pub description: String,
-    pub ancillary_f32data: String,
     pub labels: String,
 }
 
@@ -58,7 +56,6 @@ impl DbConn {
                 pid         INTEGER NOT NULL, 
                 cid         INTEGER NOT NULL,
                 desc        TEXT,
-                ancillary_f32 REAL NOT NULL, 
                 aid         INTEGER NOT NULL,
                 uid         INTEGER NOT NULL,
                 PRIMARY KEY(uid, aid, id),
@@ -86,7 +83,7 @@ impl DbConn {
     ) -> rusqlite::Result<u32, rusqlite::Error> {
         let sql: &str;
         let id = self.get_next_ledger_id(uid, aid).unwrap();
-        sql = "INSERT INTO ledgers ( id, date, amount, transfer_type, pid, cid, desc, ancillary_f32, aid, uid) VALUES ( ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)";
+        sql = "INSERT INTO ledgers ( id, date, amount, transfer_type, pid, cid, desc, aid, uid) VALUES ( ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)";
         let conn_lock = self.conn.lock().unwrap();
         let rs = conn_lock.execute(
             sql,
@@ -98,7 +95,6 @@ impl DbConn {
                 entry.participant,
                 entry.category_id,
                 entry.description,
-                entry.ancillary_f32data,
                 aid,
                 uid,
             ),
@@ -128,11 +124,10 @@ impl DbConn {
             update.info.participant,
             update.info.category_id,
             update.info.description,
-            update.info.ancillary_f32data,
             uid,
             aid
         ];
-        let sql = "UPDATE ledgers SET date = ?2, amount = ?3, transfer_type = ?4, pid = ?5, cid = ?6, desc = ?7, ancillary_f32 = ?8 WHERE id = ?1 and uid = ?9 and aid = ?10";
+        let sql = "UPDATE ledgers SET date = ?2, amount = ?3, transfer_type = ?4, pid = ?5, cid = ?6, desc = ?7  WHERE id = ?1 and uid = ?8 and aid = ?9";
         let conn_lock = self.conn.lock().unwrap();
         let rs = conn_lock.execute(sql, p);
         match rs {
@@ -191,7 +186,7 @@ impl DbConn {
         aid: u32,
     ) -> rusqlite::Result<Vec<LedgerRecord>, rusqlite::Error> {
         let p = rusqlite::params![aid, uid];
-        let sql = "SELECT id, date, amount, transfer_type, pid, cid, desc, ancillary_f32 FROM ledgers WHERE aid = (?1) and uid = (?2) order by date DESC";
+        let sql = "SELECT id, date, amount, transfer_type, pid, cid, desc FROM ledgers WHERE aid = (?1) and uid = (?2) order by date DESC";
         let conn_lock = self.conn.lock().unwrap();
         let mut stmt = conn_lock.prepare(sql)?;
         let exists = stmt.exists(p)?;
@@ -209,7 +204,6 @@ impl DbConn {
                                 participant: row.get(4)?,
                                 category_id: row.get(5)?,
                                 description: row.get(6)?,
-                                ancillary_f32data: row.get(7)?,
                             },
                         })
                     })
@@ -234,7 +228,7 @@ impl DbConn {
     ) -> rusqlite::Result<Vec<DisplayableLedgerRecord>, rusqlite::Error> {
         let p = rusqlite::params![aid, uid];
         let sql = "
-            SELECT l.id, l.date, l.amount, l.transfer_type, p.name, c.category, l.desc, l.ancillary_f32, COALESCE(GROUP_CONCAT(labels.label, ', '), '') AS label_list 
+            SELECT l.id, l.date, l.amount, l.transfer_type, p.name, c.category, l.desc, COALESCE(GROUP_CONCAT(labels.label, ', '), '') AS label_list 
             FROM ledgers l 
             INNER JOIN categories c ON
                 l.cid = c.id AND
@@ -274,8 +268,7 @@ impl DbConn {
                                 participant: row.get(4)?,
                                 category: row.get(5)?,
                                 description: row.get(6)?,
-                                ancillary_f32data: row.get::<_, f32>(7)?.to_string(),
-                                labels: row.get(8)?,
+                                labels: row.get(7)?,
                             },
                         })
                     })
@@ -299,7 +292,7 @@ impl DbConn {
         aid: u32,
     ) -> rusqlite::Result<Vec<LedgerRecord>, rusqlite::Error> {
         let p = rusqlite::params![aid, uid];
-        let sql = "SELECT id, date, amount, transfer_type, pid, cid, desc, ancillary_f32 FROM ledgers WHERE aid = (?1) and uid = (?2) order by date DESC";
+        let sql = "SELECT id, date, amount, transfer_type, pid, cid, desc FROM ledgers WHERE aid = (?1) and uid = (?2) order by date DESC";
         let conn_lock = self.conn.lock().unwrap();
         let mut stmt = conn_lock.prepare(sql)?;
         let exists = stmt.exists(p)?;
@@ -317,7 +310,6 @@ impl DbConn {
                                 participant: row.get(4)?,
                                 category_id: row.get(5)?,
                                 description: row.get(6)?,
-                                ancillary_f32data: row.get(7)?,
                             },
                         })
                     })
@@ -344,7 +336,7 @@ impl DbConn {
         let p = rusqlite::params![uid, aid, category];
         let sql = "
             SELECT 
-                l.id, l.date, l.amount, l.transfer_type, l.pid, l.cid, l.desc, l.ancillary_f32 
+                l.id, l.date, l.amount, l.transfer_type, l.pid, l.cid, l.desc 
             FROM ledgers AS l
             INNER JOIN categories ON 
                 l.cid = categories.id AND
@@ -371,7 +363,6 @@ impl DbConn {
                             participant: row.get(4)?,
                             category_id: row.get(5)?,
                             description: row.get(6)?,
-                            ancillary_f32data: row.get(7)?,
                         },
                     })
                 })
@@ -401,7 +392,7 @@ impl DbConn {
                     rusqlite::params![uid, aid, name],
                     "
                         SELECT 
-                            l.id, l.date, l.amount, l.transfer_type, l.pid, l.cid, l.desc, l.ancillary_f32 
+                            l.id, l.date, l.amount, l.transfer_type, l.pid, l.cid, l.desc 
                         FROM ledgers AS l
                         INNER JOIN people ON 
                             l.cid = people.id AND
@@ -419,7 +410,7 @@ impl DbConn {
                     rusqlite::params![uid, aid, name, ptype as u32],
                     "
                         SELECT 
-                            l.id, l.date, l.amount, l.transfer_type, l.pid, l.cid, l.desc, l.ancillary_f32 
+                            l.id, l.date, l.amount, l.transfer_type, l.pid, l.cid, l.desc 
                         FROM ledgers AS l
                         INNER JOIN people ON 
                             l.cid = people.id AND
@@ -450,7 +441,6 @@ impl DbConn {
                             participant: row.get(4)?,
                             category_id: row.get(5)?,
                             description: row.get(6)?,
-                            ancillary_f32data: row.get(7)?,
                         },
                     })
                 })
@@ -499,7 +489,6 @@ impl DbConn {
                                 participant: row.get(4)?,
                                 category_id: row.get(5)?,
                                 description: row.get(6)?,
-                                ancillary_f32data: row.get(7)?,
                             },
                         })
                     })
@@ -625,7 +614,6 @@ impl DbConn {
                                 participant: row.get(4)?,
                                 category_id: row.get(5)?,
                                 description: row.get(6)?,
-                                ancillary_f32data: row.get(7)?,
                             },
                         })
                     })

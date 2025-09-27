@@ -107,7 +107,6 @@ fn main() {
             participant: peer.to_string(),
             category: cat,
             description: format!("\"{}\"", description),
-            ancillary_f32: ancillary_data,
             stock_info: None,
         };
 
@@ -119,7 +118,6 @@ fn main() {
             ledger_entry.participant,
             ledger_entry.category,
             ledger_entry.description,
-            ledger_entry.ancillary_f32,
             "",
             "",
             "",

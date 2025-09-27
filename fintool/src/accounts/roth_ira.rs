@@ -326,7 +326,6 @@ impl AccountOperations for RothIraAccount {
                                 entry.category.to_ascii_uppercase(),
                             ),
                             description: entry.description,
-                            ancillary_f32data: entry.ancillary_f32,
                         };
 
                         lid = self
@@ -384,7 +383,6 @@ impl AccountOperations for RothIraAccount {
                                 entry.category.to_ascii_uppercase(),
                             ),
                             description: entry.description,
-                            ancillary_f32data: entry.ancillary_f32,
                         };
 
                         lid = self.db.add_ledger_entry(self.uid, self.id, txn).unwrap();
@@ -437,7 +435,6 @@ impl AccountOperations for RothIraAccount {
                             entry.category.to_ascii_uppercase(),
                         ),
                         description: entry.description,
-                        ancillary_f32data: entry.ancillary_f32,
                     };
 
                     lid = self
@@ -486,7 +483,6 @@ impl AccountOperations for RothIraAccount {
                         entry.category.to_ascii_uppercase(),
                     ),
                     description: entry.description,
-                    ancillary_f32data: entry.ancillary_f32,
                 };
 
                 lid = self.db.add_ledger_entry(self.uid, self.id, txn).unwrap();
@@ -847,7 +843,6 @@ impl AccountOperations for RothIraAccount {
                         .get_category_name(self.uid, self.id, record.info.category_id)
                         .unwrap(),
                     description: record.info.description,
-                    ancillary_f32: record.info.ancillary_f32data,
                     stock_info: stock_record_opt,
                 };
                 let flattened = FlatLedgerEntry::from(csv_ledger_record);
@@ -984,7 +979,6 @@ impl AccountOperations for RothIraAccount {
             participant: pid,
             category_id: cid,
             description: description,
-            ancillary_f32data: 0.0,
         };
 
         let (from_ledger_id, to_ledger_id) = match new_ttype {
@@ -1070,7 +1064,6 @@ impl RothIraAccount {
                 participant: 0,
                 category_id: 0,
                 description: "".to_string(),
-                ancillary_f32data: 0.0,
             },
         });
         let external_transfers = self
@@ -1112,7 +1105,6 @@ impl RothIraAccount {
                         participant: 0,
                         category_id: 0,
                         description: "".to_string(),
-                        ancillary_f32data: 0.0,
                     },
                 });
                 min_total = aggregate;

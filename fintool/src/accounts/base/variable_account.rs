@@ -303,8 +303,7 @@ impl VariableAccount {
                 ticker,
                 costbasis.clone(),
                 date_input.clone()
-            ),
-            ancillary_f32data: 0.0,
+            )
         };
 
         let ledger_id = if defaults_to_use && overwrite_entry {
@@ -484,8 +483,7 @@ impl VariableAccount {
                 ticker,
                 sale_price,
                 sale_date.to_string()
-            ),
-            ancillary_f32data: 0.0,
+            )
         };
 
         let ledger_id: u32 = if defaults_to_use && overwrite_entry {
@@ -665,15 +663,7 @@ impl VariableAccount {
                 ticker.clone(),
                 split.clone(),
                 split_date
-            ),
-            ancillary_f32data: self
-                .db
-                .get_stocks(self.uid, self.id, ticker.clone())
-                .unwrap()
-                .iter()
-                .map(|rcrd| rcrd.info.remaining)
-                .sum::<f32>()
-                * split,
+            )
         };
 
         let lid = if defaults_to_use && overwrite_entry {
