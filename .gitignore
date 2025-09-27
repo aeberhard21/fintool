@@ -5,3 +5,6 @@
 *.txt
 **.csv
 **.sql
+**.cap
+**.numbers
+**.DS_Store
