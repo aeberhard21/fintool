@@ -106,6 +106,7 @@ impl AccountCreation for RothIraAccount {
         };
 
         let aid = _db.add_account(uid, &account).unwrap();
+        let acct = Self::new(uid, aid, _db);
 
         let contribution_limit = CustomType::<f32>::new("Enter contribution limit:")
             .with_placeholder("7000.00")
@@ -119,6 +120,14 @@ impl AccountCreation for RothIraAccount {
         };
 
         _db.add_roth_ira_account(uid, aid, roth_ira).unwrap();
+
+        let initialize_account = Confirm::new("Would you like to open the account with an initial deposit?")
+            .prompt()
+            .unwrap();
+
+        if initialize_account { 
+            acct.variable.fixed.deposit(None, false);
+        }
 
         return AccountRecord {
             id: aid,

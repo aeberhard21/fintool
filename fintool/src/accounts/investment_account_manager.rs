@@ -103,6 +103,15 @@ impl AccountCreation for InvestmentAccountManager {
         };
 
         let aid = _db.add_account(uid, &account).unwrap();
+        let acct = Self::new(uid, aid, _db);
+                                    
+        let initialize_account = Confirm::new("Would you like to open the account with an initial deposit?")
+            .prompt()
+            .unwrap();
+
+        if initialize_account { 
+            acct.variable.fixed.deposit(None, false);
+        }
 
         return AccountRecord {
             id: aid,

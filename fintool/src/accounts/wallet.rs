@@ -129,7 +129,16 @@ impl AccountCreation for Wallet {
             has_budget: has_budget,
         };
 
-        let aid = _db.add_account(uid, &account).unwrap();
+        let aid = _db.add_account(uid, &account).unwrap();       
+        let acct = Self::new(uid, aid, _db);
+                                    
+        let initialize_account = Confirm::new("Would you like to open the account with an initial deposit?")
+            .prompt()
+            .unwrap();
+
+        if initialize_account { 
+            acct.fixed.deposit(None, false);
+        }
 
         let add_budget = Confirm::new("Would you like to associate a budget to this account?")
             .with_default(false)
