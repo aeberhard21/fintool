@@ -1007,7 +1007,7 @@ impl DbConn {
             true => {
                 let id = stmt.query_row(p, |row| row.get::<_, u32>(0))?;
                 let sql =
-                    "UPDATE user_account_info SET 401k_id = 401k_id + 1 WHERE uid = (?1) and aid = (?2)";
+                    "UPDATE user_account_info SET plan_401k_id = plan_401k_id + 1 WHERE uid = (?1) and aid = (?2)";
                 conn_lock.execute(sql, p)?;
                 Ok(id)
             }

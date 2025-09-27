@@ -1,6 +1,7 @@
 use chrono::{Datelike, Days, Local, NaiveDate, NaiveTime};
 use core::f64;
 use inquire::Confirm;
+use inquire::CustomType;
 use inquire::Select;
 use inquire::Text;
 #[cfg(feature = "ratatui_support")]
@@ -47,6 +48,7 @@ use crate::types::investments::StockInfo;
 use crate::types::investments::StockRecord;
 use crate::types::investments::StockSplitInfo;
 use crate::types::investments::StockSplitRecord;
+use crate::types::k401::Retirement401kInfo;
 use crate::types::ledger::LedgerInfo;
 use crate::types::ledger::LedgerRecord;
 use crate::types::participants::ParticipantType;
@@ -103,6 +105,20 @@ impl AccountCreation for Retirement401kPlan {
         };
 
         let aid = _db.add_account(uid, &account).unwrap();
+        let acct = Self::new(uid, aid, _db);
+
+        let contribution_limit = CustomType::<f32>::new("Enter contribution limit:")
+            .with_placeholder("7000.00")
+            .with_default(7000.00)
+            .with_error_message("Please type a valid amount!")
+            .prompt()
+            .unwrap();
+
+        let plan_401k = Retirement401kInfo { 
+            contribution_limit : contribution_limit
+        };
+
+        _db.add_401k_account(uid, aid, plan_401k);
 
         return AccountRecord {
             id: aid,
@@ -130,6 +146,11 @@ impl Retirement401kPlan {
         };
 
         acct
+    }
+
+    pub fn get_contribution_limit(&self) -> f32 {
+        let acct = self.db.get_401k(self.uid, self.id).unwrap();
+        return acct.info.contribution_limit;
     }
 }
 
@@ -1298,6 +1319,64 @@ impl Retirement401kPlan {
             .bg(tailwind::SLATE.c900);
         frame.render_widget(display, area);
     }
+
+    fn render_remaining_contribution(&self, frame: &mut Frame, area: Rect, app: &App) {
+        let contribution_limit = self.get_contribution_limit();
+        let (start, end) =
+            get_analysis_period_dates(self.open_date, &crate::accounts::base::AnalysisPeriod::YTD);
+        let contributions_ytd = self
+            .db
+            .get_ledger_entries_within_timestamps(self.uid, self.id, start, end)
+            .unwrap();
+        let aggregate: f32 = contributions_ytd
+            .iter()
+            .filter(|x| x.info.transfer_type == TransferType::DepositFromExternalAccount)
+            .map(|x| x.info.amount)
+            .sum();
+
+        let contribution_remaining = contribution_limit - aggregate;
+
+        let remaining_contribution_text = vec![
+            Span::styled(
+                format!("${:.2}", contribution_remaining),
+                Style::default().bold().fg(if contribution_limit < 500. {
+                    tailwind::EMERALD.c400
+                } else if contribution_remaining < 1500. {
+                    tailwind::ROSE.c200
+                } else {
+                    tailwind::ROSE.c100
+                }),
+            ),
+            Span::styled(
+                format!(" of ${:.2} remaining.", contribution_limit),
+                Style::default().bold().fg(tailwind::EMERALD.c400),
+            ),
+        ];
+
+        let line = Line::from(remaining_contribution_text);
+        let text = ratatuiText::from(line);
+        let p = Paragraph::new(text)
+            .centered()
+            .alignment(layout::Alignment::Center)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Remaining Contribution")
+                    .title_alignment(layout::Alignment::Center)
+                    .padding(Padding::new(
+                        0,
+                        0,
+                        (if area.height > 4 {
+                            area.height / 2 - 2
+                        } else {
+                            0
+                        }),
+                        0,
+                    )),
+            )
+            .bg(tailwind::SLATE.c900);
+        frame.render_widget(p, area);
+    }
 }
 
 #[cfg(feature = "ratatui_support")]
@@ -1321,15 +1400,17 @@ impl AccountUI for Retirement401kPlan {
 
         let reports_chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .constraints([Constraint::Percentage(33), Constraint::Percentage(34), Constraint::Percentage(33)])
             .split(report_area);
 
         let value_area = reports_chunks[0];
-        let twrr_area = reports_chunks[1];
+        let contribution_area = reports_chunks[1];
+        let twrr_area = reports_chunks[2];
 
         self.render_ledger_table(frame, ledger_area, app);
         self.render_growth_chart(frame, graph_area, app);
         self.render_current_value(frame, value_area, app);
+        self.render_remaining_contribution(frame, contribution_area, app);
         self.render_time_weighted_rate_of_return(frame, twrr_area, app);
     }
 }
