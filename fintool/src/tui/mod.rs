@@ -449,8 +449,23 @@ pub fn name_account(uid: u32, db: &DbConn) -> String {
 }
 
 pub fn rename_account(db: &DbConn, uid: u32, id: u32) {
-    let new_name = name_account(uid, db);
-    db.rename_account(uid, id, new_name).unwrap();
+    let mut name;
+    loop {
+        name = Text::new("Enter new name (or Enter to maintain current name):")
+            .prompt()
+            .unwrap()
+            .trim()
+            .to_string();
+
+        if name.len() == 0 {
+            return;
+        } else if db.account_with_name_exists(uid, name.clone()).unwrap() {
+            println!("Account with name {} already exists!", name);
+        } else {
+            break;
+        }
+    }
+    db.rename_account(uid, id, name).unwrap();
 }
 
 pub fn modify_labels(uid: u32, db: &DbConn) {

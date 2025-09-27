@@ -107,6 +107,7 @@ fn init_and_run_app(_db: &mut DbConn) -> io::Result<bool> {
 
 #[cfg(feature = "ratatui_support")]
 fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<bool> {
+    terminal.clear().unwrap();
     loop {
         app.invalid_input = false;
         terminal.draw(|f| ui::ui(f, app))?;
@@ -337,6 +338,8 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                             match select_mode {
                                 CurrentlySelecting::AccountTypeTabs
                                 | CurrentlySelecting::AccountTabs => {
+                                    app.restore_account();
+
                                     disable_raw_mode()?;
                                     execute!(
                                         io::stdout(),
@@ -372,7 +375,6 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                                         Vec::new()
                                     };
 
-                                    app.restore_account();
                                     app.skip_to_last_account();
                                     app.get_account();
                                 }
@@ -399,6 +401,9 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                                             app.user_id.unwrap(),
                                             acct.get_id(),
                                         );
+                                    } else { 
+                                        // no account selected so just ignore keystroke. 
+                                        continue;
                                     }
 
                                     // update accounts for type

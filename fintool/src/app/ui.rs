@@ -42,7 +42,7 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
         match app.current_screen {
             CurrentScreen::Login => Span::styled (
                 "(q) to quit / (:) Create User / (⏎) Login",
-                Style::default().fg(Color::LightBlue),
+                Style::default().fg(Color::LightBlue).bg(Color::Black),
             ),
             CurrentScreen::Landing => {
                 match app.currently_selected.unwrap() { 
