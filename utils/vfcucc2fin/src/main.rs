@@ -135,7 +135,7 @@ fn main() {
         };
 
         println!(
-            "{},{:.2},{},{},{},{},{},,,,,",
+            "{},{:.2},{},{},{},{},,,,,",
             ledger_entry.date,
             ledger_entry.amount,
             ledger_entry.transfer_type as u32,

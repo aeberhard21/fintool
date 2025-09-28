@@ -1,3 +1,4 @@
+use directories::ProjectDirs;
 #[cfg(feature = "ratatui_support")]
 use ratatui::{
     backend::{Backend, CrosstermBackend},
@@ -41,23 +42,10 @@ mod tui;
 mod types;
 
 fn main() -> Result<(), std::io::Error> {
-    let db_dir: String = String::from("./db");
 
     let mut _db: DbConn;
-    match Path::new(&db_dir).try_exists() {
-        Ok(true) => {}
-        Ok(false) => {
-            fs::create_dir(&db_dir);
-        }
-        Err(_) => {
-            panic!("Unable to verify existence of database directory!");
-        }
-    }
-
-    let mut db = PathBuf::new();
-    db.push(&db_dir);
-    db.push("finances.db");
-    match Path::new(&db_dir).join(&db).try_exists() {
+    let db = db_path();
+    match db.try_exists() {
         Ok(_) => {
             // nothing to do
             _db = DbConn::new(db.clone()).unwrap();
@@ -78,6 +66,28 @@ fn main() -> Result<(), std::io::Error> {
     tui::menu(&mut _db);
 
     Ok(())
+}
+
+fn db_path() -> PathBuf {
+    #[cfg(debug_assertions)]
+    {
+        // Dev/debug mode → keep database in repo
+        let db_dir = Path::new("db");
+        std::fs::create_dir_all(db_dir).expect("Failed to create dev db directory");
+        return db_dir.join("finances.db");
+    }
+
+    #[cfg(not(debug_assertions))]
+    {
+        // Release mode → packaged app database
+        if let Some(proj_dirs) = ProjectDirs::from("com", "aeberhard21", "Fintool") {
+            let data_dir = proj_dirs.data_dir(); // ~/Library/Application Support/Fintool
+            std::fs::create_dir_all(data_dir).expect("Failed to create data directory");
+            return data_dir.join("finances.db");
+        } else { 
+            panic!("Unable to locate application directory!");
+        }
+    }
 }
 
 #[cfg(feature = "ratatui_support")]

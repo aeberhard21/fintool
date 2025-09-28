@@ -57,7 +57,7 @@ fn main() {
        if ledger_entry.stock_info.is_some() {
 
             println!(
-                "{},{},{},{},{},{},{},{},{},{},{},{}",
+                "{},{},{},{},{},{},{},{},{},{},{}",
                 ledger_entry.date,
                 ledger_entry.amount,
                 ledger_entry.transfer_type as u32,
@@ -72,7 +72,7 @@ fn main() {
             );
         } else {
             println!(
-                "{},{},{},{},{},{},{},{},{},{},{},{}",
+                "{},{},{},{},{},{},{},{},{},{},{}",
                 ledger_entry.date,
                 ledger_entry.amount,
                 ledger_entry.transfer_type as u32,

@@ -84,34 +84,34 @@ fn main() {
             txn.amount
         };
 
-            let ledger_entry = LedgerEntry {
-                date: format!(
-                    "{}-{}-{}",
-                    posted_date.year(),
-                    posted_date.month0() + 1,
-                    posted_date.day0() + 1
-                ),
-                amount: amt,
-                transfer_type: ttype,
-                participant: peer,
-                category: cat,
-                description: format!("\"{}\"", description),
-                stock_info: Some(stock_txn),
-            };
+    //         let ledger_entry = LedgerEntry {
+    //             date: format!(
+    //                 "{}-{}-{}",
+    //                 posted_date.year(),
+    //                 posted_date.month0() + 1,
+    //                 posted_date.day0() + 1
+    //             ),
+    //             amount: amt,
+    //             transfer_type: ttype,
+    //             participant: peer,
+    //             category: cat,
+    //             description: format!("\"{}\"", description),
+    //             stock_info: Some(stock_txn),
+    //         };
 
-        println!(
-        "{},{},{},{},{},{},{},{},{},{},{},{}",
-        ledger_entry.date,
-        ledger_entry.amount,
-        ledger_entry.transfer_type as u32,
-        ledger_entry.participant,
-        ledger_entry.category,
-        ledger_entry.description,
-        ledger_entry.stock_info.clone().unwrap().shares,
-        ledger_entry.stock_info.clone().unwrap().costbasis,
-        ledger_entry.stock_info.clone().unwrap().remaining,
-        ledger_entry.stock_info.clone().unwrap().is_buy,
-        ledger_entry.stock_info.clone().unwrap().is_split
-    );
+    //     println!(
+    //     "{},{},{},{},{},{},{},{},{},{},{},{}",
+    //     ledger_entry.date,
+    //     ledger_entry.amount,
+    //     ledger_entry.transfer_type as u32,
+    //     ledger_entry.participant,
+    //     ledger_entry.category,
+    //     ledger_entry.description,
+    //     ledger_entry.stock_info.clone().unwrap().shares,
+    //     ledger_entry.stock_info.clone().unwrap().costbasis,
+    //     ledger_entry.stock_info.clone().unwrap().remaining,
+    //     ledger_entry.stock_info.clone().unwrap().is_buy,
+    //     ledger_entry.stock_info.clone().unwrap().is_split
+    // );
     }
 }

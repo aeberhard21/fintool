@@ -222,7 +222,6 @@ impl From<BuyMutualFund> for shared_lib::LedgerEntry {
                 txn.investment_buy.unit_price.clone(),
                 txn.investment_buy.investment_transaction.date_of_trade
             ),
-            ancillary_f32: 0.0,
             stock_info: Some(shared_lib::StockInfo {
                 shares: txn.investment_buy.units.clone(),
                 costbasis: txn.investment_buy.unit_price,
