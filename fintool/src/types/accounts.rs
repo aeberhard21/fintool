@@ -1,7 +1,9 @@
 #[cfg(feature = "ratatui_support")]
 use ratatui::{
     layout::Rect,
+    style::Style,
     style::Color,
+    style::palette::tailwind,
     text::Line,
     widgets::{Block, Tabs},
     Frame,
@@ -62,7 +64,7 @@ impl TabMenu for AccountType {
         let atype_tabs = Tabs::new(AccountType::iter().map(AccountType::to_tab_title))
             .highlight_style(color)
             .select(selected_tab)
-            .block(Block::bordered().title(title))
+            .block(Block::bordered().title(title).style(Style::new().bg(tailwind::SLATE.c900)))
             .padding("", "")
             .divider(" ");
         frame.render_widget(atype_tabs, area);

@@ -77,7 +77,7 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
     };
 
     let key_notes_footer =
-        Paragraph::new(Line::from(current_keys_hint)).block(Block::default().borders(Borders::ALL));
+        Paragraph::new(Line::from(current_keys_hint)).block(Block::default().borders(Borders::ALL).style(Style::new().bg(tailwind::SLATE.c900)));
     let footer_chunks = chunks[chunks.len() - 1];
 
     frame.render_widget(key_notes_footer, footer_chunks);
@@ -85,7 +85,7 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
     if let CurrentScreen::Login = app.current_screen {
         let title_block = Block::default()
             .borders(Borders::ALL)
-            .style(Style::default());
+            .style(Style::default().bg(tailwind::SLATE.c900));
 
         let title = Paragraph::new(Text::styled("FINTOOL", Style::default().fg(Color::Green)))
             .block(title_block)
@@ -279,6 +279,7 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
                         }),
                         0,
                     )))
+                    .style(Style::new().bg(tailwind::SLATE.c900))
                     .wrap(Wrap { trim: false });
                 frame.render_widget(accounts_paragraph, account_chunks[2]);
             }
@@ -353,7 +354,7 @@ fn render_account_tabs(
     let atype_tabs = Tabs::new(tab_names.into_iter())
         .highlight_style(highlight_color)
         .select(selected_tab)
-        .block(Block::bordered().title(" Accounts "))
+        .block(Block::bordered().title(" Accounts ").style(Style::new().bg(tailwind::SLATE.c900)))
         .padding("", "")
         .divider(" | ");
     frame.render_widget(atype_tabs, area);
@@ -410,13 +411,13 @@ fn render_net_worth(app: &App, frame: &mut Frame, area: Rect) {
 
     let net_worth_widget = Paragraph::new(Text::styled(
         format!("$ {:.2}", net_worth),
-        Style::default().fg(tailwind::EMERALD.c500),
+        Style::default().fg(tailwind::EMERALD.c500).bg(tailwind::SLATE.c900),
     ))
     .block(
         Block::default()
             .borders(Borders::ALL)
             .title("Net Worth")
-            .style(Style::default())
+            .style(Style::default().bg(tailwind::SLATE.c900))
             .padding(Padding::new(
                 0,
                 0,
@@ -432,13 +433,13 @@ fn render_net_worth(app: &App, frame: &mut Frame, area: Rect) {
     .bold();
     let total_assets_widget = Paragraph::new(Text::styled(
         format!("$ {:.2}", assets),
-        Style::default().fg(tailwind::EMERALD.c500),
+        Style::default().fg(tailwind::EMERALD.c500).bg(tailwind::SLATE.c900),
     ))
     .block(
         Block::default()
             .borders(Borders::ALL)
             .title("Total Assets")
-            .style(Style::default())
+            .style(Style::default().bg(tailwind::SLATE.c900))
             .padding(Padding::new(
                 0,
                 0,
@@ -454,13 +455,13 @@ fn render_net_worth(app: &App, frame: &mut Frame, area: Rect) {
     .bold();
     let liquid_assets_widget = Paragraph::new(Text::styled(
         format!("$ {:.2}", liquid_assets),
-        Style::default().fg(tailwind::EMERALD.c500),
+        Style::default().fg(tailwind::EMERALD.c500).bg(tailwind::SLATE.c900),
     ))
     .block(
         Block::default()
             .borders(Borders::ALL)
             .title("Liquid Assets")
-            .style(Style::default())
+            .style(Style::default().bg(tailwind::SLATE.c900))
             .padding(Padding::new(
                 0,
                 0,
@@ -482,7 +483,7 @@ fn render_net_worth(app: &App, frame: &mut Frame, area: Rect) {
         Block::default()
             .borders(Borders::ALL)
             .title("Total Liability")
-            .style(Style::default())
+            .style(Style::default().bg(tailwind::SLATE.c900))
             .padding(Padding::new(
                 0,
                 0,
@@ -569,6 +570,7 @@ fn render_net_worth_chart(app: &App, frame: &mut Frame, area: Rect) {
         .data(&data)];
 
     let net_worth_chart = Chart::new(datasets)
+        .style(Style::new().bg(tailwind::SLATE.c900))
         .block(Block::bordered().title(Line::from(" Growth Over Time ").cyan().bold().centered()))
         .legend_position(Some(LegendPosition::TopLeft))
         .x_axis(
@@ -666,6 +668,7 @@ fn render_asset_investment_ratio_chart(app: &App, frame: &mut Frame, area: Rect)
         .collect::<Vec<Bar>>();
 
     let chart = BarChart::default()
+        .style(Style::new().bg(tailwind::SLATE.c900))
         .data(BarGroup::default().bars(&bars))
         .block(Block::bordered().title_top("Asset Investment Ratio"))
         .bar_width(10)
@@ -768,7 +771,7 @@ fn render_no_data_filler(app: &App, frame: &mut Frame, area: Rect) {
         Block::default()
             .borders(Borders::ALL)
             .title("")
-            .style(Style::default())
+            .style(Style::default().bg(tailwind::SLATE.c900))
             .padding(Padding::new(
                 0,
                 0,

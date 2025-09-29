@@ -1,7 +1,6 @@
 use ratatui::{
     layout::Rect,
-    style::palette::tailwind,
-    style::Color,
+    style::{palette::tailwind, Color, Style},
     text::Line,
     widgets::{Block, Tabs},
     Frame,
@@ -91,7 +90,7 @@ impl TabMenu for Pages {
         )
         .highlight_style(color)
         .select(selected_tab)
-        .block(Block::bordered().title(title))
+        .block(Block::bordered().title(title).style(Style::new().bg(tailwind::SLATE.c900)))
         .padding("", "")
         .divider(" ");
         frame.render_widget(atype_tabs, area);

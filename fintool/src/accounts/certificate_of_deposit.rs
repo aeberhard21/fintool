@@ -1132,7 +1132,8 @@ impl CertificateOfDepositAccount {
             let chart = Chart::new(datasets)
                 .block(
                     Block::bordered()
-                        .title(Line::from(" Value Over Time ").cyan().bold().centered()),
+                        .title(Line::from(" Value Over Time ").cyan().bold().centered())
+                        .style(Style::new().bg(tailwind::SLATE.c900)),
                 )
                 .x_axis(
                     Axis::default()
@@ -1152,7 +1153,8 @@ impl CertificateOfDepositAccount {
                                 .into_iter()
                                 .map(|x| format!("{:.2}", x)),
                         ),
-                );
+                )
+                .style(Style::new().bg(tailwind::SLATE.c900));
 
             frame.render_widget(chart, area);
         } else {

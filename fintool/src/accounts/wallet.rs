@@ -14,7 +14,7 @@ use ratatui::{
     text::{Line, Span, Text as ratatuiText},
     widgets::{
         Axis, Bar, BarChart, BarGroup, Block, Borders, Cell, Chart, Clear, Dataset, GraphType,
-        HighlightSpacing, List, ListItem, Paragraph, Row, Table, Tabs, Widget, Wrap,
+        HighlightSpacing, List, ListItem, Padding, Paragraph, Row, Table, Tabs, Widget, Wrap,
     },
     Frame,
 };
@@ -897,7 +897,8 @@ impl Wallet {
 
             let mut chart = BarChart::default()
                 .style(Style::new().bg(tailwind::SLATE.c900))
-                .block(Block::bordered().title_top(Line::from("Spend Analyzer").centered()))
+                .block(Block::bordered().title_top(Line::from("Spend Analyzer").centered())
+                    .style(Style::new().bg(tailwind::SLATE.c900)))
                 .bar_width(10)
                 .group_gap(area.width / (bar_groups.len() as u16 + 10));
             for group in bar_groups {
@@ -918,7 +919,17 @@ impl Wallet {
                     Block::default()
                         .borders(Borders::ALL)
                         .title("Current Balance")
-                        .title_alignment(layout::Alignment::Center),
+                        .title_alignment(layout::Alignment::Center)
+                        .padding(Padding::new(
+                            0,
+                            0,
+                            (if area.height > 4 {
+                                area.height / 2 - 2
+                            } else {
+                                0
+                            }),
+                            0,
+                        )),
                 )
                 .bg(tailwind::SLATE.c900);
 
@@ -945,83 +956,6 @@ impl AccountUI for Wallet {
         self.render_current_value(frame, report_area, app);
         self.render_ledger_table(frame, chunk[1], app);
         self.render_spend_chart(frame, chart_area, app);
-    }
-
-    fn render_ledger_table(&self, frame: &mut Frame, area: Rect, app: &mut App) {
-        use ratatui::style::Modifier;
-
-        let header_style = Style::default()
-            .fg(app.ledger_table_colors.header_fg)
-            .bg(app.ledger_table_colors.header_bg);
-
-        let selected_row_style = Style::new()
-            .add_modifier(Modifier::REVERSED)
-            .fg(app.ledger_table_colors.selected_row_style_fg);
-
-        let header = [
-            "ID",
-            "Date",
-            "Type",
-            "Amount",
-            "Category",
-            "Peer",
-            "Description",
-        ]
-        .into_iter()
-        .map(Cell::from)
-        .collect::<Row>()
-        .style(header_style)
-        .height(1);
-
-        let data = self.get_displayable_ledger();
-        app.ledger_entries = Some(data.clone());
-
-        let rows = data.iter().enumerate().map(|(i, record)| {
-            let color = match i % 2 {
-                0 => app.ledger_table_colors.normal_row_color,
-                _ => app.ledger_table_colors.alt_row_color,
-            };
-            let item = [
-                &record.id.to_string(),
-                &record.info.date,
-                &record.info.transfer_type,
-                &record.info.amount.to_string(),
-                &record.info.category,
-                &record.info.participant.to_string(),
-                &record.info.description,
-            ];
-            item.into_iter()
-                .map(|content| Cell::from(ratatuiText::from(format!("\n{content}\n"))))
-                .collect::<Row>()
-                .style(Style::new().fg(app.ledger_table_colors.row_fg).bg(color))
-                .height(4)
-        });
-
-        let bar: &'static str = " █ ";
-        let constraint_lens = ledger_table_constraint_len_calculator(&data);
-        let t = Table::new(
-            rows,
-            [
-                Constraint::Length(constraint_lens.0 + 1),
-                Constraint::Min(constraint_lens.1 + 1),
-                Constraint::Min(constraint_lens.2 + 1),
-                Constraint::Min(constraint_lens.3 + 1),
-                Constraint::Min(constraint_lens.4 + 1),
-                Constraint::Min(constraint_lens.5 + 1),
-                Constraint::Min(constraint_lens.6 + 1),
-            ],
-        )
-        .header(header)
-        .row_highlight_style(selected_row_style)
-        .highlight_symbol(ratatuiText::from(vec![
-            "".into(),
-            bar.into(),
-            bar.into(),
-            "".into(),
-        ]))
-        .bg(app.ledger_table_colors.buffer_bg)
-        .highlight_spacing(HighlightSpacing::Always);
-        frame.render_stateful_widget(t, area, &mut app.ledger_table_state);
     }
 }
 
