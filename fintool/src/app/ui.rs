@@ -41,7 +41,7 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
     let current_keys_hint = {
         match app.current_screen {
             CurrentScreen::Login => Span::styled (
-                "(q) to quit / (:) Create User / (⏎) Login",
+                "(Ctrl-c) to quit / (:) Create User / (⏎) Login",
                 Style::default().fg(Color::LightBlue).bg(Color::Black),
             ),
             CurrentScreen::Landing => {
