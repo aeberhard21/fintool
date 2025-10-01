@@ -568,7 +568,12 @@ fn render_net_worth_chart(app: &App, frame: &mut Frame, area: Rect) {
     for account in &app.accounts {
         start_date = start_date.min(account.get_open_date());
     }
-    let start_eoy = NaiveDate::from_ymd_opt(start_date.year(), 12, 31).unwrap();
+
+    let start_eoy = if start_date.year() == today.year() { 
+        NaiveDate::from_ymd_opt(start_date.year()-1, 12, 31).unwrap()
+    } else { 
+        NaiveDate::from_ymd_opt(start_date.year(), 12, 31).unwrap()
+    };
     let mut date = start_eoy;
     let mut data: Vec<(f64, f64)> = Vec::new();
     let mut tstamp_min = f64::MAX;
