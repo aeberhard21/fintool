@@ -1,0 +1,32 @@
+date,amount,transfer_type,participant,category,description,shares,costbasis,remaining,is_buy,is_split
+2019-01-10,2400.00,1,Employer,Income,Salary for January,,,,,
+2019-01-15,1150.00,0,Landlord,Housing,Monthly rent,,,,,
+2019-01-20,120.00,0,UtilityCo,Utilities,Electric bill,,,,,
+2019-01-25,90.00,0,GymCo,Health,Fitness membership,,,,,
+
+2020-02-10,2500.00,1,Employer,Income,Salary for February,,,,,
+2020-02-15,1250.00,0,Landlord,Housing,Monthly rent,,,,,
+2020-02-20,110.00,0,UtilityCo,Utilities,Water bill,,,,,
+
+2021-03-10,2600.00,1,Employer,Income,Salary for March,,,,,
+2021-03-15,1300.00,0,Landlord,Housing,Monthly rent,,,,,
+2021-03-20,115.00,0,UtilityCo,Utilities,Electric bill,,,,,
+2021-03-25,95.00,0,GymCo,Health,Fitness membership,,,,,
+
+2022-04-10,2700.00,1,Employer,Income,Salary for April,,,,,
+2022-04-15,1400.00,0,Landlord,Housing,Monthly rent,,,,,
+2022-04-20,125.00,0,UtilityCo,Utilities,Gas bill,,,,,
+
+2023-05-10,2800.00,1,Employer,Income,Salary for May,,,,,
+2023-05-15,1500.00,0,Landlord,Housing,Monthly rent,,,,,
+2023-05-20,130.00,0,UtilityCo,Utilities,Water bill,,,,,
+
+2024-06-10,2900.00,1,Employer,Income,Salary for June,,,,,
+2024-06-15,1550.00,0,Landlord,Housing,Monthly rent,,,,,
+2024-06-20,135.00,0,UtilityCo,Utilities,Electric bill,,,,,
+2024-06-25,100.00,0,GymCo,Health,Fitness membership,,,,,
+
+2025-07-10,3000.00,1,Employer,Income,Salary for July,,,,,
+2025-07-15,1600.00,0,Landlord,Housing,Monthly rent,,,,,
+2025-07-20,140.00,0,UtilityCo,Utilities,Gas bill,,,,,
+2025-07-25,105.00,0,GymCo,Health,Fitness membership,,,,,

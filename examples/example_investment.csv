@@ -1,0 +1,21 @@
+2019-02-01,4000.00,2,Brokerage,Investments,Buy AAPL,20,200,20,true,false
+2019-07-15,500.00,1,Company,Dividends,Quarterly dividend,,,,,
+
+2020-03-01,3500.00,2,Brokerage,Investments,Buy MSFT,15,233,15,true,false
+2020-10-20,600.00,1,Company,Dividends,Quarterly dividend,,,,,
+
+2021-01-10,5000.00,2,Brokerage,Investments,Buy TSLA,10,500,10,true,false
+2021-06-05,4500.00,3,Brokerage,Investments,Sell AAPL,10,200,10,false,false
+2021-09-01,0.00,4,Brokerage,Investments,AAPL 4-for-1 Split,40,50,40,false,true
+
+2022-05-20,2500.00,2,Brokerage,Investments,Buy AMZN,5,500,5,true,false
+2022-11-10,5200.00,3,Brokerage,Investments,Sell MSFT,15,233,0,false,false
+
+2023-07-05,3000.00,2,Brokerage,Investments,Buy NVDA,12,250,12,true,false
+2023-12-15,7500.00,3,Brokerage,Investments,Sell TSLA,10,500,0,false,false
+
+2024-08-01,2000.00,2,Brokerage,Investments,Buy GOOGL,8,250,8,true,false
+2024-12-10,1000.00,1,Company,Dividends,Annual dividend,,,,,
+
+2025-09-01,6000.00,3,Brokerage,Investments,Sell NVDA,12,250,0,false,false
+2025-09-15,2500.00,1,Company,Dividends,Special dividend,,,,,
