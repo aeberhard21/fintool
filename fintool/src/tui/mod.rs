@@ -1,3 +1,19 @@
+/* ------------------------------------------------------------------------
+    Copyright (C) 2025  Andrew J. Eberhard
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+  -----------------------------------------------------------------------*/
 use chrono::Datelike;
 use chrono::Days;
 use chrono::Local;
@@ -19,6 +35,8 @@ use crate::accounts::retirement_401k_plan::Retirement401kPlan;
 use crate::accounts::roth_ira::RothIraAccount;
 use crate::accounts::wallet::Wallet;
 use crate::database::DbConn;
+use crate::tui::tui_license::get_gnu_gpl_conditions;
+use crate::tui::tui_license::get_gnu_gpl_warranty;
 use crate::tui::tui_user::*;
 use crate::types::accounts::AccountType;
 use crate::types::accounts::*;
@@ -27,8 +45,8 @@ use chrono::NaiveDate;
 use inquire::*;
 
 pub mod tui_accounts;
-// pub mod tui_budgets;
 pub mod tui_user;
+pub mod tui_license;
 
 pub fn menu(_db: &mut DbConn) {
     let mut uid: u32;
@@ -43,10 +61,12 @@ pub fn menu(_db: &mut DbConn) {
             "Change User",
             "Access Account(s)",
             "Modify Labels",
+            "Show Conditions", 
+            "Show Warranty",
             "Exit",
         ];
     } else {
-        menu_options = vec!["Change User", "Access Account(s)", "Modify Labels", "Exit"];
+        menu_options = vec!["Change User", "Access Account(s)", "Modify Labels", "Show Conditions", "Show Warranty", "Exit"];
     }
 
     let rf = &menu_options;
@@ -69,6 +89,14 @@ pub fn menu(_db: &mut DbConn) {
             }
             "Modify Labels" => {
                 modify_labels(uid, _db);
+            }
+            "Show Conditions" => { 
+                let conditions = get_gnu_gpl_conditions();
+                println!("\n\n{}\n\n", conditions);
+            }
+            "Show Warranty" => { 
+                let warranty = get_gnu_gpl_warranty();
+                println!("\n\n{}\n\n", warranty);
             }
             "Exit" => {
                 println!("Exiting...");

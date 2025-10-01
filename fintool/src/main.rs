@@ -1,4 +1,21 @@
+/* ------------------------------------------------------------------------
+    Copyright (C) 2025  Andrew J. Eberhard
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+  -----------------------------------------------------------------------*/
 use directories::ProjectDirs;
+use chrono::{Datelike, Local, NaiveDate};
 #[cfg(feature = "ratatui_support")]
 use ratatui::{
     backend::{Backend, CrosstermBackend},
@@ -30,6 +47,7 @@ use crate::app::screen::{CurrentScreen, CurrentlySelecting, Pages, UserLoadedSta
 #[cfg(feature = "ratatui_support")]
 use crate::app::ui;
 use crate::database::DbConn;
+use crate::tui::tui_license::license_banner;
 use crate::tui::tui_user::create_user;
 use crate::tui::*;
 use crate::types::accounts::AccountType;
@@ -61,7 +79,7 @@ fn main() -> Result<(), std::io::Error> {
     #[cfg(not(feature = "ratatui_support"))]
     print!("{esc}[2J{esc}[1;1H", esc = 27 as char);
     #[cfg(not(feature = "ratatui_support"))]
-    println!("Welcome to FinTool!");
+    println!("{}\n", tui::tui_license::license_banner());
     #[cfg(not(feature = "ratatui_support"))]
     tui::menu(&mut _db);
 
@@ -169,16 +187,26 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
             match app.current_screen {
                 CurrentScreen::Login => match (key.modifiers, key.code) {
                     (_, KeyCode::Enter) => {
-                        if let Some(id) = app.validate_user(app.key_input.to_string()) {
-                            app.user_id = Some(id);
-                            app.user_load_state = UserLoadedState::Loading;
-                            // app.current_screen = CurrentScreen::Loading;
-                        } else {
-                            app.invalid_input = true;
+                        if (app.display_license_conditions || app.display_license_warranty) { 
+                            app.display_license_conditions = false;
+                            app.display_license_warranty = false;
+                        } else { 
+                            if let Some(id) = app.validate_user(app.key_input.to_string()) {
+                                app.user_id = Some(id);
+                                app.user_load_state = UserLoadedState::Loading;
+                            } else {
+                                app.invalid_input = true;
+                            }
                         }
                     }
                     (KeyModifiers::CONTROL, KeyCode::Char('c') | KeyCode::Char('C')) => {
                         return Ok(true)
+                    }
+                    (KeyModifiers::CONTROL, KeyCode::Char('l')) => { 
+                        app.display_license_conditions = true;
+                    }
+                    (KeyModifiers::CONTROL, KeyCode::Char('w')) => { 
+                        app.display_license_warranty = true;
                     }
                     (_, KeyCode::Char(':')) => {
                         disable_raw_mode()?;
@@ -198,13 +226,35 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                         app.key_input.push(value);
                     }
                     (_, KeyCode::Backspace) => {
-                        app.key_input.pop();
+                        if (app.display_license_conditions || app.display_license_warranty) { 
+                            app.display_license_conditions = false;
+                            app.display_license_warranty = false;
+                        } else { 
+                            app.key_input.pop();
+                        }
                     }
                     _ => {}
                 },
                 CurrentScreen::Landing => match (key.modifiers, key.code) {
-                    (_, KeyCode::Char('q'))
-                    | (KeyModifiers::CONTROL, KeyCode::Char('c') | KeyCode::Char('C')) => {
+                    (_, KeyCode::Char('q')) => { 
+                        app.restore_account();
+                        app.current_screen = CurrentScreen::Login;
+                        app.key_input = String::new();
+                        app.selected_page_tab = Pages::Main;
+                        app.accounts_for_type = Vec::new();
+                        app.selected_account_tab = 0;
+                        app.selected_atype_tab = AccountType::Bank;
+                        app.account_index_to_restore = 0;
+                        app.currently_selected = Some(CurrentlySelecting::MainTabs);
+                        app.user_id = None;
+                        app.account = None;
+                        app.accounts = Vec::new();
+                        app.analysis_period = accounts::base::AnalysisPeriod::YTD;
+                        app.analysis_start = NaiveDate::from_ymd_opt(Local::now().year(), 1, 1).unwrap();
+                        app.analysis_end =  Local::now().date_naive();
+                        app.user_load_state = UserLoadedState::NotLoaded;
+                    }
+                    (KeyModifiers::CONTROL, KeyCode::Char('c') | KeyCode::Char('C')) => {
                         return Ok(true)
                     }
                     (_, KeyCode::Right | KeyCode::Char('l')) => {

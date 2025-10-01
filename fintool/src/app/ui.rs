@@ -1,3 +1,19 @@
+/* ------------------------------------------------------------------------
+    Copyright (C) 2025  Andrew J. Eberhard
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+  -----------------------------------------------------------------------*/
 use chrono::{Datelike, Days, Local, Months, NaiveDate, NaiveTime};
 use ratatui::{
     buffer::Buffer,
@@ -19,7 +35,7 @@ use time::Month;
 
 use super::app::App;
 use super::screen::{CurrentScreen, TabMenu};
-use crate::{accounts::base::Account, app::screen::CurrentlySelecting};
+use crate::{accounts::base::Account, app::screen::CurrentlySelecting, tui::{self, tui_license}};
 use crate::{
     accounts::{self, as_liquid_account, bank_account::BankAccount},
     app::screen::{Pages, UserLoadedState},
@@ -41,7 +57,7 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
     let current_keys_hint = {
         match app.current_screen {
             CurrentScreen::Login => Span::styled (
-                "(Ctrl-c) to quit / (:) Create User / (⏎) Login",
+                "(Ctrl-c) to quit / (:) Create User / (⏎) Login / (Ctrl-l) Show Conditions / (Ctrl-w) Show Warranty",
                 Style::default().fg(Color::LightBlue).bg(Color::Black),
             ),
             CurrentScreen::Landing => {
@@ -94,23 +110,59 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
 
         frame.render_widget(title, chunks[0]);
 
+        let middle_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Percentage(90),
+                Constraint::Percentage(10)
+            ])
+            .split(chunks[1]);
+
         let centered_area = centered_rect(60, 25, frame.area());
 
         if let UserLoadedState::NotLoaded = app.user_load_state {
-            let popup_block = Block::default()
+            let popup_block = if app.display_license_conditions {
+                Block::default()
+                .title(" Conditions ")
+                .borders(Borders::ALL)
+                .style(Style::default().bg(tailwind::EMERALD.c950))
+            } else if app.display_license_warranty {
+                Block::default()
+                .title(" Warranty ")
+                .borders(Borders::ALL)
+                .style(Style::default().bg(tailwind::EMERALD.c950))
+            } else {
+                Block::default()
                 .title(" Login ")
                 .borders(Borders::ALL)
-                .style(Style::default().bg(tailwind::EMERALD.c950));
+                .style(Style::default().bg(tailwind::EMERALD.c950))
+            };
 
-            // prompt for user name
-            let mut content = "Username: ".to_string();
-            content.push_str(&app.key_input.as_str());
-            let username_text = Text::styled(content, Style::default().fg(tailwind::EMERALD.c50));
+            let block_text = if app.display_license_conditions { 
+                Text::styled(tui::tui_license::get_gnu_gpl_conditions(), Style::default().fg(tailwind::EMERALD.c50))
+            } else if app.display_license_warranty { 
+                Text::styled(tui::tui_license::get_gnu_gpl_warranty(), Style::default().fg(tailwind::EMERALD.c50))
+            } else { 
+                // prompt for user name
+                let mut content = "Username: ".to_string();
+                content.push_str(&app.key_input.as_str());
+                let username_text = Text::styled(content, Style::default().fg(tailwind::EMERALD.c50));
+                username_text
+            };
 
-            let login_paragraph = Paragraph::new(username_text)
+            let login_paragraph = Paragraph::new(block_text)
                 .block(popup_block)
                 .wrap(Wrap { trim: false });
             frame.render_widget(login_paragraph, centered_area);
+
+            let license_text = Text::styled(tui::tui_license::license_banner(), Style::default().fg(tailwind::EMERALD.c50));
+            let license_paragraph = Paragraph::new(license_text)
+            .block(Block::default()
+            .title(" License " )
+            .borders(Borders::ALL)
+            .style(Style::default().bg(tailwind::EMERALD.c950)))
+            .wrap(Wrap { trim: false });
+            frame.render_widget(license_paragraph, middle_chunks[1]);
 
             // display error message when user does not exist
             if app.invalid_input {

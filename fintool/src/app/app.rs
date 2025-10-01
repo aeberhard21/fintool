@@ -1,3 +1,19 @@
+/* ------------------------------------------------------------------------
+    Copyright (C) 2025  Andrew J. Eberhard
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+  -----------------------------------------------------------------------*/
 use chrono::{Datelike, Local, NaiveDate};
 use ratatui::widgets::{ScrollbarState, TableState};
 
@@ -36,6 +52,8 @@ pub struct App {
     pub analysis_end: NaiveDate,
     pub user_load_state: UserLoadedState,
     pub load_profile_progress: f64,
+    pub display_license_conditions: bool,
+    pub display_license_warranty: bool,
 }
 
 impl App {
@@ -62,6 +80,8 @@ impl App {
             analysis_end: Local::now().date_naive(),
             user_load_state: UserLoadedState::NotLoaded,
             load_profile_progress: 0.0,
+            display_license_conditions : false,
+            display_license_warranty : false,
         }
     }
 
