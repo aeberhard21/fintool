@@ -14,15 +14,16 @@ __Prerequisites__
 The system must have Rust cargo installed. 
 
 __Supported Account Types__
-| Account Type  | Description                                                                            | Supports Budget? | Identifiable Fund Limit |
-| ------------- | -------------------------------------------------------------------------------------- | ---------------- | ----------------------- |
-| Bank Account  | Implements a depository account for which a user can record deposits and withdrawals.  | Yes              | No                      |
-| Wallet        | Implements a depository account for which a user can record deposits and withdrawals.  | Yes              | No                      |
-| Credit Card   | Implements a depository account for which a user can record deposits and withdrawals.  | Yes              | Yes                     |
-| Investment    | Implements a brokerage account comprised of a depository account for immediate transactions into and out of the account, in addition to stock purchases and sales that are made via account funds. | No | No |
-| Health Savings Account    | Implements a brokerage account comprised of a depository account for immediate transactions into and out of the account, in addition to stock purchases and sales that are made via account funds. | No | Yes |
-| ROTH IRA    | Implements a brokerage account comprised of a depository account for immediate transactions into and out of the account, in addition to stock purchases and sales that are made via account funds. | No | Yes |
-| ROTH 401k    | Implements a brokerage account comprised of a depository account for immediate transactions into and out of the account, in addition to stock purchases and sales that are made via account funds. | No | Yes |
+| Account Type  | Description                                                                            | Supports Budget? | Identifiable Funds Limit | Identifiable Maturity Date |
+| ------------- | -------------------------------------------------------------------------------------- | ---------------- | ----------------------- | -------------------------- |
+| Bank Account  | Implements a depository account for which a user can record deposits and withdrawals.  | Yes              | No                      | No
+| Wallet        | Implements a depository account for which a user can record deposits and withdrawals.  | Yes              | No                      | No
+| Credit Card   | Implements a depository account for which a user can record deposits and withdrawals.  | Yes              | Yes                     | Yes
+| Certificate of Deposit   | Implements a depository account for which a user can record deposits and withdrawals.  | No              | No                     | Yes |
+| Investment    | Implements a brokerage account comprised of a depository account for immediate transactions into and out of the account, in addition to stock purchases and sales that are made via account funds. | No | No | No |
+| Health Savings Account    | Implements a brokerage account comprised of a depository account for immediate transactions into and out of the account, in addition to stock purchases and sales that are made via account funds. | No | Yes | Yes |
+| ROTH IRA    | Implements a brokerage account comprised of a depository account for immediate transactions into and out of the account, in addition to stock purchases and sales that are made via account funds. | No | Yes | Yes |
+| ROTH 401k    | Implements a brokerage account comprised of a depository account for immediate transactions into and out of the account, in addition to stock purchases and sales that are made via account funds. | No | Yes | No |
 
 ## User Interface
 
@@ -44,6 +45,8 @@ The account page provides access to the several account types offered by the pro
 
 ### Importing Data
 Data can be imported using CSV files. Examples are provided with [`examples`](examples). The application will not accept headers but they are included as means to identify the expected format of the data. Furthermore, a series of utility application is provided with [`utils`]. These applications demonstrate how to translate a financial institution's proprietary format into the definition expected by the applicaiton. This structure is defined [`shared_lib::LedgerEntry`](shared_lib/src/lib.rs#L14-L24)
+
+Additionally, Open Financial Exchange (OFX and limited support for QFX) files can be imported using the [`ofx2fin`](utils/ofx2fin) application. This produces a CSV in the format of the previously described structure.
 
 ## Compiling the Source
 The application is designed to support two methods of entry: a Tui-based applicaiton using the Ratatui crate and a terminal-based application. They can be built in the following ways 

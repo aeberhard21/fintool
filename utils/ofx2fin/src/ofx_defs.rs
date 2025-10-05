@@ -16,10 +16,10 @@
   -----------------------------------------------------------------------*/
 use std::str::FromStr;
 
-use serde::{Deserialize, Deserializer};
+use serde::{de, Deserialize, Deserializer};
 // use serde_xml_rs::from_str;
 use chrono::{Date, DateTime, FixedOffset, NaiveDate, NaiveDateTime};
-use shared_lib::LedgerEntry;
+use shared_lib::{LedgerEntry, TransferType, TransferTypeIter};
 
 #[derive(Debug, Deserialize)]
 pub struct OFX {
@@ -34,7 +34,7 @@ pub struct OFX {
 #[derive(Debug, Deserialize)]
 pub struct BankMessage {
     #[serde(rename = "STMTTRNRS")]
-    pub statement_transaction_response: Vec<StatementTransactionResponse>,
+    pub statement_transaction_response: StatementTransactionResponse,
 }
 
 #[derive(Debug, Deserialize)]
@@ -103,8 +103,8 @@ pub struct BankTransactionList {
 
 #[derive(Debug, Deserialize)]
 pub struct StatementTransaction {
-    #[serde(rename = "TRNTYPE")]
-    pub transaction_type: String,
+    #[serde(rename = "TRNTYPE", deserialize_with = "deserialize_ofx_transaction_type")]
+    pub transaction_type: OfxTransactionType,
     #[serde(rename = "DTPOSTED", deserialize_with = "deserialize_date")]
     pub date_posted: String,
     #[serde(rename = "TRNAMT")]
@@ -117,6 +117,36 @@ pub struct StatementTransaction {
     pub name: String,
     #[serde(rename = "MEMO")]
     pub memo: Option<String>,
+}
+
+impl From<StatementTransaction> for shared_lib::LedgerEntry {
+    fn from(txn: StatementTransaction) -> Self {
+        let (ttype, category) = if let OfxTransactionType::CREDIT = txn.transaction_type { 
+            (TransferType::DepositFromExternalAccount,"CREDIT".to_string())
+        } else if let OfxTransactionType::DEBIT = txn.transaction_type { 
+            (TransferType::WithdrawalToExternalAccount, "DEBIT".to_string())
+        } else { 
+            // CHECK type, need to determine amount
+            let direction = if txn.transaction_amount < 0.0 { 
+                TransferType::WithdrawalToExternalAccount
+            } else { 
+                TransferType::DepositFromExternalAccount
+            };
+            (direction, "CHECK".to_string())
+        };
+        let amt = f32::abs(txn.transaction_amount);
+        shared_lib::LedgerEntry {
+            date: txn
+                .date_posted
+                .clone(),
+            amount: amt,
+            transfer_type: ttype,
+            participant: format!("\"{}\"",txn.name),
+            category: category.clone(),
+            description: format!("{} of {} on {}.", category, amt, txn.date_posted),
+            stock_info: None,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -211,6 +241,36 @@ pub struct BuyStock {
     pub buy_type: String,
 }
 
+impl From<BuyStock> for shared_lib::LedgerEntry {
+    fn from(txn: BuyStock) -> Self {
+        shared_lib::LedgerEntry {
+            date: txn
+                .investment_buy
+                .investment_transaction
+                .date_of_trade
+                .clone(),
+            amount: f32::abs(txn.investment_buy.total.clone()),
+            transfer_type: shared_lib::TransferType::WithdrawalToInternalAccount,
+            participant: txn.investment_buy.security_identifer.unique_id.clone(),
+            category: "BUY".to_string(),
+            description: format!(
+                "Purchase {} shares of {} for ${} per share on {}",
+                txn.investment_buy.units.clone(),
+                txn.investment_buy.security_identifer.unique_id,
+                txn.investment_buy.unit_price.clone(),
+                txn.investment_buy.investment_transaction.date_of_trade
+            ),
+            stock_info: Some(shared_lib::StockInfo {
+                shares: txn.investment_buy.units.clone(),
+                costbasis: txn.investment_buy.unit_price,
+                remaining: txn.investment_buy.units,
+                is_buy: true,
+                is_split: false,
+            }),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct BuyMutualFund {
     #[serde(rename = "INVBUY")]
@@ -257,12 +317,72 @@ pub struct SellStock {
     pub sell_type: String,
 }
 
+impl From<SellStock> for shared_lib::LedgerEntry {
+    fn from(txn: SellStock) -> Self {
+        shared_lib::LedgerEntry {
+            date: txn
+                .investment_sell
+                .investment_transaction
+                .date_of_trade
+                .clone(),
+            amount: f32::abs(txn.investment_sell.total.clone()),
+            transfer_type: shared_lib::TransferType::WithdrawalToInternalAccount,
+            participant: txn.investment_sell.security_identifer.unique_id.clone(),
+            category: "SELL".to_string(),
+            description: format!(
+                "Sell {} shares of {} for ${} per share on {}",
+                txn.investment_sell.units.clone(),
+                txn.investment_sell.security_identifer.unique_id,
+                txn.investment_sell.unit_price.clone(),
+                txn.investment_sell.investment_transaction.date_of_trade
+            ),
+            stock_info: Some(shared_lib::StockInfo {
+                shares: txn.investment_sell.units.clone(),
+                costbasis: txn.investment_sell.unit_price,
+                remaining: txn.investment_sell.units,
+                is_buy: false,
+                is_split: false,
+            }),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct SellMutualFund {
     #[serde(rename = "INVBUY")]
-    pub investment_buy: InvestmentBuy,
+    pub investment_sell: InvestmentSell,
     #[serde(rename = "BUYTYPE")]
     pub buy_type: String,
+}
+
+impl From<SellMutualFund> for shared_lib::LedgerEntry {
+    fn from(txn: SellMutualFund) -> Self {
+        shared_lib::LedgerEntry {
+            date: txn
+                .investment_sell
+                .investment_transaction
+                .date_of_trade
+                .clone(),
+            amount: f32::abs(txn.investment_sell.total.clone()),
+            transfer_type: shared_lib::TransferType::WithdrawalToInternalAccount,
+            participant: txn.investment_sell.security_identifer.unique_id.clone(),
+            category: "SELL".to_string(),
+            description: format!(
+                "Sell {} shares of {} for ${} per share on {}",
+                txn.investment_sell.units.clone(),
+                txn.investment_sell.security_identifer.unique_id,
+                txn.investment_sell.unit_price.clone(),
+                txn.investment_sell.investment_transaction.date_of_trade
+            ),
+            stock_info: Some(shared_lib::StockInfo {
+                shares: txn.investment_sell.units.clone(),
+                costbasis: txn.investment_sell.unit_price,
+                remaining: txn.investment_sell.units,
+                is_buy: false,
+                is_split: false,
+            }),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -459,7 +579,7 @@ enum CODE {
     ACCESS_TOKEN_EXPIRED_ERROR = 15516,
 }
 
-enum BALANCE_TYPE {
+enum BalanceType {
     DOLLAR,
     PERCENT,
     NUMBER,
@@ -469,6 +589,13 @@ enum SEVERITY {
     INFO,
     WARN,
     ERROR,
+}
+
+#[derive(Clone, Debug)]
+enum OfxTransactionType {
+    CREDIT, 
+    DEBIT, 
+    CHECK,
 }
 
 fn deserialize_datetime<'de, D>(deserializer: D) -> Result<DateTime<FixedOffset>, D::Error>
@@ -492,4 +619,28 @@ where
     let parsed = NaiveDate::parse_from_str(ymd, "%Y%m%d").map_err(serde::de::Error::custom)?;
 
     Ok(parsed.format("%Y-%m-%d").to_string())
+}
+
+fn deserialize_ofx_transaction_type<'de, D>(deserializer: D) -> Result<OfxTransactionType, D::Error>
+where 
+    D: Deserializer<'de>
+{ 
+     let trntype: String = Deserialize::deserialize(deserializer)?;
+     match trntype.as_str() {
+        "CREDIT" => {
+            Ok(OfxTransactionType::CREDIT)
+        }
+        "DEBIT" => { 
+            Ok(OfxTransactionType::DEBIT)
+        }
+        "CHECK" => { 
+            Ok(OfxTransactionType::CHECK)
+        }
+        _ => { 
+            Err(de::Error::unknown_variant(
+                    trntype.as_str(),
+                    &["CREDIT", "DEBIT"]
+            ))
+        }
+     }
 }

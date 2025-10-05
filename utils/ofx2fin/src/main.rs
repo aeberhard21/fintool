@@ -43,31 +43,51 @@ fn main() {
 
     let ofx: OFX = serde_xml_rs::from_str(xml.as_str()).unwrap();
 
-    let transactions: Vec<LedgerEntry> = ofx
+    let mut transactions: Vec<LedgerEntry> = ofx 
+        .bank_sign_on_msg
+        .map(|msg| { 
+            let mut v = Vec::new();
+            let txns = msg
+                .statement_transaction_response
+                .statement_response
+                .bank_transaction_list
+                .statement_transaction;
+
+            v.extend(txns.into_iter().map(LedgerEntry::from));
+            v
+        })
+        .unwrap_or_default();
+
+    transactions.extend(ofx
         .investment_sign_on_msg
         .map(|msg| {
+
+            let mut v = Vec::new();
+
             let invtran = msg
                 .investment_statement_transaction_response
                 .investment_statement_response
                 .investment_transaction_list;
 
-            let mut v = Vec::new();
+            if let Some(txns) = invtran.buy_stock {
+                v.extend(txns.into_iter().map(LedgerEntry::from));
+            }
 
-            // if let Some(txns) = invtran.investment_bank_transactions {
-            //     v.extend(txns.into_iter().map(LedgerEntry::from));
-            // }
+            if let Some(txns) = invtran.sell_stock {
+                v.extend(txns.into_iter().map(LedgerEntry::from));
+            }
 
             if let Some(buys) = invtran.buy_mf {
                 v.extend(buys.into_iter().map(LedgerEntry::from));
             }
 
-            // if let Some(sells) = invtran.sell_mf {
-            //     v.extend(sells.into_iter().map(LedgerEntry::from));
-            // }
+            if let Some(sells) = invtran.sell_mf {
+                v.extend(sells.into_iter().map(LedgerEntry::from));
+            }
 
             v
         })
-        .unwrap_or_default();
+        .unwrap_or_default());
 
     for ledger_entry in transactions { 
        if ledger_entry.stock_info.is_some() {
