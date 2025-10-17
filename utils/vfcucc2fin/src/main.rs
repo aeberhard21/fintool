@@ -127,10 +127,44 @@ fn main() {
                     panic!("Payment not recognized: {}", txn.description);
                 }
             } else {
-                panic!(
+                let re_payment =
+                Regex::new(r"Recurring\s+Loan\s+Advance\s+Bill\s+Payment\s+-\s+#\d+\/([A-Za-z\*\s\.]+)\/").unwrap();
+                let x = re_payment.captures(&txn.description.as_str());
+                if x.is_some() {
+                    let x = x.unwrap();
+                    if x.get(0).is_some() {
+                        if x.get(1).is_none() {
+                            panic!("Peer not found for payment!");
+                        }
+                        peer = x.get(1).unwrap().as_str().to_string();
+                        cat = "Payment".to_string();
+                        ttype = TransferType::DepositFromExternalAccount;
+                    } else {
+                        panic!("Payment not recognized: {}", txn.description);
+                    }
+                } else {
+                    let re_payment =
+                    Regex::new(r"Loan\s+Advance\s+Bill\s+Payment\s+#\d+\/([A-Za-z\*\s\.]+)\/").unwrap();
+                    let x = re_payment.captures(&txn.description.as_str());
+                    if x.is_some() {
+                        let x = x.unwrap();
+                        if x.get(0).is_some() {
+                            if x.get(1).is_none() {
+                                panic!("Peer not found for payment!");
+                            }
+                            peer = x.get(1).unwrap().as_str().to_string();
+                            cat = "Payment".to_string();
+                            ttype = TransferType::DepositFromExternalAccount;
+                        } else {
+                            panic!("Payment not recognized: {}", txn.description);
+                        }
+                    } else { 
+                    panic!(
                     "Statment could not be matched for charge or payment: {}",
                     txn.description
                 );
+            }
+            }
             }
         }
 
