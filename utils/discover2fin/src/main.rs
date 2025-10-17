@@ -93,7 +93,7 @@ fn main() {
             }
             _ => {
                 let re = Regex::new(
-                    r"^(\s*|TST\*|SQ\*)([A-Za-z0-9*#_\-\.\/\'&,]+\s[A-Za-z0-9*#_\-\.\/\'&,]+)",
+                    r"^(\s*|TST\*|SQ\*)([A-Za-z0-9*#_\-\.\/\'&,\(\)]+\s[A-Za-z0-9*#_\-\.\/\'&,\(\)]+)",
                 )
                 .unwrap();
                 x = re.captures(&txn.description.as_str()).unwrap();
