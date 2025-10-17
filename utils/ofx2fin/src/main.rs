@@ -1,19 +1,19 @@
 /* ------------------------------------------------------------------------
-    Copyright (C) 2025  Andrew J. Eberhard
+  Copyright (C) 2025  Andrew J. Eberhard
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>.
-  -----------------------------------------------------------------------*/
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+-----------------------------------------------------------------------*/
 use chrono::Datelike;
 use chrono::NaiveDate;
 use csv::ReaderBuilder;
@@ -43,9 +43,9 @@ fn main() {
 
     let ofx: OFX = serde_xml_rs::from_str(xml.as_str()).unwrap();
 
-    let mut transactions: Vec<LedgerEntry> = ofx 
+    let mut transactions: Vec<LedgerEntry> = ofx
         .bank_sign_on_msg
-        .map(|msg| { 
+        .map(|msg| {
             let mut v = Vec::new();
             let txns = msg
                 .statement_transaction_response
@@ -58,40 +58,39 @@ fn main() {
         })
         .unwrap_or_default();
 
-    transactions.extend(ofx
-        .investment_sign_on_msg
-        .map(|msg| {
+    transactions.extend(
+        ofx.investment_sign_on_msg
+            .map(|msg| {
+                let mut v = Vec::new();
 
-            let mut v = Vec::new();
+                let invtran = msg
+                    .investment_statement_transaction_response
+                    .investment_statement_response
+                    .investment_transaction_list;
 
-            let invtran = msg
-                .investment_statement_transaction_response
-                .investment_statement_response
-                .investment_transaction_list;
+                if let Some(txns) = invtran.buy_stock {
+                    v.extend(txns.into_iter().map(LedgerEntry::from));
+                }
 
-            if let Some(txns) = invtran.buy_stock {
-                v.extend(txns.into_iter().map(LedgerEntry::from));
-            }
+                if let Some(txns) = invtran.sell_stock {
+                    v.extend(txns.into_iter().map(LedgerEntry::from));
+                }
 
-            if let Some(txns) = invtran.sell_stock {
-                v.extend(txns.into_iter().map(LedgerEntry::from));
-            }
+                if let Some(buys) = invtran.buy_mf {
+                    v.extend(buys.into_iter().map(LedgerEntry::from));
+                }
 
-            if let Some(buys) = invtran.buy_mf {
-                v.extend(buys.into_iter().map(LedgerEntry::from));
-            }
+                if let Some(sells) = invtran.sell_mf {
+                    v.extend(sells.into_iter().map(LedgerEntry::from));
+                }
 
-            if let Some(sells) = invtran.sell_mf {
-                v.extend(sells.into_iter().map(LedgerEntry::from));
-            }
+                v
+            })
+            .unwrap_or_default(),
+    );
 
-            v
-        })
-        .unwrap_or_default());
-
-    for ledger_entry in transactions { 
-       if ledger_entry.stock_info.is_some() {
-
+    for ledger_entry in transactions {
+        if ledger_entry.stock_info.is_some() {
             println!(
                 "{},{},{},{},{},{},{},{},{},{},{}",
                 ledger_entry.date,

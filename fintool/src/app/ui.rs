@@ -1,19 +1,19 @@
 /* ------------------------------------------------------------------------
-    Copyright (C) 2025  Andrew J. Eberhard
+  Copyright (C) 2025  Andrew J. Eberhard
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>.
-  -----------------------------------------------------------------------*/
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+-----------------------------------------------------------------------*/
 use chrono::{Datelike, Days, Local, Months, NaiveDate, NaiveTime};
 use ratatui::{
     buffer::Buffer,
@@ -35,7 +35,11 @@ use time::Month;
 
 use super::app::App;
 use super::screen::{CurrentScreen, TabMenu};
-use crate::{accounts::base::Account, app::screen::CurrentlySelecting, tui::{self, tui_license}};
+use crate::{
+    accounts::base::Account,
+    app::screen::CurrentlySelecting,
+    tui::{self, tui_license},
+};
 use crate::{
     accounts::{self, as_liquid_account, bank_account::BankAccount},
     app::screen::{Pages, UserLoadedState},
@@ -61,26 +65,26 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
                 Style::default().fg(Color::LightBlue).bg(Color::Black),
             ),
             CurrentScreen::Landing => {
-                match app.currently_selected.unwrap() { 
+                match app.currently_selected.unwrap() {
                     CurrentlySelecting::AccountTypeTabs|CurrentlySelecting::AccountTabs => {
                         Span::styled (
                         "(q) to quit / (◀︎) Move Tab Left / (▶︎) Move Tab Right / (⏎) Select / (⌫) Deselect / (c) Create Account",
                         Style::default().fg(Color::LightBlue),
                         )
                     }
-                    CurrentlySelecting::Account => { 
+                    CurrentlySelecting::Account => {
                         Span::styled (
                         "(q) to quit / (⌫) Deselect / (a) Analyze / (e) Edit Account / (r) Record Entry / (m) Modify Ledger / (i) Import / (j) Advance Row / (k) Retreat Row / (G) Go to Last / (H) Go to First",
                         Style::default().fg(Color::LightBlue),
                         )
                     }
                     CurrentlySelecting::MainTabs => {
-                        if Pages::Main == app.selected_page_tab { 
+                        if Pages::Main == app.selected_page_tab {
                             Span::styled (
                             "(q) to quit /  (◀︎) Move Tab Left / (▶︎) Move Tab Right / (⏎) Select / (⌫) Deselect / (m) Modify Labels",
                             Style::default().fg(Color::LightBlue),
                             )
-                        } else { 
+                        } else {
                             Span::styled (
                             "(q) to quit /  (◀︎) Move Tab Left / (▶︎) Move Tab Right / (⏎) Select / (⌫) Deselect",
                             Style::default().fg(Color::LightBlue),
@@ -92,8 +96,11 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
         }
     };
 
-    let key_notes_footer =
-        Paragraph::new(Line::from(current_keys_hint)).block(Block::default().borders(Borders::ALL).style(Style::new().bg(tailwind::SLATE.c900)));
+    let key_notes_footer = Paragraph::new(Line::from(current_keys_hint)).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .style(Style::new().bg(tailwind::SLATE.c900)),
+    );
     let footer_chunks = chunks[chunks.len() - 1];
 
     frame.render_widget(key_notes_footer, footer_chunks);
@@ -112,10 +119,7 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
 
         let middle_chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Percentage(90),
-                Constraint::Percentage(10)
-            ])
+            .constraints([Constraint::Percentage(90), Constraint::Percentage(10)])
             .split(chunks[1]);
 
         let centered_area = centered_rect(60, 25, frame.area());
@@ -123,30 +127,37 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
         if let UserLoadedState::NotLoaded = app.user_load_state {
             let popup_block = if app.display_license_conditions {
                 Block::default()
-                .title(" Conditions ")
-                .borders(Borders::ALL)
-                .style(Style::default().bg(tailwind::EMERALD.c950))
+                    .title(" Conditions ")
+                    .borders(Borders::ALL)
+                    .style(Style::default().bg(tailwind::EMERALD.c950))
             } else if app.display_license_warranty {
                 Block::default()
-                .title(" Warranty ")
-                .borders(Borders::ALL)
-                .style(Style::default().bg(tailwind::EMERALD.c950))
+                    .title(" Warranty ")
+                    .borders(Borders::ALL)
+                    .style(Style::default().bg(tailwind::EMERALD.c950))
             } else {
                 Block::default()
-                .title(" Login ")
-                .borders(Borders::ALL)
-                .style(Style::default().bg(tailwind::EMERALD.c950))
+                    .title(" Login ")
+                    .borders(Borders::ALL)
+                    .style(Style::default().bg(tailwind::EMERALD.c950))
             };
 
-            let block_text = if app.display_license_conditions { 
-                Text::styled(tui::tui_license::get_gnu_gpl_conditions(), Style::default().fg(tailwind::EMERALD.c50))
-            } else if app.display_license_warranty { 
-                Text::styled(tui::tui_license::get_gnu_gpl_warranty(), Style::default().fg(tailwind::EMERALD.c50))
-            } else { 
+            let block_text = if app.display_license_conditions {
+                Text::styled(
+                    tui::tui_license::get_gnu_gpl_conditions(),
+                    Style::default().fg(tailwind::EMERALD.c50),
+                )
+            } else if app.display_license_warranty {
+                Text::styled(
+                    tui::tui_license::get_gnu_gpl_warranty(),
+                    Style::default().fg(tailwind::EMERALD.c50),
+                )
+            } else {
                 // prompt for user name
                 let mut content = "Username: ".to_string();
                 content.push_str(&app.key_input.as_str());
-                let username_text = Text::styled(content, Style::default().fg(tailwind::EMERALD.c50));
+                let username_text =
+                    Text::styled(content, Style::default().fg(tailwind::EMERALD.c50));
                 username_text
             };
 
@@ -155,13 +166,18 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
                 .wrap(Wrap { trim: false });
             frame.render_widget(login_paragraph, centered_area);
 
-            let license_text = Text::styled(tui::tui_license::license_banner(), Style::default().fg(tailwind::EMERALD.c50));
+            let license_text = Text::styled(
+                tui::tui_license::license_banner(),
+                Style::default().fg(tailwind::EMERALD.c50),
+            );
             let license_paragraph = Paragraph::new(license_text)
-            .block(Block::default()
-            .title(" License " )
-            .borders(Borders::ALL)
-            .style(Style::default().bg(tailwind::EMERALD.c950)))
-            .wrap(Wrap { trim: false });
+                .block(
+                    Block::default()
+                        .title(" License ")
+                        .borders(Borders::ALL)
+                        .style(Style::default().bg(tailwind::EMERALD.c950)),
+                )
+                .wrap(Wrap { trim: false });
             frame.render_widget(license_paragraph, middle_chunks[1]);
 
             // display error message when user does not exist
@@ -406,7 +422,11 @@ fn render_account_tabs(
     let atype_tabs = Tabs::new(tab_names.into_iter())
         .highlight_style(highlight_color)
         .select(selected_tab)
-        .block(Block::bordered().title(" Accounts ").style(Style::new().bg(tailwind::SLATE.c900)))
+        .block(
+            Block::bordered()
+                .title(" Accounts ")
+                .style(Style::new().bg(tailwind::SLATE.c900)),
+        )
         .padding("", "")
         .divider(" | ");
     frame.render_widget(atype_tabs, area);
@@ -463,7 +483,9 @@ fn render_net_worth(app: &App, frame: &mut Frame, area: Rect) {
 
     let net_worth_widget = Paragraph::new(Text::styled(
         format!("$ {:.2}", net_worth),
-        Style::default().fg(tailwind::EMERALD.c500).bg(tailwind::SLATE.c900),
+        Style::default()
+            .fg(tailwind::EMERALD.c500)
+            .bg(tailwind::SLATE.c900),
     ))
     .block(
         Block::default()
@@ -485,7 +507,9 @@ fn render_net_worth(app: &App, frame: &mut Frame, area: Rect) {
     .bold();
     let total_assets_widget = Paragraph::new(Text::styled(
         format!("$ {:.2}", assets),
-        Style::default().fg(tailwind::EMERALD.c500).bg(tailwind::SLATE.c900),
+        Style::default()
+            .fg(tailwind::EMERALD.c500)
+            .bg(tailwind::SLATE.c900),
     ))
     .block(
         Block::default()
@@ -507,7 +531,9 @@ fn render_net_worth(app: &App, frame: &mut Frame, area: Rect) {
     .bold();
     let liquid_assets_widget = Paragraph::new(Text::styled(
         format!("$ {:.2}", liquid_assets),
-        Style::default().fg(tailwind::EMERALD.c500).bg(tailwind::SLATE.c900),
+        Style::default()
+            .fg(tailwind::EMERALD.c500)
+            .bg(tailwind::SLATE.c900),
     ))
     .block(
         Block::default()
@@ -569,9 +595,9 @@ fn render_net_worth_chart(app: &App, frame: &mut Frame, area: Rect) {
         start_date = start_date.min(account.get_open_date());
     }
 
-    let start_eoy = if start_date.year() == today.year() { 
-        NaiveDate::from_ymd_opt(start_date.year()-1, 12, 31).unwrap()
-    } else { 
+    let start_eoy = if start_date.year() == today.year() {
+        NaiveDate::from_ymd_opt(start_date.year() - 1, 12, 31).unwrap()
+    } else {
         NaiveDate::from_ymd_opt(start_date.year(), 12, 31).unwrap()
     };
     let mut date = start_eoy;

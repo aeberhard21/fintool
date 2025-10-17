@@ -1,19 +1,19 @@
 /* ------------------------------------------------------------------------
-    Copyright (C) 2025  Andrew J. Eberhard
+  Copyright (C) 2025  Andrew J. Eberhard
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>.
-  -----------------------------------------------------------------------*/
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+-----------------------------------------------------------------------*/
 use inquire::autocompletion;
 use inquire::autocompletion::Replacement;
 use inquire::{Autocomplete, CustomUserError};
@@ -387,13 +387,13 @@ impl DbConn {
         old: String,
         new: String,
     ) -> Result<String> {
-        let (p, sql) = match ptype { 
+        let (p, sql) = match ptype {
             ParticipantType::Both => {
                 (
                     rusqlite::params![uid, aid, old, new],
                     "UPDATE people SET name = (?4) WHERE uid = (?1) and aid = (?2) and name = (?3)"
                 )
-            } 
+            }
             _ => {
                 (
                     rusqlite::params![uid, aid, old, new, ptype as u32],
@@ -470,7 +470,7 @@ pub struct ParticipantAutoCompleter {
     pub db: DbConn,
     pub ptype: ParticipantType,
     pub with_accounts: bool,
-    pub stock_tickers_only : bool,
+    pub stock_tickers_only: bool,
     pub manually_recorded_only: bool,
 }
 
@@ -480,7 +480,7 @@ impl Autocomplete for ParticipantAutoCompleter {
         if !self.with_accounts {
             suggestions = match self.ptype {
                 ParticipantType::Payee => {
-                    let (mut x, mut y) = if self.stock_tickers_only { 
+                    let (mut x, mut y) = if self.stock_tickers_only {
                         if self.manually_recorded_only {
                             let x: Vec<String> = self
                                 .db
@@ -491,7 +491,9 @@ impl Autocomplete for ParticipantAutoCompleter {
                                 )
                                 .unwrap()
                                 .into_iter()
-                                .filter(|name| name.starts_with(input.to_ascii_uppercase().as_str()))
+                                .filter(|name| {
+                                    name.starts_with(input.to_ascii_uppercase().as_str())
+                                })
                                 .collect();
                             let y: Vec<String> = self
                                 .db
@@ -502,10 +504,12 @@ impl Autocomplete for ParticipantAutoCompleter {
                                 )
                                 .unwrap()
                                 .into_iter()
-                                .filter(|name| name.starts_with(input.to_ascii_uppercase().as_str()))
+                                .filter(|name| {
+                                    name.starts_with(input.to_ascii_uppercase().as_str())
+                                })
                                 .collect();
                             (x, y)
-                        } else { 
+                        } else {
                             let x: Vec<String> = self
                                 .db
                                 .get_participants_by_transfer_type_who_exist_in_stock_purchase_table(

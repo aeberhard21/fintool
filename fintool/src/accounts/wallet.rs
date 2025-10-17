@@ -1,19 +1,19 @@
 /* ------------------------------------------------------------------------
-    Copyright (C) 2025  Andrew J. Eberhard
+  Copyright (C) 2025  Andrew J. Eberhard
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>.
-  -----------------------------------------------------------------------*/
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+-----------------------------------------------------------------------*/
 use chrono::Date;
 use chrono::Local;
 use chrono::NaiveDate;
@@ -145,14 +145,15 @@ impl AccountCreation for Wallet {
             has_budget: has_budget,
         };
 
-        let aid = _db.add_account(uid, &account).unwrap();       
+        let aid = _db.add_account(uid, &account).unwrap();
         let acct = Self::new(uid, aid, _db);
-                                    
-        let initialize_account = Confirm::new("Would you like to open the account with an initial deposit?")
-            .prompt()
-            .unwrap();
 
-        if initialize_account { 
+        let initialize_account =
+            Confirm::new("Would you like to open the account with an initial deposit?")
+                .prompt()
+                .unwrap();
+
+        if initialize_account {
             acct.fixed.deposit(None, false);
         }
 
@@ -310,252 +311,294 @@ impl AccountOperations for Wallet {
             true => MODIFY_OPTIONS_WITH_BUDGET.to_vec(),
             false => MODIFY_OPTIONS.to_vec(),
         };
-        let modify_choice =
-            Select::new("\nWhat would you like to modify:", MODIFY_OPTIONS.to_vec())
+        loop {
+            let modify_choice = Select::new("\nWhat would you like to modify:", options.clone())
                 .prompt()
                 .unwrap();
-        match modify_choice {
-            "Ledger" => {
-                let record_or_none = self.fixed.select_ledger_entry();
-                if record_or_none.is_none() {
-                    return;
-                }
-                let selected_record = record_or_none.unwrap();
-                self.fixed.modify(selected_record);
-            }
-            "Categories" => {
-                let records = self.db.get_categories(self.uid, self.id).unwrap();
-                let mut choices: Vec<String> = records
-                    .iter()
-                    .map(|x| x.category.name.clone())
-                    .collect::<Vec<String>>();
-                choices.push("None".to_string());
-                let chosen_category = Select::new("Select category to modify:", choices)
-                    .prompt()
-                    .unwrap();
-
-                if chosen_category == "None" {
-                    return;
-                }
-
-                const MODIFY_ACTIONS: [&'static str; 3] = ["Update", "Remove", "None"];
-                let update_or_remove =
-                    Select::new("What would you like to do:", MODIFY_ACTIONS.to_vec())
+            match modify_choice {
+                "Ledger" => loop {
+                    let record_or_none = self.fixed.select_ledger_entry();
+                    if record_or_none.is_none() {
+                        break;
+                    }
+                    let selected_record = record_or_none.unwrap();
+                    self.fixed.modify(selected_record);
+                    let go_again = Confirm::new("Modify additional records? (y/n)")
                         .prompt()
                         .unwrap();
-                match update_or_remove {
-                    "Update" => {
-                        let new_name = Text::new("Enter category name:")
-                            .prompt()
-                            .unwrap()
-                            .to_string();
-                        self.db
-                            .update_category_name(self.uid, self.id, chosen_category, new_name);
+                    if !go_again {
+                        break;
                     }
-                    "Remove" => {
-                        // check if category is referenced by any current ledger
-                        let is_referenced = self
-                            .db
-                            .check_if_ledger_references_category(
-                                self.uid,
-                                self.id,
-                                chosen_category.clone(),
-                            )
+                },
+                "Categories" => {
+                    loop {
+                        let records = self.db.get_categories(self.uid, self.id).unwrap();
+                        let mut choices: Vec<String> = records
+                            .iter()
+                            .map(|x| x.category.name.clone())
+                            .collect::<Vec<String>>();
+                        choices.push("None".to_string());
+                        let chosen_category = Select::new("Select category to modify:", choices)
+                            .prompt()
                             .unwrap();
-                        if is_referenced.is_some() {
-                            let matched_records = is_referenced.unwrap();
-                            println!("The following records were found:");
-                            for record in matched_records {
-                                let v = format!(
-                                    "{} | {} | {} | {} ",
-                                    record.info.date,
-                                    chosen_category.clone(),
-                                    self.db
-                                        .get_participant(self.uid, self.id, record.info.participant)
-                                        .unwrap(),
-                                    record.info.amount
-                                );
-                                print!("\t{}", v);
-                                println!("")
-                            }
+
+                        if chosen_category == "None" {
+                            break;
                         }
 
-                        // confirm they want to remove
-                        let rm_msg = format!("Are you sure you want to delete the category {} (this will also delete found records)?", chosen_category);
-                        let delete = Confirm::new(&rm_msg).prompt().unwrap();
-                        if delete {
-                            self.db
-                                .remove_category(self.uid, self.id, chosen_category.clone());
-                        }
-                    }
-                    "Budget" => {
-                        if let Some(budget) = &self.budget {
-                            budget.modify();
-                        } else {
-                            let add_budget = Confirm::new("A budget for this account does not exist, would you like to create one (y/n)?")
-                                .with_default(false)
+                        const MODIFY_ACTIONS: [&'static str; 3] = ["Update", "Remove", "None"];
+                        let update_or_remove =
+                            Select::new("What would you like to do:", MODIFY_ACTIONS.to_vec())
                                 .prompt()
                                 .unwrap();
-                            if !add_budget {
-                                return;
+                        match update_or_remove {
+                            "Update" => {
+                                let new_name = Text::new("Enter category name:")
+                                    .prompt()
+                                    .unwrap()
+                                    .to_string();
+                                self.db.update_category_name(
+                                    self.uid,
+                                    self.id,
+                                    chosen_category,
+                                    new_name,
+                                );
                             }
+                            "Remove" => {
+                                // check if category is referenced by any current ledger
+                                let is_referenced = self
+                                    .db
+                                    .check_if_ledger_references_category(
+                                        self.uid,
+                                        self.id,
+                                        chosen_category.clone(),
+                                    )
+                                    .unwrap();
+                                if is_referenced.is_some() {
+                                    let matched_records = is_referenced.unwrap();
+                                    println!("The following records were found:");
+                                    for record in matched_records {
+                                        let v = format!(
+                                            "{} | {} | {} | {} ",
+                                            record.info.date,
+                                            chosen_category.clone(),
+                                            self.db
+                                                .get_participant(
+                                                    self.uid,
+                                                    self.id,
+                                                    record.info.participant
+                                                )
+                                                .unwrap(),
+                                            record.info.amount
+                                        );
+                                        print!("\t{}", v);
+                                        println!("")
+                                    }
+                                }
+
+                                // confirm they want to remove
+                                let rm_msg = format!("Are you sure you want to delete the category {} (this will also delete found records)?", chosen_category);
+                                let delete = Confirm::new(&rm_msg).prompt().unwrap();
+                                if delete {
+                                    self.db.remove_category(
+                                        self.uid,
+                                        self.id,
+                                        chosen_category.clone(),
+                                    );
+                                }
+                            }
+                            "None" => {
+                                break;
+                            }
+                            _ => {
+                                panic!("Unrecognized input!");
+                            }
+                        }
+                        let go_again = Confirm::new("Modify additional categories? (y/n)")
+                            .prompt()
+                            .unwrap();
+                        if !go_again {
+                            break;
+                        }
+                    }
+                }
+                "People" => {
+                    const PTYPE_OPTIONS: [&'static str; 3] = ["Payer", "Payee", "Both"];
+                    loop {
+                        let selected_ptype =
+                            Select::new("What type of person:", PTYPE_OPTIONS.to_vec())
+                                .prompt()
+                                .unwrap();
+                        let ptype = match selected_ptype {
+                            "Payer" => ParticipantType::Payer,
+                            "Payee" => ParticipantType::Payee,
+                            "Both" => ParticipantType::Both,
+                            _ => {
+                                panic!("Unrecognized input: {}", selected_ptype);
+                            }
+                        };
+                        let participants =
+                            self.db.get_participants(self.uid, self.id, ptype).unwrap();
+                        let mut people = participants
+                            .iter()
+                            .map(|x| x.participant.name.clone())
+                            .collect::<Vec<String>>();
+                        // i think this is needed when "both" is selected, because an entry will be provided for each participant
+                        people.sort();
+                        people.dedup();
+                        people.push("None".to_string());
+
+                        let chosen_person = Select::new("Select person to modify:", people)
+                            .prompt()
+                            .unwrap();
+
+                        if chosen_person == "None".to_string() {
+                            break;
+                        }
+
+                        const MODIFY_ACTIONS: [&'static str; 3] = ["Update", "Remove", "None"];
+                        let update_or_remove =
+                            Select::new("What would you like to do:", MODIFY_ACTIONS.to_vec())
+                                .prompt()
+                                .unwrap();
+
+                        match update_or_remove {
+                            "Update" => {
+                                let new_name = Text::new("Enter person's name:")
+                                    .prompt()
+                                    .unwrap()
+                                    .to_string();
+                                self.db
+                                    .update_participant_name(
+                                        self.uid,
+                                        self.id,
+                                        ptype,
+                                        chosen_person.clone(),
+                                        new_name,
+                                    )
+                                    .unwrap();
+                            }
+                            "Remove" => {
+                                // check if participant is referenced by any current ledger
+                                let is_referenced = self
+                                    .db
+                                    .check_if_ledger_references_participant(
+                                        self.uid,
+                                        self.id,
+                                        ptype,
+                                        chosen_person.clone(),
+                                    )
+                                    .unwrap();
+                                if is_referenced.is_some() {
+                                    let matched_records = is_referenced.unwrap();
+                                    println!("The following records were found:");
+                                    for record in matched_records {
+                                        let v = format!(
+                                            "{} | {} | {} | {} ",
+                                            record.info.date,
+                                            self.db
+                                                .get_category_name(
+                                                    self.uid,
+                                                    self.id,
+                                                    record.info.category_id
+                                                )
+                                                .unwrap(),
+                                            chosen_person.clone(),
+                                            record.info.amount
+                                        );
+                                        print!("\t{}", v);
+                                        println!("")
+                                    }
+                                }
+                                // confirm they want to remove
+                                let rm_msg = format!("Are you sure you want to delete the participant {} (this will also delete found records)?", chosen_person);
+                                let delete = Confirm::new(&rm_msg).prompt().unwrap();
+                                if delete {
+                                    match ptype {
+                                        ParticipantType::Payee => {
+                                            self.db
+                                                .remove_participant(
+                                                    self.uid,
+                                                    self.id,
+                                                    ParticipantType::Payee,
+                                                    chosen_person.clone(),
+                                                )
+                                                .unwrap();
+                                        }
+                                        ParticipantType::Payer => {
+                                            self.db
+                                                .remove_participant(
+                                                    self.uid,
+                                                    self.id,
+                                                    ParticipantType::Payer,
+                                                    chosen_person.clone(),
+                                                )
+                                                .unwrap();
+                                        }
+                                        _ => {
+                                            self.db
+                                                .remove_participant(
+                                                    self.uid,
+                                                    self.id,
+                                                    ParticipantType::Payee,
+                                                    chosen_person.clone(),
+                                                )
+                                                .unwrap();
+                                            self.db
+                                                .remove_participant(
+                                                    self.uid,
+                                                    self.id,
+                                                    ParticipantType::Payer,
+                                                    chosen_person.clone(),
+                                                )
+                                                .unwrap();
+                                        }
+                                    }
+                                }
+                            }
+                            "None" => {
+                                break;
+                            }
+                            _ => {
+                                panic!("Unrecognized input: {}", update_or_remove);
+                            }
+                        }
+                        let go_again = Confirm::new("Modify additional people? (y/n)")
+                            .prompt()
+                            .unwrap();
+                        if !go_again {
+                            break;
+                        }
+                    }
+                }
+                "Budget" => {
+                    if let Some(budget) = &self.budget {
+                        budget.modify();
+                    } else {
+                        let add_budget = Confirm::new("A budget for this account does not exist, would you like to create one (y/n)?")
+                            .with_default(false)
+                            .prompt()
+                            .unwrap();
+                        if add_budget {
                             let budget = Budget::new(self.uid, self.id, &self.db);
                             budget.create_budget();
                             self.budget = Some(budget);
                         }
                     }
-                    "None" => {
-                        return;
-                    }
-                    _ => {
-                        panic!("Unrecognized input!");
-                    }
                 }
-            }
-            "People" => {
-                const PTYPE_OPTIONS: [&'static str; 3] = ["Payer", "Payee", "Both"];
-                let selected_ptype = Select::new("What type of person:", PTYPE_OPTIONS.to_vec())
-                    .prompt()
-                    .unwrap();
-                let ptype = match selected_ptype {
-                    "Payer" => ParticipantType::Payer,
-                    "Payee" => ParticipantType::Payee,
-                    "Both" => ParticipantType::Both,
-                    _ => {
-                        panic!("Unrecognized input: {}", selected_ptype);
-                    }
-                };
-                let participants = self.db.get_participants(self.uid, self.id, ptype).unwrap();
-                let mut people = participants
-                    .iter()
-                    .map(|x| x.participant.name.clone())
-                    .collect::<Vec<String>>();
-                // i think this is needed when "both" is selected, because an entry will be provided for each participant
-                people.sort();
-                people.dedup();
-                people.push("None".to_string());
-
-                let chosen_person = Select::new("Select person to modify:", people)
-                    .prompt()
-                    .unwrap();
-
-                if chosen_person == "None".to_string() {
+                "None" => {
                     return;
                 }
-
-                const MODIFY_ACTIONS: [&'static str; 3] = ["Update", "Remove", "None"];
-                let update_or_remove =
-                    Select::new("What would you like to do:", MODIFY_ACTIONS.to_vec())
-                        .prompt()
-                        .unwrap();
-
-                match update_or_remove {
-                    "Update" => {
-                        let new_name = Text::new("Enter person's name:")
-                            .prompt()
-                            .unwrap()
-                            .to_string();
-                        self.db
-                            .update_participant_name(
-                                self.uid,
-                                self.id,
-                                ptype,
-                                chosen_person.clone(),
-                                new_name,
-                            )
-                            .unwrap();
-                    }
-                    "Remove" => {
-                        // check if participant is referenced by any current ledger
-                        let is_referenced = self
-                            .db
-                            .check_if_ledger_references_participant(
-                                self.uid,
-                                self.id,
-                                ptype,
-                                chosen_person.clone(),
-                            )
-                            .unwrap();
-                        if is_referenced.is_some() {
-                            let matched_records = is_referenced.unwrap();
-                            println!("The following records were found:");
-                            for record in matched_records {
-                                let v = format!(
-                                    "{} | {} | {} | {} ",
-                                    record.info.date,
-                                    self.db
-                                        .get_category_name(
-                                            self.uid,
-                                            self.id,
-                                            record.info.category_id
-                                        )
-                                        .unwrap(),
-                                    chosen_person.clone(),
-                                    record.info.amount
-                                );
-                                print!("\t{}", v);
-                                println!("")
-                            }
-                        }
-                        // confirm they want to remove
-                        let rm_msg = format!("Are you sure you want to delete the participant {} (this will also delete found records)?", chosen_person);
-                        let delete = Confirm::new(&rm_msg).prompt().unwrap();
-                        if delete {
-                            match ptype {
-                                ParticipantType::Payee => {
-                                    self.db
-                                        .remove_participant(
-                                            self.uid,
-                                            self.id,
-                                            ParticipantType::Payee,
-                                            chosen_person.clone(),
-                                        )
-                                        .unwrap();
-                                }
-                                ParticipantType::Payer => {
-                                    self.db
-                                        .remove_participant(
-                                            self.uid,
-                                            self.id,
-                                            ParticipantType::Payer,
-                                            chosen_person.clone(),
-                                        )
-                                        .unwrap();
-                                }
-                                _ => {
-                                    self.db
-                                        .remove_participant(
-                                            self.uid,
-                                            self.id,
-                                            ParticipantType::Payee,
-                                            chosen_person.clone(),
-                                        )
-                                        .unwrap();
-                                    self.db
-                                        .remove_participant(
-                                            self.uid,
-                                            self.id,
-                                            ParticipantType::Payer,
-                                            chosen_person.clone(),
-                                        )
-                                        .unwrap();
-                                }
-                            }
-                        }
-                    }
-                    "None" => {
-                        return;
-                    }
-                    _ => {
-                        panic!("Unrecognized input: {}", update_or_remove);
-                    }
+                _ => {
+                    panic!("Unrecognized input!")
                 }
             }
-            "None" => {
-                return;
-            }
-            _ => {
-                panic!("Unrecognized input!")
+
+            let go_again = Confirm::new("Modify other elements? (y/n)")
+                .prompt()
+                .unwrap();
+            if !go_again {
+                break;
             }
         }
     }
@@ -913,8 +956,11 @@ impl Wallet {
 
             let mut chart = BarChart::default()
                 .style(Style::new().bg(tailwind::SLATE.c900))
-                .block(Block::bordered().title_top(Line::from("Spend Analyzer").centered())
-                    .style(Style::new().bg(tailwind::SLATE.c900)))
+                .block(
+                    Block::bordered()
+                        .title_top(Line::from("Spend Analyzer").centered())
+                        .style(Style::new().bg(tailwind::SLATE.c900)),
+                )
                 .bar_width(10)
                 .group_gap(area.width / (bar_groups.len() as u16 + 10));
             for group in bar_groups {

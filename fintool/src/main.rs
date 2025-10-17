@@ -1,21 +1,21 @@
 /* ------------------------------------------------------------------------
-    Copyright (C) 2025  Andrew J. Eberhard
+  Copyright (C) 2025  Andrew J. Eberhard
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>.
-  -----------------------------------------------------------------------*/
-use directories::ProjectDirs;
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+-----------------------------------------------------------------------*/
 use chrono::{Datelike, Local, NaiveDate};
+use directories::ProjectDirs;
 #[cfg(feature = "ratatui_support")]
 use ratatui::{
     backend::{Backend, CrosstermBackend},
@@ -60,7 +60,6 @@ mod tui;
 mod types;
 
 fn main() -> Result<(), std::io::Error> {
-
     let mut _db: DbConn;
     let db = db_path();
     match db.try_exists() {
@@ -99,10 +98,10 @@ fn db_path() -> PathBuf {
     {
         // Release mode → packaged app database
         if let Some(proj_dirs) = ProjectDirs::from("com", "aeberhard21", "Fintool") {
-            let data_dir = proj_dirs.data_dir(); // ~/Library/Application Support/Fintool
+            let data_dir = proj_dirs.data_dir(); // ~/Library/Application Support/com.aeberhard21.Fintool
             std::fs::create_dir_all(data_dir).expect("Failed to create data directory");
             return data_dir.join("finances.db");
-        } else { 
+        } else {
             panic!("Unable to locate application directory!");
         }
     }
@@ -187,10 +186,10 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
             match app.current_screen {
                 CurrentScreen::Login => match (key.modifiers, key.code) {
                     (_, KeyCode::Enter) => {
-                        if (app.display_license_conditions || app.display_license_warranty) { 
+                        if (app.display_license_conditions || app.display_license_warranty) {
                             app.display_license_conditions = false;
                             app.display_license_warranty = false;
-                        } else { 
+                        } else {
                             if let Some(id) = app.validate_user(app.key_input.to_string()) {
                                 app.user_id = Some(id);
                                 app.user_load_state = UserLoadedState::Loading;
@@ -202,10 +201,10 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                     (KeyModifiers::CONTROL, KeyCode::Char('c') | KeyCode::Char('C')) => {
                         return Ok(true)
                     }
-                    (KeyModifiers::CONTROL, KeyCode::Char('l')) => { 
+                    (KeyModifiers::CONTROL, KeyCode::Char('l')) => {
                         app.display_license_conditions = true;
                     }
-                    (KeyModifiers::CONTROL, KeyCode::Char('w')) => { 
+                    (KeyModifiers::CONTROL, KeyCode::Char('w')) => {
                         app.display_license_warranty = true;
                     }
                     (_, KeyCode::Char(':')) => {
@@ -226,17 +225,17 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                         app.key_input.push(value);
                     }
                     (_, KeyCode::Backspace) => {
-                        if (app.display_license_conditions || app.display_license_warranty) { 
+                        if (app.display_license_conditions || app.display_license_warranty) {
                             app.display_license_conditions = false;
                             app.display_license_warranty = false;
-                        } else { 
+                        } else {
                             app.key_input.pop();
                         }
                     }
                     _ => {}
                 },
                 CurrentScreen::Landing => match (key.modifiers, key.code) {
-                    (_, KeyCode::Char('q')) => { 
+                    (_, KeyCode::Char('q')) => {
                         app.restore_account();
                         app.current_screen = CurrentScreen::Login;
                         app.key_input = String::new();
@@ -250,8 +249,9 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                         app.account = None;
                         app.accounts = Vec::new();
                         app.analysis_period = accounts::base::AnalysisPeriod::YTD;
-                        app.analysis_start = NaiveDate::from_ymd_opt(Local::now().year(), 1, 1).unwrap();
-                        app.analysis_end =  Local::now().date_naive();
+                        app.analysis_start =
+                            NaiveDate::from_ymd_opt(Local::now().year(), 1, 1).unwrap();
+                        app.analysis_end = Local::now().date_naive();
                         app.user_load_state = UserLoadedState::NotLoaded;
                     }
                     (KeyModifiers::CONTROL, KeyCode::Char('c') | KeyCode::Char('C')) => {
@@ -461,8 +461,8 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                                             app.user_id.unwrap(),
                                             acct.get_id(),
                                         );
-                                    } else { 
-                                        // no account selected so just ignore keystroke. 
+                                    } else {
+                                        // no account selected so just ignore keystroke.
                                         continue;
                                     }
 

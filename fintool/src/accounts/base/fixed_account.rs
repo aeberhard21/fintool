@@ -1,19 +1,19 @@
 /* ------------------------------------------------------------------------
-    Copyright (C) 2025  Andrew J. Eberhard
+  Copyright (C) 2025  Andrew J. Eberhard
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>.
-  -----------------------------------------------------------------------*/
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+-----------------------------------------------------------------------*/
 use crate::database::DbConn;
 use crate::tui::{decode_and_init_account_type, prompt_and_create_new_account};
 use crate::types::accounts::AccountRecord;
@@ -165,7 +165,7 @@ impl FixedAccount {
                         db: self.db.clone(),
                         ptype: ParticipantType::Payee,
                         with_accounts: false,
-                        stock_tickers_only : false,
+                        stock_tickers_only: false,
                         manually_recorded_only: false,
                     })
                     .with_default(
@@ -184,7 +184,7 @@ impl FixedAccount {
                         db: self.db.clone(),
                         ptype: ParticipantType::Payee,
                         with_accounts: false,
-                        stock_tickers_only : false,
+                        stock_tickers_only: false,
                         manually_recorded_only: false,
                     })
                     .prompt()
@@ -514,7 +514,7 @@ impl FixedAccount {
                         db: self.db.clone(),
                         ptype: ParticipantType::Payer,
                         with_accounts: false,
-                        stock_tickers_only : false,
+                        stock_tickers_only: false,
                         manually_recorded_only: false,
                     })
                     .with_default(
@@ -536,7 +536,7 @@ impl FixedAccount {
                         db: self.db.clone(),
                         ptype: ParticipantType::Payer,
                         with_accounts: false,
-                        stock_tickers_only : false,
+                        stock_tickers_only: false,
                         manually_recorded_only: false,
                     })
                     .with_validator(participant_validator)
@@ -938,7 +938,7 @@ impl FixedAccount {
                     db: self.db.clone(),
                     ptype: ParticipantType::Both,
                     with_accounts: true,
-                    stock_tickers_only : false,
+                    stock_tickers_only: false,
                     manually_recorded_only: false,
                 })
                 .with_default(initial_account.as_str())
@@ -952,7 +952,7 @@ impl FixedAccount {
                     db: self.db.clone(),
                     ptype: ParticipantType::Both,
                     with_accounts: true,
-                    stock_tickers_only : false,
+                    stock_tickers_only: false,
                     manually_recorded_only: false,
                 })
                 .prompt()

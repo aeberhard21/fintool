@@ -1,19 +1,19 @@
 /* ------------------------------------------------------------------------
-    Copyright (C) 2025  Andrew J. Eberhard
+  Copyright (C) 2025  Andrew J. Eberhard
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>.
-  -----------------------------------------------------------------------*/
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+-----------------------------------------------------------------------*/
 use core::alloc;
 use std::backtrace;
 use std::collections::HashMap;
@@ -166,7 +166,7 @@ impl VariableAccount {
         }
 
         let ticker_msg = "Enter stock ticker:";
-        let ticker= if defaults_to_use {
+        let ticker = if defaults_to_use {
             let pid = initial
                 .clone()
                 .txn_opt
@@ -175,16 +175,15 @@ impl VariableAccount {
             let initial_ticker = self.db.get_participant(self.uid, self.id, pid).unwrap();
             let entered_ticker = Text::new(ticker_msg)
                 .with_default(initial_ticker.as_str())
-                .with_autocomplete(ParticipantAutoCompleter { 
-                        uid : self.uid, 
-                        aid : self.id, 
-                        db : self.db.clone(), 
-                        ptype : ParticipantType::Payee, 
-                        with_accounts : false, 
-                        stock_tickers_only : true,
-                        manually_recorded_only : false
-                    }
-                )
+                .with_autocomplete(ParticipantAutoCompleter {
+                    uid: self.uid,
+                    aid: self.id,
+                    db: self.db.clone(),
+                    ptype: ParticipantType::Payee,
+                    with_accounts: false,
+                    stock_tickers_only: true,
+                    manually_recorded_only: false,
+                })
                 .prompt()
                 .unwrap()
                 .to_ascii_uppercase()
@@ -194,16 +193,15 @@ impl VariableAccount {
             entered_ticker
         } else {
             let entered_ticker = Text::new(ticker_msg)
-                .with_autocomplete(ParticipantAutoCompleter { 
-                        uid : self.uid, 
-                        aid : self.id, 
-                        db : self.db.clone(), 
-                        ptype : ParticipantType::Payee, 
-                        with_accounts : false, 
-                        stock_tickers_only : true,
-                        manually_recorded_only : false
-                    }
-                )
+                .with_autocomplete(ParticipantAutoCompleter {
+                    uid: self.uid,
+                    aid: self.id,
+                    db: self.db.clone(),
+                    ptype: ParticipantType::Payee,
+                    with_accounts: false,
+                    stock_tickers_only: true,
+                    manually_recorded_only: false,
+                })
                 .prompt()
                 .unwrap()
                 .to_ascii_uppercase()
@@ -216,13 +214,23 @@ impl VariableAccount {
         let public_ticker = self.confirm_public_ticker(ticker.clone());
         let manual_entry = if !public_ticker {
             // check if already a member that is being tracked.
-            let pid_opt = self.db.get_participant_id(self.uid, self.id, ticker.clone(), ParticipantType::Payee);
-            if let Some(pid) = pid_opt { 
-                let stock_is_tracked = self.db.check_and_get_stock_price_record_matching_from_participant_id(self.uid, self.id, pid).unwrap();
-                if stock_is_tracked.is_empty() { 
+            let pid_opt = self.db.get_participant_id(
+                self.uid,
+                self.id,
+                ticker.clone(),
+                ParticipantType::Payee,
+            );
+            if let Some(pid) = pid_opt {
+                let stock_is_tracked = self
+                    .db
+                    .check_and_get_stock_price_record_matching_from_participant_id(
+                        self.uid, self.id, pid,
+                    )
+                    .unwrap();
+                if stock_is_tracked.is_empty() {
                     panic!("Non-public ticker does not have a stock price record!");
                 }
-            } else { 
+            } else {
                 let manual_entry = Confirm::new(
                     format!("Ticker {} was not publicly found. Would you like to enter its price manually?", ticker.clone())
                     .as_str())
@@ -233,10 +241,9 @@ impl VariableAccount {
                     println!("Stock was not purchased!");
                     return None;
                 }
-
             }
             true
-        } else { 
+        } else {
             false
         };
 
@@ -319,7 +326,7 @@ impl VariableAccount {
                 ticker,
                 costbasis.clone(),
                 date_input.clone()
-            )
+            ),
         };
 
         let ledger_id = if defaults_to_use && overwrite_entry {
@@ -499,7 +506,7 @@ impl VariableAccount {
                 ticker,
                 sale_price,
                 sale_date.to_string()
-            )
+            ),
         };
 
         let ledger_id: u32 = if defaults_to_use && overwrite_entry {
@@ -679,7 +686,7 @@ impl VariableAccount {
                 ticker.clone(),
                 split.clone(),
                 split_date
-            )
+            ),
         };
 
         let lid = if defaults_to_use && overwrite_entry {
@@ -1379,7 +1386,7 @@ impl VariableAccount {
                 db: self.db.clone(),
                 ptype: ParticipantType::Payee,
                 with_accounts: false,
-                stock_tickers_only : true,
+                stock_tickers_only: true,
                 manually_recorded_only: true,
             })
             .prompt()

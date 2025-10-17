@@ -1,19 +1,19 @@
 /* ------------------------------------------------------------------------
-    Copyright (C) 2025  Andrew J. Eberhard
+  Copyright (C) 2025  Andrew J. Eberhard
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>.
-  -----------------------------------------------------------------------*/
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+-----------------------------------------------------------------------*/
 use super::participants::ParticipantType;
 use crate::database::DbConn;
 use chrono::NaiveDate;
@@ -403,10 +403,9 @@ impl DbConn {
         name: String,
     ) -> rusqlite::Result<Option<Vec<LedgerRecord>>, rusqlite::Error> {
         let (p, sql) = match ptype {
-            ParticipantType::Both => {
-                (
-                    rusqlite::params![uid, aid, name],
-                    "
+            ParticipantType::Both => (
+                rusqlite::params![uid, aid, name],
+                "
                         SELECT 
                             l.id, l.date, l.amount, l.transfer_type, l.pid, l.cid, l.desc 
                         FROM ledgers AS l
@@ -418,13 +417,11 @@ impl DbConn {
                             l.uid = (?1) and
                             l.aid = (?2) and
                             people.name = (?3)
-                    "
-                )
-            }
-            _ => {
-                (
-                    rusqlite::params![uid, aid, name, ptype as u32],
-                    "
+                    ",
+            ),
+            _ => (
+                rusqlite::params![uid, aid, name, ptype as u32],
+                "
                         SELECT 
                             l.id, l.date, l.amount, l.transfer_type, l.pid, l.cid, l.desc 
                         FROM ledgers AS l
@@ -437,9 +434,8 @@ impl DbConn {
                             l.aid = (?2) and
                             people.name = (?3) and
                             people.type = (?4)
-                    "
-                )
-            }
+                    ",
+            ),
         };
 
         let conn_lock = self.conn.lock().unwrap();

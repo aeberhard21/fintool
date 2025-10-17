@@ -1,19 +1,19 @@
 /* ------------------------------------------------------------------------
-    Copyright (C) 2025  Andrew J. Eberhard
+  Copyright (C) 2025  Andrew J. Eberhard
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>.
-  -----------------------------------------------------------------------*/
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+-----------------------------------------------------------------------*/
 use std::str::FromStr;
 
 use serde::{de, Deserialize, Deserializer};
@@ -103,7 +103,10 @@ pub struct BankTransactionList {
 
 #[derive(Debug, Deserialize)]
 pub struct StatementTransaction {
-    #[serde(rename = "TRNTYPE", deserialize_with = "deserialize_ofx_transaction_type")]
+    #[serde(
+        rename = "TRNTYPE",
+        deserialize_with = "deserialize_ofx_transaction_type"
+    )]
     pub transaction_type: OfxTransactionType,
     #[serde(rename = "DTPOSTED", deserialize_with = "deserialize_date")]
     pub date_posted: String,
@@ -121,27 +124,31 @@ pub struct StatementTransaction {
 
 impl From<StatementTransaction> for shared_lib::LedgerEntry {
     fn from(txn: StatementTransaction) -> Self {
-        let (ttype, category) = if let OfxTransactionType::CREDIT = txn.transaction_type { 
-            (TransferType::DepositFromExternalAccount,"CREDIT".to_string())
-        } else if let OfxTransactionType::DEBIT = txn.transaction_type { 
-            (TransferType::WithdrawalToExternalAccount, "DEBIT".to_string())
-        } else { 
+        let (ttype, category) = if let OfxTransactionType::CREDIT = txn.transaction_type {
+            (
+                TransferType::DepositFromExternalAccount,
+                "CREDIT".to_string(),
+            )
+        } else if let OfxTransactionType::DEBIT = txn.transaction_type {
+            (
+                TransferType::WithdrawalToExternalAccount,
+                "DEBIT".to_string(),
+            )
+        } else {
             // CHECK type, need to determine amount
-            let direction = if txn.transaction_amount < 0.0 { 
+            let direction = if txn.transaction_amount < 0.0 {
                 TransferType::WithdrawalToExternalAccount
-            } else { 
+            } else {
                 TransferType::DepositFromExternalAccount
             };
             (direction, "CHECK".to_string())
         };
         let amt = f32::abs(txn.transaction_amount);
         shared_lib::LedgerEntry {
-            date: txn
-                .date_posted
-                .clone(),
+            date: txn.date_posted.clone(),
             amount: amt,
             transfer_type: ttype,
-            participant: format!("\"{}\"",txn.name),
+            participant: format!("\"{}\"", txn.name),
             category: category.clone(),
             description: format!("{} of {} on {}.", category, amt, txn.date_posted),
             stock_info: None,
@@ -593,8 +600,8 @@ enum SEVERITY {
 
 #[derive(Clone, Debug)]
 enum OfxTransactionType {
-    CREDIT, 
-    DEBIT, 
+    CREDIT,
+    DEBIT,
     CHECK,
 }
 
@@ -622,25 +629,17 @@ where
 }
 
 fn deserialize_ofx_transaction_type<'de, D>(deserializer: D) -> Result<OfxTransactionType, D::Error>
-where 
-    D: Deserializer<'de>
-{ 
-     let trntype: String = Deserialize::deserialize(deserializer)?;
-     match trntype.as_str() {
-        "CREDIT" => {
-            Ok(OfxTransactionType::CREDIT)
-        }
-        "DEBIT" => { 
-            Ok(OfxTransactionType::DEBIT)
-        }
-        "CHECK" => { 
-            Ok(OfxTransactionType::CHECK)
-        }
-        _ => { 
-            Err(de::Error::unknown_variant(
-                    trntype.as_str(),
-                    &["CREDIT", "DEBIT"]
-            ))
-        }
-     }
+where
+    D: Deserializer<'de>,
+{
+    let trntype: String = Deserialize::deserialize(deserializer)?;
+    match trntype.as_str() {
+        "CREDIT" => Ok(OfxTransactionType::CREDIT),
+        "DEBIT" => Ok(OfxTransactionType::DEBIT),
+        "CHECK" => Ok(OfxTransactionType::CHECK),
+        _ => Err(de::Error::unknown_variant(
+            trntype.as_str(),
+            &["CREDIT", "DEBIT"],
+        )),
+    }
 }

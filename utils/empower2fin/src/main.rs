@@ -1,19 +1,19 @@
 /* ------------------------------------------------------------------------
-    Copyright (C) 2025  Andrew J. Eberhard
+  Copyright (C) 2025  Andrew J. Eberhard
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>.
-  -----------------------------------------------------------------------*/
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+-----------------------------------------------------------------------*/
 use chrono::Datelike;
 use chrono::NaiveDate;
 use csv::ReaderBuilder;
@@ -31,13 +31,13 @@ pub struct EmpowerRecord {
     #[serde(rename = "Account")]
     pub account: String,
     #[serde(rename = "Description")]
-    pub description : String, 
+    pub description: String,
     #[serde(rename = "Category")]
-    pub category : String, 
+    pub category: String,
     #[serde(rename = "Tags")]
-    pub tags : String, 
+    pub tags: String,
     #[serde(rename = "Amount")]
-    pub amount : f32, 
+    pub amount: f32,
 }
 
 fn main() {
@@ -87,7 +87,7 @@ fn main() {
             "retirement contributions" => {
                 ttype = shared_lib::TransferType::DepositFromExternalAccount;
                 peer = "Self".to_ascii_uppercase().to_string();
-            },
+            }
             _ => {
                 let err_str = format!("Unrecognized category: {}", txn.category).to_string();
                 // panic!(err_str);
@@ -100,34 +100,34 @@ fn main() {
             txn.amount
         };
 
-    //         let ledger_entry = LedgerEntry {
-    //             date: format!(
-    //                 "{}-{}-{}",
-    //                 posted_date.year(),
-    //                 posted_date.month0() + 1,
-    //                 posted_date.day0() + 1
-    //             ),
-    //             amount: amt,
-    //             transfer_type: ttype,
-    //             participant: peer,
-    //             category: cat,
-    //             description: format!("\"{}\"", description),
-    //             stock_info: Some(stock_txn),
-    //         };
+        //         let ledger_entry = LedgerEntry {
+        //             date: format!(
+        //                 "{}-{}-{}",
+        //                 posted_date.year(),
+        //                 posted_date.month0() + 1,
+        //                 posted_date.day0() + 1
+        //             ),
+        //             amount: amt,
+        //             transfer_type: ttype,
+        //             participant: peer,
+        //             category: cat,
+        //             description: format!("\"{}\"", description),
+        //             stock_info: Some(stock_txn),
+        //         };
 
-    //     println!(
-    //     "{},{},{},{},{},{},{},{},{},{},{},{}",
-    //     ledger_entry.date,
-    //     ledger_entry.amount,
-    //     ledger_entry.transfer_type as u32,
-    //     ledger_entry.participant,
-    //     ledger_entry.category,
-    //     ledger_entry.description,
-    //     ledger_entry.stock_info.clone().unwrap().shares,
-    //     ledger_entry.stock_info.clone().unwrap().costbasis,
-    //     ledger_entry.stock_info.clone().unwrap().remaining,
-    //     ledger_entry.stock_info.clone().unwrap().is_buy,
-    //     ledger_entry.stock_info.clone().unwrap().is_split
-    // );
+        //     println!(
+        //     "{},{},{},{},{},{},{},{},{},{},{},{}",
+        //     ledger_entry.date,
+        //     ledger_entry.amount,
+        //     ledger_entry.transfer_type as u32,
+        //     ledger_entry.participant,
+        //     ledger_entry.category,
+        //     ledger_entry.description,
+        //     ledger_entry.stock_info.clone().unwrap().shares,
+        //     ledger_entry.stock_info.clone().unwrap().costbasis,
+        //     ledger_entry.stock_info.clone().unwrap().remaining,
+        //     ledger_entry.stock_info.clone().unwrap().is_buy,
+        //     ledger_entry.stock_info.clone().unwrap().is_split
+        // );
     }
 }
