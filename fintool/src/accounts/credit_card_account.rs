@@ -258,7 +258,9 @@ impl AccountOperations for CreditCardAccount {
         let mut bad_path;
         let mut csv: String = String::new();
         loop {
-            csv = rl.readline("Enter path to CSV file: ").unwrap();
+            csv = rl
+                .readline("Enter path to CSV file (or none to quit): ")
+                .unwrap();
             if csv.to_string() == "none" {
                 return;
             }

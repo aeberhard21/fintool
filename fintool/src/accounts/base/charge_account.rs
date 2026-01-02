@@ -27,6 +27,7 @@ use inquire::*;
 use shared_lib::{LedgerEntry, TransferType};
 use std::collections::HashMap;
 use std::hash::Hash;
+use crate::types::labels::LabelAutoCompleter;
 
 use super::{Account, AccountOperations};
 
@@ -218,6 +219,52 @@ impl ChargeAccount {
                 .add_ledger_entry(self.uid, self.id, withdrawal.clone())
                 .unwrap()
         };
+
+        if overwrite {
+            let maintain_labels =
+                Confirm::new("Would you like to maintain all prior labels (y/n)?")
+                    .prompt()
+                    .unwrap();
+            if !maintain_labels {
+                let mapped_labels = self
+                    .db
+                    .check_and_get_label_mapping_matching_ledger_id(self.uid, self.id, id)
+                    .unwrap();
+                if !mapped_labels.is_empty() {
+                    for label in mapped_labels {
+                        self.db
+                            .remove_label_mapping(self.uid, self.id, label.id)
+                            .unwrap();
+                    }
+                }
+            }
+        }
+
+        // add labels for transaction
+        let add_label_prompt = Confirm::new("Add labels to charge (y/n)?")
+            .prompt()
+            .unwrap();
+        if add_label_prompt == true {
+            loop {
+                let label = Text::new("Enter label:")
+                    .with_autocomplete(LabelAutoCompleter {
+                        uid: self.uid,
+                        db: self.db.clone(),
+                    })
+                    .prompt()
+                    .unwrap()
+                    .to_ascii_uppercase();
+                let label_id = self.db.check_and_add_label(self.uid, label).unwrap();
+                self.db
+                    .add_label_mapping(self.uid, self.id, label_id, id)
+                    .unwrap();
+
+                let continue_prompt = Confirm::new("Add more labels (y/n)?").prompt().unwrap();
+                if !continue_prompt {
+                    break;
+                }
+            }
+        }
     }
 
     pub fn pay(&self, initial_opt: Option<LedgerRecord>, overwrite: bool) {
@@ -418,6 +465,52 @@ impl ChargeAccount {
                     .add_ledger_entry(self.uid, self.id, deposit.clone())
                     .unwrap()
             };
+
+            if overwrite {
+                let maintain_labels =
+                    Confirm::new("Would you like to maintain all prior labels (y/n)?")
+                        .prompt()
+                        .unwrap();
+                if !maintain_labels {
+                    let mapped_labels = self
+                        .db
+                        .check_and_get_label_mapping_matching_ledger_id(self.uid, self.id, id)
+                        .unwrap();
+                    if !mapped_labels.is_empty() {
+                        for label in mapped_labels {
+                            self.db
+                                .remove_label_mapping(self.uid, self.id, label.id)
+                                .unwrap();
+                        }
+                    }
+                }
+            }
+
+            // add labels for transaction
+            let add_label_prompt = Confirm::new("Add labels to payment (y/n)?")
+                .prompt()
+                .unwrap();
+            if add_label_prompt == true {
+                loop {
+                    let label = Text::new("Enter label:")
+                        .with_autocomplete(LabelAutoCompleter {
+                            uid: self.uid,
+                            db: self.db.clone(),
+                        })
+                        .prompt()
+                        .unwrap()
+                        .to_ascii_uppercase();
+                    let label_id = self.db.check_and_add_label(self.uid, label).unwrap();
+                    self.db
+                        .add_label_mapping(self.uid, self.id, label_id, id)
+                        .unwrap();
+
+                    let continue_prompt = Confirm::new("Add more labels (y/n)?").prompt().unwrap();
+                    if !continue_prompt {
+                        break;
+                    }
+                }
+            }
         } else {
             let initial_account_opt = if default_to_use {
                 self.db
@@ -469,6 +562,52 @@ impl ChargeAccount {
                 id: id,
                 info: deposit,
             };
+
+        if overwrite {
+            let maintain_labels =
+                Confirm::new("Would you like to maintain all prior labels (y/n)?")
+                    .prompt()
+                    .unwrap();
+            if !maintain_labels {
+                let mapped_labels = self
+                    .db
+                    .check_and_get_label_mapping_matching_ledger_id(self.uid, self.id, id)
+                    .unwrap();
+                if !mapped_labels.is_empty() {
+                    for label in mapped_labels {
+                        self.db
+                            .remove_label_mapping(self.uid, self.id, label.id)
+                            .unwrap();
+                    }
+                }
+            }
+        }
+
+        // add labels for transaction
+        let add_label_prompt = Confirm::new("Add labels to payment (y/n)?")
+            .prompt()
+            .unwrap();
+        if add_label_prompt == true {
+            loop {
+                let label = Text::new("Enter label:")
+                    .with_autocomplete(LabelAutoCompleter {
+                        uid: self.uid,
+                        db: self.db.clone(),
+                    })
+                    .prompt()
+                    .unwrap()
+                    .to_ascii_uppercase();
+                let label_id = self.db.check_and_add_label(self.uid, label).unwrap();
+                self.db
+                    .add_label_mapping(self.uid, self.id, label_id, id)
+                    .unwrap();
+
+                let continue_prompt = Confirm::new("Add more labels (y/n)?").prompt().unwrap();
+                if !continue_prompt {
+                    break;
+                }
+            }
+        }
 
             if link {
                 acct.link(self.id, entry);

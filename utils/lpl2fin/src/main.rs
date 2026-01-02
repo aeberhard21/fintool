@@ -17,8 +17,10 @@
 use chrono::Datelike;
 use chrono::NaiveDate;
 use csv::ReaderBuilder;
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use std::env;
+use std::io;
+use std::io::Write;
 
 use shared_lib::LedgerEntry;
 use shared_lib::StockInfo;
@@ -26,36 +28,26 @@ use shared_lib::TransferType;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct LplRecord {
-    #[serde(rename = "Account Name")]
-    pub acct_name: String,
-    #[serde(rename = "Nickname")]
-    pub nickname: String,
-    #[serde(rename = "Account Number")]
-    pub acct_number: String,
-    #[serde(rename = "Activity")]
-    pub activity: String,
-    #[serde(rename = "Amount($)")]
-    pub amount: f32,
     #[serde(rename = "Date")]
     pub date: String,
+    #[serde(rename = "Activity")]
+    pub activity: String,
+    #[serde(rename = "Symbol")]
+    pub symbol: String,
     #[serde(rename = "Description")]
     pub description: String,
+    #[serde(rename = "Quantity", deserialize_with = "deserialize_monetary_f32")]
+    pub quantity: f32,
+    #[serde(rename = "Unit Price", deserialize_with = "deserialize_monetary_f32")]
+    pub price: f32,
+    #[serde(rename = "Value", deserialize_with = "deserialize_monetary_f32")]
+    pub amount: f32,
     #[serde(rename = "Held In")]
     pub held_in: String,
-    #[serde(rename = "Price($)")]
-    pub price: String,
-    #[serde(rename = "Quantity")]
-    pub quantity: String,
-    #[serde(rename = "Security")]
-    pub security: char,
-    #[serde(rename = "Source")]
-    pub source: String,
-    #[serde(rename = "Symbol/CUSIP")]
-    pub symbol: String,
-    #[serde(rename = "TransCode")]
-    pub transcode: String,
-    #[serde(rename = "Transaction")]
-    pub transaction: String,
+    #[serde(rename = "Account Nickname")]
+    pub acct_name: String,
+    #[serde(rename = "Account Number")]
+    pub acct_number: String,
 }
 
 fn main() {
@@ -99,14 +91,8 @@ fn main() {
         };
         let mut has_stock = false;
 
-        let quantity = match txn.quantity.as_str() {
-            "-" => 0.0 as f32,
-            _ => txn.quantity.parse::<f32>().unwrap(),
-        };
-        let price = match txn.price.as_str() {
-            "-" => 0.0 as f32,
-            _ => txn.price.parse::<f32>().unwrap(),
-        };
+        let quantity = txn.quantity;
+        let price = txn.price;
 
         let posted_date = NaiveDate::parse_from_str(&txn.date, "%m/%d/%Y").unwrap();
 
@@ -129,7 +115,10 @@ fn main() {
             "reinvest interest" | "interest reinvest" => {
                 // skipping because it seems like that LPL takes
                 // interest money and categorizes for reinvestment immediately.
-                continue;
+                ttype = TransferType::WithdrawalToInternalAccount;
+                peer = "Insured Cash Account".to_string();
+                description = txn.description.clone();
+                // continue;
             }
             "cash dividend" => {
                 ttype = TransferType::DepositFromInternalAccount;
@@ -246,6 +235,11 @@ fn main() {
                 peer = "External Account".to_string();
                 description = txn.description;
             }
+            "withdrawal" => { 
+                ttype = TransferType::WithdrawalToExternalAccount;
+                peer = "External Account".to_string();
+                description = txn.description;
+            }
             _ => {
                 eprintln!("Unrecognized activity type: {}", txn.activity);
                 std::process::exit(1);
@@ -320,4 +314,28 @@ fn main() {
             );
         };
     }
+}
+
+fn deserialize_monetary_f32<'de, D>(deserializer: D) -> Result<f32, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s: String = Deserialize::deserialize(deserializer)?;
+
+    // Trim whitespace
+    let s = s.trim();
+    let s = s.replace(",", "");
+
+    // Handle parentheses for negative numbers
+    let cleaned = if s.starts_with('-') && s.len()< 2 {
+        format!("0")
+    } else if s.starts_with('-') {
+        let inner = &s[1..s.len()].trim(); // remove parens and trim
+        format!("-{}", inner.trim_start_matches('$')) // remove dollar and add minus
+    } else {
+        s.trim_start_matches('$').to_string()
+    };
+
+    let x = cleaned.parse::<f32>().map_err(serde::de::Error::custom);
+    x
 }

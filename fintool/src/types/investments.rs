@@ -581,7 +581,7 @@ impl DbConn {
         match conn_lock.execute(sql, p) {
             Ok(_) => Ok(id),
             Err(error) => {
-                panic!("Unable to add allocation of stock sale {}", error);
+                panic!("Unable to add allocation of stock split {}", error);
             }
         }
     }
@@ -1163,8 +1163,11 @@ impl DbConn {
             FROM stock_purchases 
             INNER JOIN ledgers, people ON 
                 stock_purchases.lid = ledgers.id AND
+                stock_purchases.aid = ledgers.aid AND
                 stock_purchases.uid = ledgers.uid AND
-                ledgers.pid = people.id
+                ledgers.pid = people.id and
+                ledgers.aid = people.aid and
+                ledgers.uid = people.uid
             WHERE 
                 ledgers.aid = (?1) and 
                 ledgers.uid = (?3) and
@@ -1220,8 +1223,11 @@ impl DbConn {
             FROM stock_purchases 
             INNER JOIN ledgers, people ON 
                 stock_purchases.lid = ledgers.id AND
+                stock_purchases.aid = ledgers.aid AND
                 stock_purchases.uid = ledgers.uid AND
-                ledgers.pid = people.id
+                ledgers.pid = people.id and
+                ledgers.aid = people.aid and
+                ledgers.uid = people.uid
             WHERE 
                 ledgers.aid = (?1) and people.name LIKE (?2) and ledgers.date >= (3) and ledgers.date <= (?4)
             ORDER BY
@@ -1274,8 +1280,11 @@ impl DbConn {
             FROM stock_purchases 
             INNER JOIN ledgers, people ON 
                 stock_purchases.lid = ledgers.id AND
+                stock_purchases.aid = ledgers.aid AND
                 stock_purchases.uid = ledgers.uid AND
-                ledgers.pid = people.id
+                ledgers.pid = people.id and
+                ledgers.aid = people.aid and
+                ledgers.uid = people.uid
             WHERE 
                 ledgers.aid = (?1) and people.name LIKE (?2) and ledgers.date < (?3)
             ORDER BY
@@ -1335,8 +1344,11 @@ impl DbConn {
             FROM stock_purchases 
             INNER JOIN ledgers, people ON 
                 stock_purchases.lid = ledgers.id AND
+                stock_purchases.aid = ledgers.aid AND
                 stock_purchases.uid = ledgers.uid AND
-                ledgers.pid = people.id
+                ledgers.pid = people.id and
+                ledgers.aid = people.aid and 
+                ledgers.uid = people.uid
             WHERE 
                 ledgers.aid = (?1) and 
                 ledgers.uid = (?3) and 
@@ -1396,7 +1408,11 @@ impl DbConn {
             FROM stock_purchases 
             INNER JOIN ledgers, people ON 
                 stock_purchases.lid = ledgers.id AND
-                ledgers.pid = people.id
+                stock_purchases.aid = ledgers.aid AND
+                stock_purchases.uid = ledgers.uid AND
+                ledgers.pid = people.id and
+                ledgers.aid = people.aid and
+                ledgers.uid = people.uid
             WHERE 
                 ledgers.aid = (?1) and 
                 ledgers.uid = (?3) and
