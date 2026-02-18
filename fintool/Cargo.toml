@@ -28,3 +28,4 @@ directories = "6.0.0"
 [features]
 default = []
 ratatui_support = ["ratatui"]
+timer = []

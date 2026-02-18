@@ -46,10 +46,13 @@ use rustyline::Highlighter;
 use rustyline::Hinter;
 use rustyline::Validator;
 use shared_lib::{FlatLedgerEntry, LedgerEntry};
+use std::collections::HashMap;
 use std::path::Path;
+#[cfg(feature = "timer")]
+use std::time::{Duration, Instant};
 
 #[cfg(feature = "ratatui_support")]
-use crate::app::app::App;
+use crate::app::app::{App, DisplayValue, LineChart};
 #[cfg(feature = "ratatui_support")]
 use crate::app::screen::ledger_table_constraint_len_calculator;
 use crate::database::DbConn;
@@ -63,6 +66,8 @@ use crate::types::investments::StockInfo;
 use crate::types::investments::StockRecord;
 use crate::types::investments::StockSplitInfo;
 use crate::types::investments::StockSplitRecord;
+use crate::types::ledger::DisplayableLedgerInfo;
+use crate::types::ledger::DisplayableLedgerRecord;
 use crate::types::ledger::LedgerInfo;
 use crate::types::ledger::LedgerRecord;
 use crate::types::participants::ParticipantType;
@@ -71,6 +76,7 @@ use csv::ReaderBuilder;
 use rustyline::Editor;
 use shared_lib::TransferType;
 
+use super::base::{KEY_GROWTH, KEY_TOTAL_VALUE};
 use super::base::variable_account::VariableAccount;
 use super::base::Account;
 use super::base::AccountCreation;
@@ -157,6 +163,199 @@ impl InvestmentAccountManager {
 
         acct
     }
+
+    pub fn get_linechart(&self, app : &mut App) -> Option<LineChart> { 
+        let (start, end) = (app.analysis_start, app.analysis_end);
+        let mut ledger = self.get_ledger_within_dates(start, end);
+        ledger.push(LedgerRecord {
+            id: 0,
+            info: LedgerInfo {
+                date: Local::now().date_naive().to_string(),
+                amount: 0.0,
+                transfer_type: TransferType::ZeroSumChange,
+                participant: 0,
+                category_id: 0,
+                description: "".to_string(),
+            },
+        });
+        let external_transfers = self
+            .variable
+            .db
+            .get_external_transactions_between_timestamps(self.uid, self.id, start, end)
+            .unwrap();
+        // let external_transfers = self.variable.fixed.get_external_transactions_between_timestamps(start, end);
+
+        let mut tstamp_min = f64::MAX;
+        let mut tstamp_max = f64::MIN;
+        let mut min_total = f64::MAX;
+        let mut max_total = f64::MIN;
+
+        // time period starting amount
+        let time_period_investments_opt = if let Some(mut transactions) = external_transfers {
+            if !transactions.is_empty() {
+                // this has to return a value because it will be inclusive of first entry
+                let tpi_starting_amount = self
+                    .db
+                    .get_cumulative_total_of_ledger_of_external_transactions_on_date(
+                        self.uid, self.id, start,
+                    )
+                    .unwrap()
+                    .unwrap();
+                let initial = transactions.remove(0);
+                let timestamp = NaiveDate::parse_from_str(&initial.info.date, "%Y-%m-%d")
+                    .expect(format!("Unexpected data: {}", initial.info.date).as_str())
+                    .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
+                    .and_utc()
+                    .timestamp_millis() as f64;
+                let mut aggregate = tpi_starting_amount as f64;
+                let mut dataset = vec![(timestamp, aggregate)];
+                transactions.push(LedgerRecord {
+                    id: 0,
+                    info: LedgerInfo {
+                        date: Local::now().date_naive().to_string(),
+                        amount: 0.0,
+                        transfer_type: TransferType::ZeroSumChange,
+                        participant: 0,
+                        category_id: 0,
+                        description: "".to_string(),
+                    },
+                });
+                min_total = aggregate;
+                max_total = aggregate;
+                tstamp_min = timestamp;
+                tstamp_max = tstamp_min;
+
+                dataset.append(
+                    &mut transactions
+                        .iter()
+                        .map(|record| {
+                            let date =
+                                NaiveDate::parse_from_str(&record.info.date, "%Y-%m-%d").unwrap();
+                            let dt = date.and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap());
+                            let tstamp = dt.and_utc().timestamp_millis() as f64;
+                            aggregate = match record.info.transfer_type {
+                                TransferType::DepositFromExternalAccount => {
+                                    aggregate + record.info.amount as f64
+                                }
+                                TransferType::WithdrawalToExternalAccount => {
+                                    aggregate - record.info.amount as f64
+                                }
+                                _ => aggregate,
+                            };
+                            max_total = if aggregate > max_total {
+                                aggregate
+                            } else {
+                                max_total
+                            };
+                            min_total = if aggregate < min_total {
+                                aggregate
+                            } else {
+                                min_total
+                            };
+                            tstamp_max = if tstamp > tstamp_max {
+                                tstamp
+                            } else {
+                                tstamp_max
+                            };
+                            (tstamp, aggregate)
+                        })
+                        .collect(),
+                );
+                Some(dataset)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        if let Some(time_period_investments) = time_period_investments_opt {
+
+            let mut date = start;
+            let mut total_account_values = Vec::new();
+            while date < end {
+                let value = self.variable.get_account_value_on_day(&date.clone());
+                if value.is_none() {
+                    break;
+                } else {
+                    use crate::accounts::base::AnalysisPeriod;
+
+                    let tstamp = NaiveDate::parse_from_str(&date.to_string(), "%Y-%m-%d")
+                        .expect(format!("Unexpected data: {}", date).as_str())
+                        .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
+                        .and_utc()
+                        .timestamp_millis() as f64;
+
+                    let partial_value = self.variable.get_account_value_on_day(&date);
+                    let mut aggregate = 0.0;
+                    if partial_value.is_none() {
+                        aggregate = aggregate;
+                    } else {
+                        aggregate = partial_value.unwrap() as f64;
+                    }
+                    max_total = if aggregate > max_total {
+                        aggregate
+                    } else {
+                        max_total
+                    };
+                    min_total = if aggregate < min_total {
+                        aggregate
+                    } else {
+                        min_total
+                    };
+                    tstamp_max = if tstamp > tstamp_max {
+                        tstamp
+                    } else {
+                        tstamp_max
+                    };
+                    total_account_values.push((tstamp, aggregate));
+
+                    date = match app.analysis_period {
+                        AnalysisPeriod::OneDay | AnalysisPeriod::OneWeek => {
+                            date.checked_add_days(Days::new(1)).unwrap()
+                        }
+                        AnalysisPeriod::OneMonth => date.checked_add_days(Days::new(2)).unwrap(),
+                        AnalysisPeriod::OneYear
+                        | AnalysisPeriod::ThreeMonths
+                        | AnalysisPeriod::SixMonths
+                        | AnalysisPeriod::YTD => date.checked_add_days(Days::new(7)).unwrap(),
+                        AnalysisPeriod::TwoYears => date.checked_add_days(Days::new(20)).unwrap(),
+                        AnalysisPeriod::FiveYears => date.checked_add_days(Days::new(50)).unwrap(),
+                        AnalysisPeriod::TenYears => date.checked_add_days(Days::new(100)).unwrap(),
+                        AnalysisPeriod::Custom | AnalysisPeriod::AllTime => {
+                            let diff = (end.num_days_from_ce() - start.num_days_from_ce()) as u32;
+                            let days_to_add: u32 = if diff <= 365 {
+                                1
+                            } else if diff <= (365 * 2) {
+                                2
+                            } else if diff <= (365 * 5) {
+                                5
+                            } else {
+                                10
+                            };
+                            date.checked_add_days(Days::new(days_to_add as u64))
+                                .unwrap()
+                        }
+                    };
+                }
+            }
+            
+            Some(LineChart { 
+                datasets : vec![time_period_investments, total_account_values],
+                y_max : max_total, 
+                y_min : min_total,
+                y_step : (max_total-min_total)/5.0,
+                x_max : tstamp_max, 
+                x_min : tstamp_min,
+                x_labels : vec![start.to_string(), end.to_string()], 
+                y_labels : float_range(min_total, max_total, (max_total - min_total) / 5.0)
+                            .into_iter()
+                            .map(|x| format!("{:.2}", x)).collect()
+            })
+        } else { 
+            None
+        }
+    }
 }
 
 impl AccountOperations for InvestmentAccountManager {
@@ -181,18 +380,24 @@ impl AccountOperations for InvestmentAccountManager {
             match action.as_str() {
                 "Deposit" => {
                     self.variable.fixed.deposit(None, false);
+                    // update ledger
+                    self.get_ledger();
                 }
                 "Withdrawal" => {
                     self.variable.fixed.withdrawal(None, false);
+                    self.get_ledger();
                 }
                 "Purchase" => {
                     self.variable.purchase_stock(None, false);
+                    self.get_ledger();
                 }
                 "Sale" => {
                     self.variable.sell_stock(None, false);
+                    self.get_ledger();
                 }
                 "Stock Split" => {
                     self.variable.split_stock(None, false);
+                    self.get_ledger();
                 }
                 "Stock Price" => {
                     self.variable.manually_record_stock_close_price();
@@ -1046,18 +1251,37 @@ impl AccountData for InvestmentAccountManager {
         return self.db.get_account_name(self.uid, self.id).unwrap();
     }
     fn get_ledger(&self) -> Vec<LedgerRecord> {
-        let ledger = self.db.get_ledger(self.uid, self.id).unwrap();
-        return ledger;
+        // let ledger = self.db.get_ledger(self.uid, self.id).unwrap();
+        // return ledger;
+        return self.variable.fixed.ledger.clone();
     }
     fn get_ledger_within_dates(&self, start: NaiveDate, end: NaiveDate) -> Vec<LedgerRecord> {
-        let ledger = self
-            .db
-            .get_ledger_entries_within_timestamps(self.uid, self.id, start, end)
-            .unwrap();
-        return ledger;
+        // let ledger = self
+        //     .db
+        //     .get_ledger_entries_within_timestamps(self.uid, self.id, start, end)
+        //     .unwrap();
+        return self.get_ledger().iter().filter(|x| {
+            NaiveDate::parse_from_str(&x.info.date, "%Y-%m-%d").expect("Unable to parse date!") >= start
+        }).filter(|y| { 
+            NaiveDate::parse_from_str(&y.info.date, "%Y-%m-%d").expect("Unable to parse date!") <= end
+        }).cloned().collect();
     }
     fn get_displayable_ledger(&self) -> Vec<crate::types::ledger::DisplayableLedgerRecord> {
         return self.db.get_displayable_ledger(self.uid, self.id).unwrap();
+        // return self.get_ledger().clone().iter().map(|x| {
+        //     DisplayableLedgerRecord {
+        //         id : x.id.to_string(),
+        //         info : DisplayableLedgerInfo { 
+        //             date : x.info.date,
+        //             amount : x.info.amount.to_string(),
+        //             transfer_type : x.info.transfer_type.to_string(),
+        //             participant : x.info.participant.to_string(), 
+        //             category : x.info.category_id.to_string(), 
+        //             description : x.info.description, 
+        //             labels : x.info.labels
+        //         }
+        //     }
+        // })
     }
     fn get_value(&self) -> f32 {
         return self.variable.get_current_value();
@@ -1077,185 +1301,17 @@ impl AccountData for InvestmentAccountManager {
 #[cfg(feature = "ratatui_support")]
 impl InvestmentAccountManager {
     fn render_growth_chart(&self, frame: &mut Frame, area: Rect, app: &mut App) {
-        let (start, end) = (app.analysis_start, app.analysis_end);
-        let mut ledger = self.get_ledger_within_dates(start, end);
-        ledger.push(LedgerRecord {
-            id: 0,
-            info: LedgerInfo {
-                date: Local::now().date_naive().to_string(),
-                amount: 0.0,
-                transfer_type: TransferType::ZeroSumChange,
-                participant: 0,
-                category_id: 0,
-                description: "".to_string(),
-            },
-        });
-        let external_transfers = self
-            .variable
-            .db
-            .get_external_transactions_between_timestamps(self.uid, self.id, start, end)
-            .unwrap();
+        let linechart = app.linechart_cache.take();
+        if let Some(line_chart) = linechart { 
 
-        let mut tstamp_min = f64::MAX;
-        let mut tstamp_max = f64::MIN;
-        let mut min_total = f64::MAX;
-        let mut max_total = f64::MIN;
+            app.linechart_cache = Some(line_chart.clone());
 
-        // time period starting amount
-        let time_period_investments_opt = if let Some(mut transactions) = external_transfers {
-            if !transactions.is_empty() {
-                // this has to return a value because it will be inclusive of first entry
-                let tpi_starting_amount = self
-                    .db
-                    .get_cumulative_total_of_ledger_of_external_transactions_on_date(
-                        self.uid, self.id, start,
-                    )
-                    .unwrap()
-                    .unwrap();
-                let initial = transactions.remove(0);
-                let timestamp = NaiveDate::parse_from_str(&initial.info.date, "%Y-%m-%d")
-                    .expect(format!("Unexpected data: {}", initial.info.date).as_str())
-                    .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
-                    .and_utc()
-                    .timestamp_millis() as f64;
-                let mut aggregate = tpi_starting_amount as f64;
-                let mut dataset = vec![(timestamp, aggregate)];
-                transactions.push(LedgerRecord {
-                    id: 0,
-                    info: LedgerInfo {
-                        date: Local::now().date_naive().to_string(),
-                        amount: 0.0,
-                        transfer_type: TransferType::ZeroSumChange,
-                        participant: 0,
-                        category_id: 0,
-                        description: "".to_string(),
-                    },
-                });
-                min_total = aggregate;
-                max_total = aggregate;
-                tstamp_min = timestamp;
-                tstamp_max = tstamp_min;
-
-                dataset.append(
-                    &mut transactions
-                        .iter()
-                        .map(|record| {
-                            let date =
-                                NaiveDate::parse_from_str(&record.info.date, "%Y-%m-%d").unwrap();
-                            let dt = date.and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap());
-                            let tstamp = dt.and_utc().timestamp_millis() as f64;
-                            aggregate = match record.info.transfer_type {
-                                TransferType::DepositFromExternalAccount => {
-                                    aggregate + record.info.amount as f64
-                                }
-                                TransferType::WithdrawalToExternalAccount => {
-                                    aggregate - record.info.amount as f64
-                                }
-                                _ => aggregate,
-                            };
-                            max_total = if aggregate > max_total {
-                                aggregate
-                            } else {
-                                max_total
-                            };
-                            min_total = if aggregate < min_total {
-                                aggregate
-                            } else {
-                                min_total
-                            };
-                            tstamp_max = if tstamp > tstamp_max {
-                                tstamp
-                            } else {
-                                tstamp_max
-                            };
-                            (tstamp, aggregate)
-                        })
-                        .collect(),
-                );
-                Some(dataset)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
-        if let Some(time_period_investments) = time_period_investments_opt {
             let mut datasets = vec![Dataset::default()
-                .name("Time Period Investment")
-                .marker(symbols::Marker::Braille)
-                .style(Style::default().fg(tailwind::LIME.c400))
-                .graph_type(GraphType::Line)
-                .data(&time_period_investments)];
-
-            let mut date = start;
-            let mut total_account_values = Vec::new();
-            while date < end {
-                let value = self.variable.get_account_value_on_day(&date.clone());
-                if value.is_none() {
-                    break;
-                } else {
-                    use crate::accounts::base::AnalysisPeriod;
-
-                    let tstamp = NaiveDate::parse_from_str(&date.to_string(), "%Y-%m-%d")
-                        .expect(format!("Unexpected data: {}", date).as_str())
-                        .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
-                        .and_utc()
-                        .timestamp_millis() as f64;
-
-                    let partial_value = self.variable.get_account_value_on_day(&date);
-                    let mut aggregate = 0.0;
-                    if partial_value.is_none() {
-                        aggregate = aggregate;
-                    } else {
-                        aggregate = partial_value.unwrap() as f64;
-                    }
-                    max_total = if aggregate > max_total {
-                        aggregate
-                    } else {
-                        max_total
-                    };
-                    min_total = if aggregate < min_total {
-                        aggregate
-                    } else {
-                        min_total
-                    };
-                    tstamp_max = if tstamp > tstamp_max {
-                        tstamp
-                    } else {
-                        tstamp_max
-                    };
-                    total_account_values.push((tstamp, aggregate));
-
-                    date = match app.analysis_period {
-                        AnalysisPeriod::OneDay | AnalysisPeriod::OneWeek => {
-                            date.checked_add_days(Days::new(1)).unwrap()
-                        }
-                        AnalysisPeriod::OneMonth => date.checked_add_days(Days::new(2)).unwrap(),
-                        AnalysisPeriod::OneYear
-                        | AnalysisPeriod::ThreeMonths
-                        | AnalysisPeriod::SixMonths
-                        | AnalysisPeriod::YTD => date.checked_add_days(Days::new(7)).unwrap(),
-                        AnalysisPeriod::TwoYears => date.checked_add_days(Days::new(20)).unwrap(),
-                        AnalysisPeriod::FiveYears => date.checked_add_days(Days::new(50)).unwrap(),
-                        AnalysisPeriod::TenYears => date.checked_add_days(Days::new(100)).unwrap(),
-                        AnalysisPeriod::Custom | AnalysisPeriod::AllTime => {
-                            let diff = (end.num_days_from_ce() - start.num_days_from_ce()) as u32;
-                            let days_to_add: u32 = if diff <= 365 {
-                                1
-                            } else if diff <= (365 * 2) {
-                                2
-                            } else if diff <= (365 * 5) {
-                                5
-                            } else {
-                                10
-                            };
-                            date.checked_add_days(Days::new(days_to_add as u64))
-                                .unwrap()
-                        }
-                    };
-                }
-            }
+                    .name("Time Period Investment")
+                    .marker(symbols::Marker::Braille)
+                    .style(Style::default().fg(tailwind::LIME.c400))
+                    .graph_type(GraphType::Line)
+                    .data(&line_chart.datasets[0])];
 
             datasets.push(
                 Dataset::default()
@@ -1263,7 +1319,7 @@ impl InvestmentAccountManager {
                     .marker(symbols::Marker::Braille)
                     .style(Style::default().fg(tailwind::BLUE.c400))
                     .graph_type(GraphType::Line)
-                    .data(&total_account_values),
+                    .data(&line_chart.datasets[1]),
             );
 
             let chart = Chart::new(datasets)
@@ -1277,24 +1333,20 @@ impl InvestmentAccountManager {
                     Axis::default()
                         .title("Time")
                         .style(Style::default().gray())
-                        .bounds([tstamp_min, tstamp_max])
-                        .labels([start.to_string(), end.to_string()]),
+                        .bounds([line_chart.x_min, line_chart.x_max])
+                        .labels(line_chart.x_labels),
                 )
                 .y_axis(
                     Axis::default()
                         .title("Value (💰)")
                         .style(Style::default().gray())
-                        .bounds([min_total, max_total])
-                        .labels(
-                            float_range(min_total, max_total, (max_total - min_total) / 5.0)
-                                .into_iter()
-                                .map(|x| format!("{:.2}", x)),
-                        ),
+                        .bounds([line_chart.y_min, line_chart.y_max])
+                        .labels(line_chart.y_labels),
                 )
                 .style(Style::new().bg(tailwind::SLATE.c900));
 
-            frame.render_widget(chart, area);
-        } else {
+                frame.render_widget(chart, area);
+        } else { 
             let value = ratatuiText::styled(
                 "No data to display!",
                 Style::default().fg(tailwind::ROSE.c400).bold(),
@@ -1306,7 +1358,7 @@ impl InvestmentAccountManager {
                 .block(
                     Block::default()
                         .borders(Borders::ALL)
-                        .title("Current Balance")
+                        .title(Line::from(" Value Over Time ").cyan().bold().centered())
                         .title_alignment(layout::Alignment::Center)
                         .padding(Padding::new(
                             0,
@@ -1326,8 +1378,16 @@ impl InvestmentAccountManager {
     }
 
     fn render_time_weighted_rate_of_return(&self, frame: &mut Frame, area: Rect, app: &mut App) {
-        let (start, end) = (app.analysis_start, app.analysis_end);
-        let value = self.variable.time_weighted_return(start, end);
+
+        let value = app
+            .page_cache_f32
+            .as_ref()
+            .expect("Account's page has not been cached!")
+            .get(KEY_GROWTH)
+            .and_then(DisplayValue::as_f32)
+            .expect("Could not find growth rate!")
+            .clone();
+        
         let fg_color = if value < 0.0 {
             tailwind::ROSE.c200
         } else {
@@ -1367,6 +1427,19 @@ impl InvestmentAccountManager {
 
 #[cfg(feature = "ratatui_support")]
 impl AccountUI for InvestmentAccountManager {
+
+    fn populate_page_cache_f32(&self, app : &mut App) {
+        let mut kv : HashMap<String, DisplayValue> = HashMap::new();
+
+        kv.insert(KEY_TOTAL_VALUE.into(), DisplayValue::Float(self.get_value()));
+        kv.insert(KEY_GROWTH.into(), DisplayValue::Float(self.variable.time_weighted_return(app.analysis_start, app.analysis_end)));
+
+        app.page_cache_f32 = Some(kv);
+        app.ledger_entries = Some(self.get_displayable_ledger());
+        app.linechart_cache = self.get_linechart(app);
+        app.barchart_cache = None;
+    }
+
     fn render(&self, frame: &mut Frame, area: Rect, app: &mut App) {
         let chunk = Layout::default()
             .direction(Direction::Vertical)
@@ -1392,10 +1465,40 @@ impl AccountUI for InvestmentAccountManager {
         let value_area = reports_chunks[0];
         let twrr_area = reports_chunks[1];
 
+        #[cfg(feature = "timer")] {
+            let render_start = Instant::now();
+        }
         self.render_ledger_table(frame, ledger_area, app);
+        #[cfg(feature = "timer")] {
+            let duration_to_render = render_start.elapsed();
+            if duration_to_render > Duration::from_millis(16) {
+                eprintln!("⚠️ slow ledger table: {:?}", duration_to_render);
+            }
+            let render_start = Instant::now();
+        }
         self.render_growth_chart(frame, graph_area, app);
+        #[cfg(feature = "timer")] {
+            let duration_to_render = render_start.elapsed();
+            if duration_to_render > Duration::from_millis(16) {
+                eprintln!("⚠️ slow growth chart: {:?}", duration_to_render);
+            }
+            let render_start = Instant::now();
+        }
         self.render_current_value(frame, value_area, app);
+        #[cfg(feature = "timer")] {
+            let duration_to_render = render_start.elapsed();
+            if duration_to_render > Duration::from_millis(16) {
+                eprintln!("⚠️ slow current value: {:?}", duration_to_render);
+            }
+            let render_start = Instant::now();
+        }
         self.render_time_weighted_rate_of_return(frame, twrr_area, app);
+        #[cfg(feature = "timer")] {
+            let duration_to_render = render_start.elapsed();
+            if duration_to_render > Duration::from_millis(16) {
+                eprintln!("⚠️ slow rate of return: {:?}", duration_to_render);
+            }
+        }
     }
 }
 

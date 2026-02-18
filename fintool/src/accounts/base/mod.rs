@@ -15,7 +15,7 @@
   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 -----------------------------------------------------------------------*/
 #[cfg(feature = "ratatui_support")]
-use crate::app::app::App;
+use crate::app::app::{App, DisplayValue};
 #[cfg(feature = "ratatui_support")]
 use crate::app::screen::ledger_table_constraint_len_calculator;
 use crate::database::DbConn;
@@ -49,6 +49,9 @@ pub mod fixed_account;
 pub mod liquid_account;
 pub mod variable_account;
 
+pub const KEY_TOTAL_VALUE : &str = "Current Value";
+pub const KEY_GROWTH : &str = "Growth";
+
 pub trait AccountCreation {
     fn create(uid: u32, name: String, _db: &DbConn) -> AccountRecord;
 }
@@ -75,6 +78,8 @@ pub trait AccountData {
 
 #[cfg(feature = "ratatui_support")]
 pub trait AccountUI: AccountData {
+    fn populate_page_cache_f32(&self, app : &mut App);
+
     fn render(&self, frame: &mut Frame, area: Rect, app: &mut App);
 
     fn render_ledger_table(&self, frame: &mut Frame, area: Rect, app: &mut App) {
@@ -102,69 +107,110 @@ pub trait AccountUI: AccountData {
         .style(header_style)
         .height(1);
 
-        let data = self.get_displayable_ledger();
-        app.ledger_entries = Some(data.clone());
+        if let Some(ledger) = app.ledger_entries.clone() { 
+            let data = ledger;
 
-        let rows = data.iter().enumerate().map(|(i, record)| {
-            let color = match i % 2 {
-                0 => app.ledger_table_colors.normal_row_color,
-                _ => app.ledger_table_colors.alt_row_color,
-            };
-            let item = [
-                &record.id.to_string(),
-                &record.info.date,
-                &record.info.transfer_type,
-                &record.info.amount.to_string(),
-                &record.info.category,
-                &record.info.participant.to_string(),
-                &record.info.description,
-                &record.info.labels,
-            ];
-            item.into_iter()
-                .map(|content| Cell::from(ratatuiText::from(format!("\n{content}\n"))))
-                .collect::<Row>()
-                .style(Style::new().fg(app.ledger_table_colors.row_fg).bg(color))
-                .height(4)
-        });
+            let rows = data.iter().enumerate().map(|(i, record)| {
+                let color = match i % 2 {
+                    0 => app.ledger_table_colors.normal_row_color,
+                    _ => app.ledger_table_colors.alt_row_color,
+                };
+                let item = [
+                    &record.id.to_string(),
+                    &record.info.date,
+                    &record.info.transfer_type,
+                    &record.info.amount.to_string(),
+                    &record.info.category,
+                    &record.info.participant.to_string(),
+                    &record.info.description,
+                    &record.info.labels,
+                ];
+                item.into_iter()
+                    .map(|content| Cell::from(ratatuiText::from(format!("\n{content}\n"))))
+                    .collect::<Row>()
+                    .style(Style::new().fg(app.ledger_table_colors.row_fg).bg(color))
+                    .height(4)
+            });
 
-        let bar: &'static str = " █ ";
-        let constraint_lens = ledger_table_constraint_len_calculator(&data);
-        let t = Table::new(
-            rows,
-            [
-                Constraint::Length(constraint_lens.0 + 1),
-                Constraint::Min(constraint_lens.1 + 1),
-                Constraint::Min(constraint_lens.2 + 1),
-                Constraint::Min(constraint_lens.3 + 1),
-                Constraint::Min(constraint_lens.4 + 1),
-                Constraint::Min(constraint_lens.5 + 1),
-                // don't take more than 25% of screen when display descriptions
-                Constraint::Min(area.width / 4),
-                Constraint::Min(constraint_lens.7 + 1),
-            ],
-        )
-        .header(header)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("Transactions")
-                .title_alignment(layout::Alignment::Center),
-        )
-        .row_highlight_style(selected_row_style)
-        .highlight_symbol(ratatuiText::from(vec![
-            "".into(),
-            bar.into(),
-            bar.into(),
-            "".into(),
-        ]))
-        .bg(app.ledger_table_colors.buffer_bg)
-        .highlight_spacing(HighlightSpacing::Always);
-        frame.render_stateful_widget(t, area, &mut app.ledger_table_state);
+            let bar: &'static str = " █ ";
+            let constraint_lens = ledger_table_constraint_len_calculator(&data);
+            let t = Table::new(
+                rows,
+                [
+                    Constraint::Length(constraint_lens.0 + 1),
+                    Constraint::Min(constraint_lens.1 + 1),
+                    Constraint::Min(constraint_lens.2 + 1),
+                    Constraint::Min(constraint_lens.3 + 1),
+                    Constraint::Min(constraint_lens.4 + 1),
+                    Constraint::Min(constraint_lens.5 + 1),
+                    // don't take more than 25% of screen when display descriptions
+                    Constraint::Min(area.width / 4),
+                    Constraint::Min(constraint_lens.7 + 1),
+                ],
+            )
+            .header(header)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Transactions")
+                    .title_alignment(layout::Alignment::Center),
+            )
+            .row_highlight_style(selected_row_style)
+            .highlight_symbol(ratatuiText::from(vec![
+                "".into(),
+                bar.into(),
+                bar.into(),
+                "".into(),
+            ]))
+            .bg(app.ledger_table_colors.buffer_bg)
+            .highlight_spacing(HighlightSpacing::Always);
+
+            app.ledger_entries = Some(data);
+
+            frame.render_stateful_widget(t, area, &mut app.ledger_table_state);
+        } else { 
+            let value = ratatuiText::styled(
+                "No data to display!",
+                Style::default().fg(tailwind::ROSE.c400).bold(),
+            );
+
+            let display = Paragraph::new(value)
+                .centered()
+                .alignment(layout::Alignment::Center)
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title("Value Over Time")
+                        .title_alignment(layout::Alignment::Center)
+                        .padding(Padding::new(
+                            0,
+                            0,
+                            (if area.height > 4 {
+                                area.height / 2 - 2
+                            } else {
+                                0
+                            }),
+                            0,
+                        )),
+                )
+                .bg(tailwind::SLATE.c900);
+
+            frame.render_widget(display, area);
+        }
     }
 
     fn render_current_value(&self, frame: &mut Frame, area: Rect, app: &mut App) {
+        
+        let current_value = app
+            .page_cache_f32
+            .as_ref()
+            .expect("Account's page has not been cached!")
+            .get(KEY_TOTAL_VALUE)
+            .and_then(DisplayValue::as_f32)
+            .expect("Could not find current value!");
+        
         let value = ratatuiText::styled(
-            self.get_value().to_string(),
+            current_value.to_string(),
             Style::default().fg(tailwind::EMERALD.c400).bold(),
         );
 

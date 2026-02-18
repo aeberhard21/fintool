@@ -61,7 +61,7 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
     let current_keys_hint = {
         match app.current_screen {
             CurrentScreen::Login => Span::styled (
-                "(Ctrl-c) to quit / (:) Create User / (⏎) Login / (Ctrl-l) Show Conditions / (Ctrl-w) Show Warranty",
+                "(Ctrl-c) to quit / (:) Create User / (⏎) Login / (Ctrl-l) Show Conditions / (Ctrl-w) Show Warranty / (⌫) Exit Conditions / Warranty",
                 Style::default().fg(Color::LightBlue).bg(Color::Black),
             ),
             CurrentScreen::Landing => {
@@ -121,6 +121,13 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
             .direction(Direction::Vertical)
             .constraints([Constraint::Percentage(90), Constraint::Percentage(10)])
             .split(chunks[1]);
+
+        // fill entire background
+        let filler = Block::default()
+                    .borders(Borders::ALL)
+                    .style(Style::default().bg(tailwind::SLATE.c900));
+        frame.render_widget(filler, chunks[1]);
+
 
         let centered_area = centered_rect(60, 25, frame.area());
 

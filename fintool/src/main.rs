@@ -15,6 +15,9 @@
   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 -----------------------------------------------------------------------*/
 use chrono::{Datelike, Local, NaiveDate};
+#[cfg(feature = "timer")]
+use std::time::{Duration, Instant};
+#[cfg(not(debug_assertions))]
 use directories::ProjectDirs;
 #[cfg(feature = "ratatui_support")]
 use ratatui::{
@@ -35,6 +38,7 @@ use ratatui::{
 };
 use std::fs::{self};
 use std::io;
+use std::io::Write;
 use std::io::Error;
 use std::path::{Path, PathBuf};
 use std::result;
@@ -121,23 +125,30 @@ fn init_and_run_app(_db: &mut DbConn) -> io::Result<bool> {
     let res = run_app(&mut terminal, &mut app)?;
 
     // restore terminal
-    disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )?;
-    terminal.show_cursor()?;
+    suspend_tui(&mut terminal)?;
 
     Ok(res)
 }
 
 #[cfg(feature = "ratatui_support")]
-fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<bool> {
+fn run_app<B>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<bool> 
+where 
+    B: Backend + Write,
+{
     terminal.clear().unwrap();
     loop {
         app.invalid_input = false;
+        #[cfg(feature = "timer")] {
+            let frame_start = Instant::now();d
+        }
         terminal.draw(|f| ui::ui(f, app))?;
+
+        #[cfg(feature = "timer")]{
+            let frame_time = frame_start.elapsed();
+            if frame_time > Duration::from_millis(16) {
+                eprintln!("⚠️ slow frame: {:?}", frame_time);
+            }
+        }
 
         if let UserLoadedState::Loading = app.user_load_state {
             while app.user_load_state != UserLoadedState::Loaded {
@@ -199,6 +210,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                         }
                     }
                     (KeyModifiers::CONTROL, KeyCode::Char('c') | KeyCode::Char('C')) => {
+                        suspend_tui(terminal)?;
                         return Ok(true)
                     }
                     (KeyModifiers::CONTROL, KeyCode::Char('l')) => {
@@ -208,18 +220,11 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                         app.display_license_warranty = true;
                     }
                     (_, KeyCode::Char(':')) => {
-                        disable_raw_mode()?;
-                        execute!(
-                            io::stdout(),
-                            Clear(ratatui::crossterm::terminal::ClearType::All),
-                            MoveTo(0, 0)
-                        )
-                        .unwrap();
+                        suspend_tui(terminal)?;
 
                         create_user(&mut app.db);
-
-                        enable_raw_mode()?;
-                        terminal.clear().unwrap();
+                        
+                        resume_tui(terminal)?
                     }
                     (_, KeyCode::Char(value)) => {
                         app.key_input.push(value);
@@ -255,6 +260,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                         app.user_load_state = UserLoadedState::NotLoaded;
                     }
                     (KeyModifiers::CONTROL, KeyCode::Char('c') | KeyCode::Char('C')) => {
+                        suspend_tui(terminal)?;
                         return Ok(true)
                     }
                     (_, KeyCode::Right | KeyCode::Char('l')) => {
@@ -400,13 +406,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                                 | CurrentlySelecting::AccountTabs => {
                                     app.restore_account();
 
-                                    disable_raw_mode()?;
-                                    execute!(
-                                        io::stdout(),
-                                        Clear(ratatui::crossterm::terminal::ClearType::All),
-                                        MoveTo(0, 0)
-                                    )
-                                    .unwrap();
+                                    suspend_tui(terminal)?;
 
                                     let new_account = create_account(
                                         app.user_id.unwrap(),
@@ -417,8 +417,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                                     let account = new_account.unwrap();
                                     app.accounts.push(account.0);
 
-                                    enable_raw_mode()?;
-                                    terminal.clear().unwrap();
+                                    resume_tui(terminal)?;
 
                                     app.accounts_for_type = if !app.accounts.is_empty() {
                                         let filtered_accounts = app
@@ -447,13 +446,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                         if let Some(select_mode) = &app.currently_selected {
                             match select_mode {
                                 CurrentlySelecting::Account => {
-                                    disable_raw_mode()?;
-                                    execute!(
-                                        io::stdout(),
-                                        Clear(ratatui::crossterm::terminal::ClearType::All),
-                                        MoveTo(0, 0)
-                                    )
-                                    .unwrap();
+                                    suspend_tui(terminal)?;
 
                                     if let Some(acct) = &app.account {
                                         rename_account(
@@ -475,9 +468,8 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                                         )
                                         .unwrap()
                                         .unwrap();
-
-                                    enable_raw_mode()?;
-                                    terminal.clear().unwrap();
+                                    
+                                    resume_tui(terminal)?;
                                 }
                                 _ => {}
                             }
@@ -489,13 +481,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                             match select_mode {
                                 CurrentlySelecting::MainTabs => {
                                     if Pages::Main == app.selected_page_tab {
-                                        disable_raw_mode()?;
-                                        execute!(
-                                            io::stdout(),
-                                            Clear(ratatui::crossterm::terminal::ClearType::All),
-                                            MoveTo(0, 0)
-                                        )
-                                        .unwrap();
+                                        suspend_tui(terminal)?;
 
                                         if let Some(uid) = app.user_id {
                                             modify_labels(uid, &app.db);
@@ -503,26 +489,19 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                                             panic!("Unable to unwrap user ID!");
                                         }
 
-                                        enable_raw_mode()?;
-                                        terminal.clear().unwrap();
+                                        resume_tui(terminal)?;
                                     }
                                 }
                                 CurrentlySelecting::Account => {
-                                    disable_raw_mode()?;
-                                    execute!(
-                                        io::stdout(),
-                                        Clear(ratatui::crossterm::terminal::ClearType::All),
-                                        MoveTo(0, 0)
-                                    )
-                                    .unwrap();
+                                    suspend_tui(terminal)?;
 
                                     if let Some(acct) = &mut app.account {
                                         acct.modify();
                                     } else {
                                         app.invalid_input = true;
                                     }
-                                    enable_raw_mode()?;
-                                    terminal.clear().unwrap();
+
+                                    resume_tui(terminal)?;
                                 }
                                 _ => {}
                             }
@@ -533,22 +512,16 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                         if let Some(select_mode) = &app.currently_selected {
                             match select_mode {
                                 CurrentlySelecting::Account => {
-                                    disable_raw_mode()?;
-                                    execute!(
-                                        io::stdout(),
-                                        Clear(ratatui::crossterm::terminal::ClearType::All),
-                                        MoveTo(0, 0)
-                                    )
-                                    .unwrap();
+                                    suspend_tui(terminal)?;
 
                                     if let Some(acct) = &mut app.account {
                                         acct.record();
                                     } else {
                                         app.invalid_input = true;
                                     }
+                                    app.update_account();
 
-                                    enable_raw_mode()?;
-                                    terminal.clear().unwrap();
+                                    resume_tui(terminal)?;
                                 }
                                 _ => {}
                             }
@@ -559,22 +532,16 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                         if let Some(select_mode) = &app.currently_selected {
                             match select_mode {
                                 CurrentlySelecting::Account => {
-                                    disable_raw_mode()?;
-                                    execute!(
-                                        io::stdout(),
-                                        Clear(ratatui::crossterm::terminal::ClearType::All),
-                                        MoveTo(0, 0)
-                                    )
-                                    .unwrap();
+                                    suspend_tui(terminal)?;
 
                                     if let Some(acct) = &mut app.account {
                                         acct.import();
                                     } else {
                                         app.invalid_input = true;
                                     }
+                                    app.update_account();
 
-                                    enable_raw_mode()?;
-                                    terminal.clear().unwrap();
+                                    resume_tui(terminal)?;
                                 }
                                 _ => {}
                             }
@@ -582,20 +549,16 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                     }
                     (_, KeyCode::Char('a')) => {
                         // analysis period
-                        disable_raw_mode()?;
-                        execute!(
-                            io::stdout(),
-                            Clear(ratatui::crossterm::terminal::ClearType::All),
-                            MoveTo(0, 0)
-                        )
-                        .unwrap();
+                        suspend_tui(terminal)?;
+
                         // app.analysis_period = select_analysis_period();
                         if let Some(acct) = &app.account {
                             (app.analysis_start, app.analysis_end, app.analysis_period) =
                                 query_user_for_analysis_period(acct.get_open_date());
                         }
-                        enable_raw_mode()?;
-                        terminal.clear().unwrap();
+                        app.update_account();
+
+                        resume_tui(terminal)?;
                     }
                     (_, KeyCode::Char('j')) => {
                         // decrement table row
@@ -648,6 +611,40 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
         }
     }
 }
+
+#[cfg(feature = "ratatui_support")]
+fn suspend_tui<B>(terminal: &mut Terminal<B>) -> Result<(), std::io::Error>
+where 
+    B: Backend + Write,
+{ 
+    disable_raw_mode()?;
+    execute!(
+        terminal.backend_mut(),
+        // io::stdout(),
+        LeaveAlternateScreen,
+        Clear(ratatui::crossterm::terminal::ClearType::All),
+        MoveTo(0, 0),
+    )
+    .unwrap();
+    terminal.show_cursor();
+    Ok(())
+}
+
+#[cfg(feature = "ratatui_support")]
+fn resume_tui<B>(terminal: &mut Terminal<B>) -> Result<(), std::io::Error>
+where 
+    B: Backend + Write,
+{ 
+    enable_raw_mode()?;
+    execute!(
+        terminal.backend_mut(),
+        EnterAlternateScreen
+    )
+    .unwrap();
+    terminal.clear().unwrap();
+    Ok(())
+}
+
 
 #[cfg(feature = "ratatui_support")]
 pub fn is_account_type(x: &Box<dyn Account>, atype: AccountType) -> bool {

@@ -29,7 +29,7 @@ use ratatui::{
     text::{Line, Span, Text as ratatuiText},
     widgets::{
         Axis, Bar, BarChart, BarGroup, Block, Borders, Cell, Chart, Clear, Dataset, GraphType,
-        HighlightSpacing, List, ListItem, Padding, Paragraph, Row, Table, Tabs, Widget, Wrap,
+        HighlightSpacing, LegendPosition, List, ListItem, Padding, Paragraph, Row, Table, Tabs, Widget, Wrap,
     },
     Frame,
 };
@@ -57,7 +57,7 @@ use crate::accounts::base::liquid_account::LiquidAccount;
 #[cfg(feature = "ratatui_support")]
 use crate::accounts::base::AnalysisPeriod;
 #[cfg(feature = "ratatui_support")]
-use crate::app::app::App;
+use crate::app::app::{App, DisplayValue, LineChart};
 #[cfg(feature = "ratatui_support")]
 use crate::app::screen::ledger_table_constraint_len_calculator;
 use crate::database::DbConn;
@@ -77,6 +77,7 @@ use crate::types::participants::ParticipantType;
 use crate::ui::{centered_rect, float_range};
 use shared_lib::TransferType;
 
+use super::base::{KEY_TOTAL_VALUE, KEY_GROWTH};
 use super::base::fixed_account::FixedAccount;
 use super::base::Account;
 use super::base::AccountCreation;
@@ -128,6 +129,107 @@ impl BankAccount {
         }
 
         acct
+    }
+
+    pub fn get_linechart(&self, app : &mut App) -> Option<LineChart> { 
+        let (start, end) = (app.analysis_start, app.analysis_end);
+        let starting_amount_opt = self
+            .db
+            .get_cumulative_total_of_ledger_before_date(self.uid, self.id, start)
+            .unwrap();
+        let mut entries: Vec<LedgerRecord> = if starting_amount_opt.is_some() {
+            let starting_amount = starting_amount_opt.unwrap();
+            vec![LedgerRecord {
+                id: 0,
+                info: LedgerInfo {
+                    date: start.checked_add_days(Days::new(1)).unwrap().to_string(),
+                    amount: starting_amount,
+                    transfer_type: TransferType::ZeroSumChange,
+                    participant: 0,
+                    category_id: 0,
+                    description: "initial".to_string(),
+                },
+            }]
+        } else {
+            vec![LedgerRecord {
+                id: 0,
+                info: LedgerInfo {
+                    date: start.checked_add_days(Days::new(1)).unwrap().to_string(),
+                    amount: 0.0,
+                    transfer_type: TransferType::ZeroSumChange,
+                    participant: 0,
+                    category_id: 0,
+                    description: "initial".to_string(),
+                },
+            }]
+        };
+        entries.append(&mut self.get_ledger_within_dates(start, end));
+        if !(entries.len() == 1) {
+            entries.reverse();
+            let last = entries.pop().unwrap();
+
+            let mut aggregate: f64 = last.info.amount as f64;
+            let starting_date = NaiveDate::parse_from_str(&last.info.date, "%Y-%m-%d").unwrap();
+            let mut min_total = aggregate;
+            let mut max_total = aggregate;
+            let tstamp_min = starting_date
+                .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
+                .and_utc()
+                .timestamp_millis() as f64;
+            let mut tstamp_max = tstamp_min;
+
+            let data: Vec<(f64, f64)> = entries
+                .iter()
+                .rev()
+                .map(|record| {
+                    let date = NaiveDate::parse_from_str(&record.info.date, "%Y-%m-%d").unwrap();
+                    let dt = date.and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap());
+                    let tstamp = dt.and_utc().timestamp_millis() as f64;
+                    aggregate = match record.info.transfer_type {
+                        TransferType::DepositFromExternalAccount
+                        | TransferType::DepositFromInternalAccount => {
+                            aggregate + record.info.amount as f64
+                        }
+                        TransferType::WithdrawalToExternalAccount
+                        | TransferType::WithdrawalToInternalAccount => {
+                            aggregate - record.info.amount as f64
+                        }
+                        TransferType::ZeroSumChange => aggregate,
+                    };
+                    max_total = if aggregate > max_total {
+                        aggregate
+                    } else {
+                        max_total
+                    };
+                    min_total = if aggregate < min_total {
+                        aggregate
+                    } else {
+                        min_total
+                    };
+                    tstamp_max = if tstamp > tstamp_max {
+                        tstamp
+                    } else {
+                        tstamp_max
+                    };
+                    (tstamp, aggregate)
+                })
+                .collect();
+                
+            Some(LineChart { 
+                datasets : vec![data],
+                y_max : max_total, 
+                y_min : min_total,
+                y_step : (max_total-min_total)/5.0,
+                x_max : tstamp_max, 
+                x_min : tstamp_min,
+                x_labels : vec![last.info.date, entries[0].info.date.clone()], 
+                y_labels : float_range(min_total, max_total, (max_total - min_total) / 5.0)
+                            .into_iter()
+                            .map(|x| format!("{:.2}", x)).collect()
+            })
+        } else { 
+            None
+        }
     }
 }
 
@@ -810,9 +912,15 @@ impl BankAccount {
     }
 
     fn render_simple_growth(&self, frame: &mut Frame, area: Rect, app: &mut App) {
-        use ratatui::widgets::Padding;
+        
+        let value = app
+            .page_cache_f32
+            .as_ref()
+            .expect("Account's page has not been cached!")
+            .get(KEY_GROWTH)
+            .and_then(DisplayValue::as_f32)
+            .expect("Could not find growth!");
 
-        let value = self.get_growth(app.analysis_start, app.analysis_end) * 100.0;
         let fg_color = if value < 0.0 {
             tailwind::ROSE.c200
         } else {
@@ -847,95 +955,17 @@ impl BankAccount {
     }
 
     fn render_growth_chart(&self, frame: &mut Frame, area: Rect, app: &mut App) {
-        let (start, end) = (app.analysis_start, app.analysis_end);
-        let starting_amount_opt = self
-            .db
-            .get_cumulative_total_of_ledger_before_date(self.uid, self.id, start)
-            .unwrap();
-        let mut entries: Vec<LedgerRecord> = if starting_amount_opt.is_some() {
-            let starting_amount = starting_amount_opt.unwrap();
-            vec![LedgerRecord {
-                id: 0,
-                info: LedgerInfo {
-                    date: start.checked_add_days(Days::new(1)).unwrap().to_string(),
-                    amount: starting_amount,
-                    transfer_type: TransferType::ZeroSumChange,
-                    participant: 0,
-                    category_id: 0,
-                    description: "initial".to_string(),
-                },
-            }]
-        } else {
-            vec![LedgerRecord {
-                id: 0,
-                info: LedgerInfo {
-                    date: start.checked_add_days(Days::new(1)).unwrap().to_string(),
-                    amount: 0.0,
-                    transfer_type: TransferType::ZeroSumChange,
-                    participant: 0,
-                    category_id: 0,
-                    description: "initial".to_string(),
-                },
-            }]
-        };
-        entries.append(&mut self.get_ledger_within_dates(start, end));
-        if !(entries.len() == 1) {
-            entries.reverse();
-            let last = entries.pop().unwrap();
 
-            let mut aggregate: f64 = last.info.amount as f64;
-            let starting_date = NaiveDate::parse_from_str(&last.info.date, "%Y-%m-%d").unwrap();
-            let mut min_total = aggregate;
-            let mut max_total = aggregate;
-            let tstamp_min = starting_date
-                .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
-                .and_utc()
-                .timestamp_millis() as f64;
-            let mut tstamp_max = tstamp_min;
-
-            let data: Vec<(f64, f64)> = entries
-                .iter()
-                .rev()
-                .map(|record| {
-                    let date = NaiveDate::parse_from_str(&record.info.date, "%Y-%m-%d").unwrap();
-                    let dt = date.and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap());
-                    let tstamp = dt.and_utc().timestamp_millis() as f64;
-                    aggregate = match record.info.transfer_type {
-                        TransferType::DepositFromExternalAccount
-                        | TransferType::DepositFromInternalAccount => {
-                            aggregate + record.info.amount as f64
-                        }
-                        TransferType::WithdrawalToExternalAccount
-                        | TransferType::WithdrawalToInternalAccount => {
-                            aggregate - record.info.amount as f64
-                        }
-                        TransferType::ZeroSumChange => aggregate,
-                    };
-                    max_total = if aggregate > max_total {
-                        aggregate
-                    } else {
-                        max_total
-                    };
-                    min_total = if aggregate < min_total {
-                        aggregate
-                    } else {
-                        min_total
-                    };
-                    tstamp_max = if tstamp > tstamp_max {
-                        tstamp
-                    } else {
-                        tstamp_max
-                    };
-                    (tstamp, aggregate)
-                })
-                .collect();
+        let linechart = app.linechart_cache.take();
+        if let Some(line_chart) = linechart { 
+            app.linechart_cache = Some(line_chart.clone());
 
             let datasets = vec![Dataset::default()
                 .name("History")
                 .marker(symbols::Marker::Braille)
                 .style(Style::default().fg(tailwind::LIME.c400))
                 .graph_type(GraphType::Line)
-                .data(&data)];
+                .data(&line_chart.datasets[0])];
 
             let chart = Chart::new(datasets)
                 .block(
@@ -943,23 +973,20 @@ impl BankAccount {
                         .title(Line::from(" Value Over Time ").cyan().bold().centered())
                         .style(Style::new().bg(tailwind::SLATE.c900)),
                 )
+                .legend_position(Some(LegendPosition::TopLeft))
                 .x_axis(
                     Axis::default()
                         .title("Time")
                         .style(Style::default().gray())
-                        .bounds([tstamp_min, tstamp_max])
-                        .labels([last.info.date.as_str(), entries[0].info.date.as_str()]),
+                        .bounds([line_chart.x_min, line_chart.x_max])
+                        .labels(line_chart.x_labels),
                 )
                 .y_axis(
                     Axis::default()
                         .title("Value (💰)")
                         .style(Style::default().gray())
-                        .bounds([min_total, max_total])
-                        .labels(
-                            float_range(min_total, max_total, (max_total - min_total) / 5.0)
-                                .into_iter()
-                                .map(|x| format!("{:.2}", x)),
-                        ),
+                        .bounds([line_chart.y_min, line_chart.y_max])
+                        .labels(line_chart.y_labels),
                 )
                 .style(Style::new().bg(tailwind::SLATE.c900));
 
@@ -1102,6 +1129,18 @@ impl LiquidAccount for BankAccount {
 
 #[cfg(feature = "ratatui_support")]
 impl AccountUI for BankAccount {
+    fn populate_page_cache_f32(&self, app : &mut App) {
+        let mut kv : HashMap<String, DisplayValue> = HashMap::new();
+
+        kv.insert(KEY_TOTAL_VALUE.into(), DisplayValue::Float(self.get_value()));
+        kv.insert(KEY_GROWTH.into(), DisplayValue::Float(self.fixed.simple_rate_of_return(app.analysis_start, app.analysis_end)));
+
+        app.page_cache_f32 = Some(kv);
+
+        app.ledger_entries = Some(self.get_displayable_ledger());
+        app.linechart_cache = self.get_linechart(app);
+        app.barchart_cache = None;
+    }
     fn render(&self, frame: &mut Frame, area: Rect, app: &mut App) {
         let chunk = Layout::default()
             .direction(Direction::Vertical)

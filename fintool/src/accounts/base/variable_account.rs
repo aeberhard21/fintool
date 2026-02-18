@@ -1183,6 +1183,7 @@ impl VariableAccount {
             .unwrap()
             .unwrap()
             + self.get_value_of_positions_on_day(&today);
+        // return self.fixed.get_current_value() + self.get_value_of_positions_on_day(&today);
     }
 
     pub fn time_weighted_return(&self, period_start: NaiveDate, period_end: NaiveDate) -> f32 {
@@ -1207,6 +1208,8 @@ impl VariableAccount {
             return f32::NAN;
         }
 
+        // let starting_fixed_value = self.fixed.get_value_on_day(period_start);
+
         let starting_variable_value = self.get_value_of_positions_on_day(
             &period_start
                 .checked_sub_days(Days::new(1))
@@ -1221,6 +1224,7 @@ impl VariableAccount {
             self.db
                 .get_ledger_entries_within_timestamps(self.uid, self.id, period_start, period_end)
                 .unwrap(),
+            // self.fixed.get_ledger_entries_between_timestamps(period_start, period_end)
         );
         if let Some(transactions) = external_transactions {
             if !transactions.is_empty() {
@@ -1243,6 +1247,7 @@ impl VariableAccount {
                     } else {
                         return f32::NAN;
                     }
+                    // let final_fixed_value = self.fixed.get_value_on_day(end_period);
 
                     let final_variable_value = self.get_value_of_positions_on_day(&end_period);
                     // println!("Day: {}, Fixed: {}, Variable: {}", end_period.to_string(), final_fixed_value, final_variable_value);
@@ -1265,6 +1270,7 @@ impl VariableAccount {
         } else {
             return f32::NAN;
         }
+        // let final_fixed_value = self.fixed.get_value_on_day(period_end);
 
         let final_variable_value = self.get_value_of_positions_on_day(&period_end);
         // println!("Day: {}, Fixed: {}, Variable: {}", period_end.to_string(), final_fixed_value, final_variable_value);
@@ -1370,11 +1376,13 @@ impl VariableAccount {
             .db
             .get_cumulative_total_of_ledger_on_date(self.uid, self.id, *day)
             .unwrap();
+        // let fixed_value = self.fixed.get_value_on_day(*day);
         if let Some(fixed) = fixed_value {
             value = value + fixed;
         } else {
             return None;
         }
+        // value = value + fixed_value;
         return Some(value);
     }
 

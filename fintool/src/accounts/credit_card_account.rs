@@ -57,7 +57,7 @@ use std::rc;
 
 use crate::accounts::base::budget::Budget;
 #[cfg(feature = "ratatui_support")]
-use crate::app::app::App;
+use crate::app::app::{App, BarChartData, DisplayValue};
 #[cfg(feature = "ratatui_support")]
 use crate::app::screen::ledger_table_constraint_len_calculator;
 use crate::database::DbConn;
@@ -75,6 +75,7 @@ use crate::types::participants::ParticipantType;
 use crate::{tui::get_analysis_period_dates, types::ledger::Expenditure};
 use shared_lib::TransferType;
 
+use super::base::{KEY_GROWTH, KEY_TOTAL_VALUE};
 use super::base::charge_account::ChargeAccount;
 use super::base::Account;
 use super::base::AccountCreation;
@@ -85,6 +86,13 @@ use super::base::AccountUI;
 
 #[cfg(feature = "ratatui_support")]
 use crate::ui::{centered_rect, float_range};
+
+pub const KEY_REMAINING_CREDIT : &str = "Remaining Credit";
+pub const KEY_DAYS_UNTIL_DUE : &str = "Days Until Due";
+pub const KEY_STATEMENT_DUE_DATE: &str = "Statement Due Date";
+pub const KEY_CREDIT_LINE : &str = "Credit Line";
+pub const KEY_BARCHART_BUDGET : &str = "Budget";
+pub const KEY_BARCHART_EXPENDITURES : &str = "Expenditures";
 
 pub struct CreditCardAccount {
     uid: u32,
@@ -129,6 +137,136 @@ impl CreditCardAccount {
         }
 
         acct
+    }
+
+    pub fn get_barchart_data(&self, app : &mut App) -> Option<BarChartData> { 
+        if let Some(mut expenditures) = self
+            .charge
+            .db
+            .get_expenditures_between_dates(self.uid, self.id, app.analysis_start, app.analysis_end)
+            .unwrap()
+        {
+            let bar_groups = if let Some(account_budget) = &self.budget {
+                let mut budget = account_budget.get_budget();
+                if budget.is_empty() {
+                    panic!("No budget found for account '{}'!", self.id);
+                }
+                let categories = account_budget.get_budget_categories();
+                if categories.is_empty() {
+                    panic!("No categories found for account '{}'!", self.id);
+                }
+
+                // sort expenditures alphabetically
+                expenditures.sort_by(|x, y| (x.category).cmp(&y.category));
+                // sort budget alphabetically
+                budget.sort_by(|x, y| {
+                    (self
+                        .db
+                        .get_category_name(self.uid, self.id, x.item.category_id)
+                        .unwrap())
+                    .cmp(
+                        (&self
+                            .db
+                            .get_category_name(self.uid, self.id, y.item.category_id)
+                            .unwrap()),
+                    )
+                });
+
+                // remove any expenditures that don't map to a budget category, place in to misc category
+                let mut misc_expenditures = Expenditure {
+                    category: "Misc".to_string(),
+                    amount: 0.0,
+                };
+                expenditures.retain(|expenditure| {
+                    if budget
+                        .iter()
+                        .map(|element| {
+                            self.db
+                                .get_category_name(self.uid, self.id, element.item.category_id)
+                                .unwrap()
+                        })
+                        .collect::<Vec<String>>()
+                        .binary_search(&expenditure.category)
+                        .is_ok()
+                    {
+                        true
+                    } else {
+                        misc_expenditures.amount = misc_expenditures.amount + expenditure.amount;
+                        false
+                    }
+                });
+
+                let mut labels : Vec<String> = Vec::new();
+                let mut budget_dataset : HashMap<String, (f32, u64)> = HashMap::new();
+                let mut expenditure_dataset : HashMap<String, (f32, u64)> = HashMap::new();
+                for elem in zip(budget, expenditures) { 
+                    let budget_value = super::base::budget::scale_budget_value_to_analysis_period(elem.0.item.value, app.analysis_start, app.analysis_end);
+                    let expenditure_value = elem.1.amount;
+
+                    labels.push(elem.1.category.clone());
+                    budget_dataset.insert(elem.1.category.clone(), (budget_value, budget_value as u64));
+                    expenditure_dataset.insert(elem.1.category.clone(), (expenditure_value, expenditure_value as u64));
+                }
+
+                if misc_expenditures.amount > 0.0 { 
+                    let label: String = "Misc".into();  
+                    labels.push(label.clone());
+                    budget_dataset.insert(label.clone(), (0.0, 0));
+                    expenditure_dataset.insert(label, (misc_expenditures.amount, misc_expenditures.amount as u64)); 
+                }
+
+                let mut bars: HashMap<String, HashMap<String, (f32, u64)>> = HashMap::new();
+                bars.insert(KEY_BARCHART_BUDGET.into(), budget_dataset);
+                bars.insert(KEY_BARCHART_EXPENDITURES.into(), expenditure_dataset);
+                
+                return Some(BarChartData { 
+                    labels : labels, 
+                    groups : bars
+                });
+            } else {
+                // group anything less than the top 10 categories into a "miscellaneous" category
+                expenditures.sort_by(|x, y| {
+                    (x.amount)
+                        .partial_cmp(&y.amount)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                });
+
+                let grouped_others: Option<Expenditure> = if expenditures.len() > 10 {
+                    let misc = expenditures
+                        .drain(10..expenditures.len() - 1)
+                        .collect::<Vec<Expenditure>>();
+                    let amount = misc.into_iter().map(|x| x.amount).sum();
+                    Some(Expenditure {
+                        category: "Misc".to_string(),
+                        amount: amount,
+                    })
+                } else {
+                    None
+                };
+
+                if let Some(grouped_others) = grouped_others {
+                    expenditures.push(grouped_others);
+                }
+
+                let mut labels : Vec<String> = Vec::new();
+                let mut expenditure_dataset : HashMap<String, (f32, u64)> = HashMap::new();
+                for elem in expenditures { 
+                    let expenditure_value = elem.amount;
+                    labels.push(elem.category.clone());
+                    expenditure_dataset.insert(elem.category.clone(), (expenditure_value, expenditure_value as u64));
+                }
+
+                let mut bars: HashMap<String, HashMap<String, (f32, u64)>> = HashMap::new();
+                bars.insert("Expenditures".into(), expenditure_dataset);
+                
+                return Some(BarChartData { 
+                    labels : labels, 
+                    groups : bars
+                });
+            };
+        } else { 
+            None
+        }
     }
 }
 
@@ -913,6 +1051,20 @@ impl AccountData for CreditCardAccount {
 
 #[cfg(feature = "ratatui_support")]
 impl AccountUI for CreditCardAccount {
+    fn populate_page_cache_f32(&self, app : &mut App) {
+        let mut kv : HashMap<String, DisplayValue> = HashMap::new();
+
+        kv.insert(KEY_TOTAL_VALUE.into(), DisplayValue::Float(self.get_value()));
+        kv.insert(KEY_REMAINING_CREDIT.into(), DisplayValue::Float(self.charge.get_remaining_in_credit_line()));
+        kv.insert(KEY_CREDIT_LINE.into(), DisplayValue::Float(self.charge.get_credit_line()));
+        kv.insert(KEY_DAYS_UNTIL_DUE.into(), DisplayValue::UInt(self.get_days_until_due_date()));
+        kv.insert(KEY_STATEMENT_DUE_DATE.into(), DisplayValue::Text(self.get_statement_due_date().to_string()));
+
+        app.page_cache_f32 = Some(kv);
+        app.ledger_entries = Some(self.get_displayable_ledger());
+        app.linechart_cache = None;
+        app.barchart_cache = self.get_barchart_data(app);
+    }
     fn render(&self, frame: &mut Frame, area: Rect, app: &mut App) {
         let chunk = Layout::default()
             .direction(Direction::Vertical)
@@ -944,8 +1096,17 @@ impl AccountUI for CreditCardAccount {
     }
 
     fn render_current_value(&self, frame: &mut Frame, area: Rect, app: &mut App) {
+
+        let current_value = app
+            .page_cache_f32
+            .as_ref()
+            .expect("Account's page has not been cached!")
+            .get(KEY_TOTAL_VALUE)
+            .and_then(DisplayValue::as_f32)
+            .expect("Could not find total value!");
+
         let value = ratatuiText::styled(
-            self.get_value().to_string(),
+            current_value.to_string(),
             Style::default().fg(tailwind::EMERALD.c400).bold(),
         );
 
@@ -1006,8 +1167,21 @@ impl CreditCardAccount {
     }
 
     fn render_days_until_due_date(&self, frame: &mut Frame, area: Rect, app: &App) {
-        let days_to = self.get_days_until_due_date();
-        let statement_date = self.get_statement_due_date().to_string();
+        let days_to = app
+            .page_cache_f32
+            .as_ref()
+            .expect("Account's page has not been cached!")
+            .get(KEY_DAYS_UNTIL_DUE)
+            .and_then(DisplayValue::as_uint)
+            .expect("Could not find days until due date!");
+        let statement_date = app
+            .page_cache_f32
+            .as_ref()
+            .expect("Account's page has not been cached!")
+            .get(KEY_STATEMENT_DUE_DATE)
+            .and_then(DisplayValue::as_text)
+            .expect("Could not find statement due date!");
+
         let days_to_text = vec![
             Span::styled(
                 format!("{} {}", days_to, if days_to > 1 { "days" } else { "day" }),
@@ -1050,9 +1224,23 @@ impl CreditCardAccount {
     }
 
     fn render_remaining_credit(&self, frame: &mut Frame, area: Rect, app: &App) {
-        let credit_remaining = self.charge.get_remaining_in_credit_line();
-        let credit_line = self.charge.get_credit_line();
-        let days_to_text = vec![
+
+        let credit_remaining = app
+            .page_cache_f32
+            .as_ref()
+            .expect("Account's page has not been cached!")
+            .get(KEY_REMAINING_CREDIT)
+            .and_then(DisplayValue::as_f32)
+            .expect("Could not find remaining credit!");
+        let credit_line = app
+            .page_cache_f32
+            .as_ref()
+            .expect("Account's page has not been cached!")
+            .get(KEY_CREDIT_LINE)
+            .and_then(DisplayValue::as_f32)
+            .expect("Could not find credit line!");
+
+        let credit_remaining_text = vec![
             Span::styled(
                 format!("${:.2}", credit_remaining),
                 Style::default().bold().fg(if credit_remaining < 500. {
@@ -1068,7 +1256,7 @@ impl CreditCardAccount {
                 Style::default().bold().fg(tailwind::EMERALD.c400),
             ),
         ];
-        let line = Line::from(days_to_text);
+        let line = Line::from(credit_remaining_text);
         let text = ratatuiText::from(line);
         let p = Paragraph::new(text)
             .centered()
@@ -1093,147 +1281,41 @@ impl CreditCardAccount {
         frame.render_widget(p, area);
     }
 
-    fn render_spend_chart(&self, frame: &mut Frame, area: Rect, app: &App) {
-        let (start, end) = (app.analysis_start, app.analysis_end);
-        if let Some(mut expenditures) = self
-            .charge
-            .db
-            .get_expenditures_between_dates(self.uid, self.id, start, end)
-            .unwrap()
-        {
-            let bar_groups = if let Some(account_budget) = &self.budget {
-                let mut budget = account_budget.get_budget();
-                if budget.is_empty() {
-                    panic!("No budget found for account '{}'!", self.id);
-                }
-                let categories = account_budget.get_budget_categories();
-                if categories.is_empty() {
-                    panic!("No categories found for account '{}'!", self.id);
-                }
+    fn render_spend_chart(&self, frame: &mut Frame, area: Rect, app: &mut App) {
+        let bar_chart = app.barchart_cache.take();
+        if let Some(bar_chart) = bar_chart { 
+            app.barchart_cache = Some(bar_chart.clone());
 
-                // sort expenditures alphabetically
-                expenditures.sort_by(|x, y| (x.category).cmp(&y.category));
-                // sort budget alphabetically
-                budget.sort_by(|x, y| {
-                    (self
-                        .db
-                        .get_category_name(self.uid, self.id, x.item.category_id)
-                        .unwrap())
-                    .cmp(
-                        (&self
-                            .db
-                            .get_category_name(self.uid, self.id, y.item.category_id)
-                            .unwrap()),
-                    )
-                });
-
-                // remove any expenditures that don't map to a budget category, place in to misc category
-                let mut misc_expenditures = Expenditure {
-                    category: "Misc".to_string(),
-                    amount: 0.0,
-                };
-                expenditures.retain(|expenditure| {
-                    if budget
-                        .iter()
-                        .map(|element| {
-                            self.db
-                                .get_category_name(self.uid, self.id, element.item.category_id)
-                                .unwrap()
-                        })
-                        .collect::<Vec<String>>()
-                        .binary_search(&expenditure.category)
-                        .is_ok()
-                    {
-                        true
-                    } else {
-                        misc_expenditures.amount = misc_expenditures.amount + expenditure.amount;
-                        false
-                    }
-                });
-
-                let mut bar_group: Vec<BarGroup<'_>> = Vec::new();
-                for elem in zip(budget, expenditures) {
+            let labels = bar_chart.labels.clone();
+            // let datasets = bar_chart.groups.keys().collect::<Vec<String>>();
+            let mut bar_groups: Vec<BarGroup<'_>> = Vec::new();
+            for label in labels {
+                let mut bars: Vec<Bar<'_>> = Vec::new();
+                if let Some(budget_dataset) = bar_chart.groups.get(KEY_BARCHART_BUDGET) { 
+                    // budget found
+                    let budget_value = budget_dataset.get(&label).expect(format!("Budget group for {} not found!", label).as_str()).clone();
                     let budget_bar = Bar::default()
-                        // this takes the amount spent and determines the ratio of what was spent in the period of analysis and scaled the bar
-                        // to that
-                        .value(super::base::budget::scale_budget_value_to_analysis_period(
-                            elem.0.item.value,
-                            start,
-                            end,
-                        ) as u64)
-                        .text_value(format!("${:.2}", elem.0.item.value))
+                        .value(budget_value.1)
+                        .text_value(format!("${:.2}", budget_value.0))
                         .style(Style::new().fg(tailwind::WHITE))
                         .value_style(Style::new().fg(tailwind::WHITE).reversed());
+                    bars.push(budget_bar);
+                }
+                if let Some(expenditure_dataset) = bar_chart.groups.get(KEY_BARCHART_EXPENDITURES) { 
+                    let expenditure_value = expenditure_dataset.get(&label).expect(format!("Expenditure group for {} not found!", label).as_str()).clone();
                     let expenditure_bar = Bar::default()
-                        .value(elem.1.amount as u64)
-                        .text_value(format!("${:.2}", elem.1.amount))
+                        .value(expenditure_value.1)
+                        .text_value(format!("${:.2}", expenditure_value.0))
                         .style(Style::new().fg(tailwind::AMBER.c500))
                         .value_style(Style::new().fg(tailwind::AMBER.c500).reversed());
-                    let bars: Vec<Bar<'_>> = vec![budget_bar, expenditure_bar];
-                    let group = BarGroup::default()
-                        .bars(&bars)
-                        .label(Line::from(elem.1.category).centered());
-                    bar_group.push(group);
+                    bars.push(expenditure_bar);
                 }
-                if misc_expenditures.amount > 0.0 {
-                    let budget_bar = Bar::default()
-                        .value(0)
-                        .text_value(format!("${:.2}", 0.0))
-                        .style(Style::new().fg(tailwind::WHITE))
-                        .value_style(Style::new().fg(tailwind::WHITE).reversed());
-                    let expenditure_bar = Bar::default()
-                        .value(misc_expenditures.amount as u64)
-                        .text_value(format!("${:.2}", misc_expenditures.amount))
-                        .style(Style::new().fg(tailwind::AMBER.c500))
-                        .value_style(Style::new().fg(tailwind::AMBER.c500).reversed());
-                    let bars: Vec<Bar<'_>> = vec![budget_bar, expenditure_bar];
-                    let group = BarGroup::default()
-                        .bars(&bars)
-                        .label(Line::from(misc_expenditures.category).centered());
-                    bar_group.push(group)
-                }
-                bar_group
-            } else {
-                // group anything less than the top 10 categories into a "miscellaneous" category
-                expenditures.sort_by(|x, y| {
-                    (x.amount)
-                        .partial_cmp(&y.amount)
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                });
-
-                let grouped_others: Option<Expenditure> = if expenditures.len() > 10 {
-                    let misc = expenditures
-                        .drain(10..expenditures.len() - 1)
-                        .collect::<Vec<Expenditure>>();
-                    let amount = misc.into_iter().map(|x| x.amount).sum();
-                    Some(Expenditure {
-                        category: "Misc".to_string(),
-                        amount: amount,
-                    })
-                } else {
-                    None
-                };
-
-                if let Some(grouped_others) = grouped_others {
-                    expenditures.push(grouped_others);
-                }
-
-                let bars: Vec<Bar<'_>> = expenditures
-                    .iter()
-                    .map(|x| {
-                        Bar::default()
-                            .value(x.amount as u64)
-                            .label(Line::from(format!("{}", x.category)))
-                            .text_value(format!("${:2}", x.amount))
-                            .style(Style::new().fg(tailwind::AMBER.c500))
-                            .value_style(Style::new().fg(tailwind::AMBER.c500).reversed())
-                    })
-                    .collect::<Vec<Bar>>();
-
-                let group = vec![BarGroup::default().bars(&bars)];
-                group
-            };
-
+                let group = BarGroup::default()
+                    .bars(&bars)
+                    .label(Line::from(label).centered());
+                bar_groups.push(group);
+            }
+ 
             let mut chart = BarChart::default()
                 .style(Style::new().bg(tailwind::SLATE.c900))
                 .block(Block::bordered().title_top(Line::from("Spend Analyzer").centered()))
@@ -1244,6 +1326,8 @@ impl CreditCardAccount {
             }
 
             frame.render_widget(chart, area);
+
+            // app.barchart_cache = Some(bar_chart);
         } else {
             let value = ratatuiText::styled(
                 "No data to display!",
@@ -1256,7 +1340,7 @@ impl CreditCardAccount {
                 .block(
                     Block::default()
                         .borders(Borders::ALL)
-                        .title("Current Balance")
+                        .title("Spend Analyzer")
                         .title_alignment(layout::Alignment::Center)
                         .padding(Padding::new(
                             0,
