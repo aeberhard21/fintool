@@ -1055,6 +1055,12 @@ impl FixedAccount {
         return rate;
     }
 
+    pub fn annualized_rate_of_return(&self, start_date: NaiveDate, end_date: NaiveDate) -> f32 { 
+        let days = start_date.num_days_from_ce() - end_date.num_days_from_ce();
+        let cr = self.simple_rate_of_return(start_date, end_date);
+        return (1. + cr).powf(365./(days as f32))-1.;
+    }
+    
     pub fn get_external_transactions_between_timestamps(&self, start_date: NaiveDate, end_date: NaiveDate) -> Option<Vec<LedgerRecord>> { 
         let mut transactions: Vec<LedgerRecord> = Vec::new();
         if self.ledger.is_empty() {

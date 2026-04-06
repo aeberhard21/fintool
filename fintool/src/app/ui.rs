@@ -36,9 +36,9 @@ use time::Month;
 use super::app::App;
 use super::screen::{CurrentScreen, TabMenu};
 use crate::{
-    accounts::base::Account,
+    accounts::base::{Account, liquid_account},
     app::screen::CurrentlySelecting,
-    tui::{self, tui_license},
+    tui::{self, get_analysis_period_dates, tui_accounts::{get_compound_annual_growth_rate, get_net_worth_growth, get_dollar_change_y2y}, tui_license},
 };
 use crate::{
     accounts::{self, as_liquid_account, bank_account::BankAccount},
@@ -448,25 +448,62 @@ fn render_net_worth(app: &App, frame: &mut Frame, area: Rect) {
             Constraint::Percentage(37),
         ])
         .split(area);
-    let net_worth_area = net_worth_areas[0];
+    let summary_area = net_worth_areas[0];
     let assets_area = net_worth_areas[1];
-    let liabilities_area = net_worth_areas[2];
+    let growth_area = net_worth_areas[2];
+
+    let summary_area_split = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(summary_area);
+
+    let net_worth_area = summary_area_split[0];
+    let dollar_change_area = summary_area_split[1];
 
     let asset_areas_split = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .constraints([Constraint::Percentage(33), Constraint::Percentage(34), Constraint::Percentage(33)])
         .split(assets_area);
 
-    let total_assets_area = asset_areas_split[0];
+    let total_assets_area: Rect = asset_areas_split[0];
     let liquid_assets_area = asset_areas_split[1];
+    let liabilities_area = asset_areas_split[2];
 
-    let (assets, liabilities) = if !app.accounts.is_empty() {
+    let growth_areas_split = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(33), Constraint::Percentage(34), Constraint::Percentage(33)])
+        .split(growth_area);
+
+    let ytd_growth_area = growth_areas_split[0];
+    let y2y_growth_area = growth_areas_split[1];
+    let fiveyr_growth_area = growth_areas_split[2];
+
+    let (assets, liabilities, ytd_growth, dollar_change_y2y, y2y_growth, fiveyr_growth) = if !app.accounts.is_empty() {
         (
             get_total_assets(&app.accounts),
             get_total_liabilities(&app.accounts),
+            {
+                let (ytd_start_date, ytd_end_date) = get_analysis_period_dates(NaiveDate::from_num_days_from_ce_opt(0).expect("Unable to convert to NaiveDate!"), &accounts::base::AnalysisPeriod::YTD);
+                get_net_worth_growth(&app.accounts, ytd_start_date, ytd_end_date)
+
+            },  
+            {
+                let (y2y_start_date, y2yd_end_date) = get_analysis_period_dates(NaiveDate::from_num_days_from_ce_opt(0).expect("Unable to convert to NaiveDate!"), &accounts::base::AnalysisPeriod::OneYear);
+                let dollar_change = get_dollar_change_y2y(&app.accounts, y2y_start_date, y2yd_end_date);
+                dollar_change
+            },
+            {
+                let (y2y_start_date, y2yd_end_date) = get_analysis_period_dates(NaiveDate::from_num_days_from_ce_opt(0).expect("Unable to convert to NaiveDate!"), &accounts::base::AnalysisPeriod::OneYear);
+                let y2y_growth = get_net_worth_growth(&app.accounts, y2y_start_date, y2yd_end_date);
+                y2y_growth
+            },
+            {
+                let (fiveyr_start_date, fiveyr_end_date) = get_analysis_period_dates(NaiveDate::from_num_days_from_ce_opt(0).expect("Unable to convert to NaiveDate!"), &accounts::base::AnalysisPeriod::FiveYears);
+                get_compound_annual_growth_rate(&app.accounts, fiveyr_start_date, fiveyr_end_date)
+            },
         )
     } else {
-        (0., 0.)
+        (0., 0., 0., 0., 0., 0.)
     };
     let net_worth = assets - liabilities;
 
@@ -498,6 +535,30 @@ fn render_net_worth(app: &App, frame: &mut Frame, area: Rect) {
         Block::default()
             .borders(Borders::ALL)
             .title("Net Worth")
+            .style(Style::default().bg(tailwind::SLATE.c900))
+            .padding(Padding::new(
+                0,
+                0,
+                if net_worth_area.height > 4 {
+                    net_worth_area.height / 2 - 2
+                } else {
+                    0
+                },
+                0,
+            )),
+    )
+    .centered()
+    .bold();
+    let dollar_change_widget = Paragraph::new(Text::styled(
+        format!("$ {:.2}", dollar_change_y2y),
+        Style::default()
+            .fg(tailwind::EMERALD.c500)
+            .bg(tailwind::SLATE.c900),
+    ))
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title("$ Change YoY")
             .style(Style::default().bg(tailwind::SLATE.c900))
             .padding(Padding::new(
                 0,
@@ -583,10 +644,89 @@ fn render_net_worth(app: &App, frame: &mut Frame, area: Rect) {
     .centered()
     .bold();
 
+    let ytd_growth_widget = Paragraph::new(Text::styled(
+        format!("{:.2}%", ytd_growth),
+        Style::default()
+            .fg(tailwind::EMERALD.c500)
+            .bg(tailwind::SLATE.c900),
+    ))
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title("YTD Growth")
+            .style(Style::default().bg(tailwind::SLATE.c900))
+            .padding(Padding::new(
+                0,
+                0,
+                if liabilities_area.height > 4 {
+                    liabilities_area.height / 2 - 2
+                } else {
+                    0
+                },
+                0,
+            )),
+    )
+    .centered()
+    .bold();
+    let y2y_growth_widget = Paragraph::new(Text::styled(
+        format!("{:.2}%", y2y_growth),
+        Style::default()
+            .fg(tailwind::EMERALD.c500)
+            .bg(tailwind::SLATE.c900),
+    ))
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title("1-Year Growth")
+            .style(Style::default().bg(tailwind::SLATE.c900))
+            .padding(Padding::new(
+                0,
+                0,
+                if liabilities_area.height > 4 {
+                    liabilities_area.height / 2 - 2
+                } else {
+                    0
+                },
+                0,
+            )),
+    )
+    .centered()
+    .bold();
+    let fiveyr_growth_widget = Paragraph::new(Text::styled(
+        format!("{:.2}%", fiveyr_growth),
+        Style::default()
+            .fg(tailwind::EMERALD.c500)
+            .bg(tailwind::SLATE.c900),
+    ))
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title("5-Year CAGR")
+            .style(Style::default().bg(tailwind::SLATE.c900))
+            .padding(Padding::new(
+                0,
+                0,
+                if liabilities_area.height > 4 {
+                    liabilities_area.height / 2 - 2
+                } else {
+                    0
+                },
+                0,
+            )),
+    )
+    .centered()
+    .bold();
+
     frame.render_widget(net_worth_widget, net_worth_area);
+    frame.render_widget(dollar_change_widget, dollar_change_area);
     frame.render_widget(total_assets_widget, total_assets_area);
     frame.render_widget(liquid_assets_widget, liquid_assets_area);
-    frame.render_widget(liabilities_widget, liabilities_area);
+    frame.render_widget(liabilities_widget, liabilities_area);  
+    frame.render_widget(ytd_growth_widget, ytd_growth_area);
+    frame.render_widget(y2y_growth_widget, y2y_growth_area);
+    frame.render_widget(fiveyr_growth_widget, fiveyr_growth_area);
+
+
 }
 
 fn render_net_worth_chart(app: &App, frame: &mut Frame, area: Rect) {

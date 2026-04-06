@@ -1068,7 +1068,7 @@ impl AccountUI for CertificateOfDepositAccount {
         let mut kv : HashMap<String, DisplayValue> = HashMap::new();
 
         kv.insert( KEY_TOTAL_VALUE.into(), DisplayValue::Float(self.get_value()));
-        kv.insert(KEY_GROWTH.into(), DisplayValue::Float(self.fixed.simple_rate_of_return(app.analysis_start, app.analysis_end)));
+        kv.insert(KEY_GROWTH.into(), DisplayValue::Float(self.get_growth(app.analysis_start, app.analysis_end)));
         kv.insert(KEY_MATURITY_DATE.into(), DisplayValue::Text(self.get_maturity_date()));
         kv.insert(KEY_DAYS_TO_MATURITY.into(), DisplayValue::UInt(self.get_days_to_maturity()));
 
@@ -1116,7 +1116,7 @@ impl AccountUI for CertificateOfDepositAccount {
 #[cfg(feature = "ratatui_support")]
 impl CertificateOfDepositAccount {
     fn get_growth(&self, start: NaiveDate, end: NaiveDate) -> f32 {
-        return self.fixed.simple_rate_of_return(start, end);
+        return self.fixed.annualized_rate_of_return(start, end);
     }
 
     fn get_maturity_date(&self) -> String {
