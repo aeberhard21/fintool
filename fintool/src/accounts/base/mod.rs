@@ -49,8 +49,8 @@ pub mod fixed_account;
 pub mod liquid_account;
 pub mod variable_account;
 
-pub const KEY_TOTAL_VALUE : &str = "Current Value";
-pub const KEY_GROWTH : &str = "Growth";
+pub const KEY_TOTAL_VALUE: &str = "Current Value";
+pub const KEY_GROWTH: &str = "Growth";
 
 pub trait AccountCreation {
     fn create(uid: u32, name: String, _db: &DbConn) -> AccountRecord;
@@ -78,7 +78,7 @@ pub trait AccountData {
 
 #[cfg(feature = "ratatui_support")]
 pub trait AccountUI: AccountData {
-    fn populate_page_cache_f32(&self, app : &mut App);
+    fn populate_page_cache_f32(&self, app: &mut App);
 
     fn render(&self, frame: &mut Frame, area: Rect, app: &mut App);
 
@@ -107,7 +107,7 @@ pub trait AccountUI: AccountData {
         .style(header_style)
         .height(1);
 
-        if let Some(ledger) = app.ledger_entries.clone() { 
+        if let Some(ledger) = app.ledger_entries.clone() {
             let data = ledger;
 
             let rows = data.iter().enumerate().map(|(i, record)| {
@@ -168,7 +168,7 @@ pub trait AccountUI: AccountData {
             app.ledger_entries = Some(data);
 
             frame.render_stateful_widget(t, area, &mut app.ledger_table_state);
-        } else { 
+        } else {
             let value = ratatuiText::styled(
                 "No data to display!",
                 Style::default().fg(tailwind::ROSE.c400).bold(),
@@ -200,7 +200,6 @@ pub trait AccountUI: AccountData {
     }
 
     fn render_current_value(&self, frame: &mut Frame, area: Rect, app: &mut App) {
-        
         let current_value = app
             .page_cache_f32
             .as_ref()
@@ -208,7 +207,7 @@ pub trait AccountUI: AccountData {
             .get(KEY_TOTAL_VALUE)
             .and_then(DisplayValue::as_f32)
             .expect("Could not find current value!");
-        
+
         let value = ratatuiText::styled(
             current_value.to_string(),
             Style::default().fg(tailwind::EMERALD.c400).bold(),

@@ -16,9 +16,9 @@
 -----------------------------------------------------------------------*/
 use core::panic;
 
+use crate::accounts::base::liquid_account::{self, LiquidAccount};
 #[cfg(feature = "ratatui_support")]
 use crate::accounts::base::AnalysisPeriod;
-use crate::accounts::base::liquid_account::{self, LiquidAccount};
 use crate::database::{self, *};
 // use crate::tui::tui_budgets::create_budget;
 use crate::tui::BankAccount;
@@ -93,12 +93,16 @@ pub fn get_total_liabilities(accounts: &Vec<Box<dyn Account>>) -> f32 {
 }
 
 #[cfg(feature = "ratatui_support")]
-pub fn get_dollar_change_y2y(accounts: &Vec<Box<dyn Account>>, start_date : NaiveDate, end_date : NaiveDate) -> f32 { 
+pub fn get_dollar_change_y2y(
+    accounts: &Vec<Box<dyn Account>>,
+    start_date: NaiveDate,
+    end_date: NaiveDate,
+) -> f32 {
     let mut starting_value = 0.0;
     let mut ending_value = 0.0;
-    for account in accounts { 
-        match account.kind() { 
-            AccountType::CreditCard => { starting_value = starting_value },
+    for account in accounts {
+        match account.kind() {
+            AccountType::CreditCard => starting_value = starting_value,
             _ => {
                 starting_value = starting_value + account.get_value_on_day(start_date);
                 ending_value = ending_value + account.get_value_on_day(end_date);
@@ -106,16 +110,20 @@ pub fn get_dollar_change_y2y(accounts: &Vec<Box<dyn Account>>, start_date : Naiv
         }
     }
 
-    return ( ending_value - starting_value );
+    return (ending_value - starting_value);
 }
 
 #[cfg(feature = "ratatui_support")]
-pub fn get_net_worth_growth(accounts: &Vec<Box<dyn Account>>, start_date : NaiveDate, end_date : NaiveDate) -> f32 { 
+pub fn get_net_worth_growth(
+    accounts: &Vec<Box<dyn Account>>,
+    start_date: NaiveDate,
+    end_date: NaiveDate,
+) -> f32 {
     let mut starting_value = 0.0;
     let mut ending_value = 0.0;
-    for account in accounts { 
-        match account.kind() { 
-            AccountType::CreditCard => { starting_value = starting_value },
+    for account in accounts {
+        match account.kind() {
+            AccountType::CreditCard => starting_value = starting_value,
             _ => {
                 starting_value = starting_value + account.get_value_on_day(start_date);
                 ending_value = ending_value + account.get_value_on_day(end_date);
@@ -123,16 +131,20 @@ pub fn get_net_worth_growth(accounts: &Vec<Box<dyn Account>>, start_date : Naive
         }
     }
 
-    return ( ending_value - starting_value ) / (starting_value ) * 100.;
+    return (ending_value - starting_value) / (starting_value) * 100.;
 }
 
 #[cfg(feature = "ratatui_support")]
-pub fn get_compound_annual_growth_rate(accounts: &Vec<Box<dyn Account>>, start_date : NaiveDate, end_date : NaiveDate) -> f32 { 
+pub fn get_compound_annual_growth_rate(
+    accounts: &Vec<Box<dyn Account>>,
+    start_date: NaiveDate,
+    end_date: NaiveDate,
+) -> f32 {
     let mut starting_value = 0.0;
     let mut ending_value = 0.0;
-    for account in accounts { 
-        match account.kind() { 
-            AccountType::CreditCard => { starting_value = starting_value },
+    for account in accounts {
+        match account.kind() {
+            AccountType::CreditCard => starting_value = starting_value,
             _ => {
                 starting_value = starting_value + account.get_value_on_day(start_date);
                 ending_value = ending_value + account.get_value_on_day(end_date);
@@ -140,7 +152,9 @@ pub fn get_compound_annual_growth_rate(accounts: &Vec<Box<dyn Account>>, start_d
         }
     }
 
-    return (f32::powf(ending_value/starting_value, 1.0/(((end_date-start_date).num_days() as f32)/365.25))-1.) * 100.;
+    return (f32::powf(
+        ending_value / starting_value,
+        1.0 / (((end_date - start_date).num_days() as f32) / 365.25),
+    ) - 1.)
+        * 100.;
 }
-
-

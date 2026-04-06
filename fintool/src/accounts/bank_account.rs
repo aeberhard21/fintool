@@ -29,7 +29,8 @@ use ratatui::{
     text::{Line, Span, Text as ratatuiText},
     widgets::{
         Axis, Bar, BarChart, BarGroup, Block, Borders, Cell, Chart, Clear, Dataset, GraphType,
-        HighlightSpacing, LegendPosition, List, ListItem, Padding, Paragraph, Row, Table, Tabs, Widget, Wrap,
+        HighlightSpacing, LegendPosition, List, ListItem, Padding, Paragraph, Row, Table, Tabs,
+        Widget, Wrap,
     },
     Frame,
 };
@@ -77,7 +78,6 @@ use crate::types::participants::ParticipantType;
 use crate::ui::{centered_rect, float_range};
 use shared_lib::TransferType;
 
-use super::base::{KEY_TOTAL_VALUE, KEY_GROWTH};
 use super::base::fixed_account::FixedAccount;
 use super::base::Account;
 use super::base::AccountCreation;
@@ -85,6 +85,7 @@ use super::base::AccountData;
 use super::base::AccountOperations;
 #[cfg(feature = "ratatui_support")]
 use super::base::AccountUI;
+use super::base::{KEY_GROWTH, KEY_TOTAL_VALUE};
 
 pub struct BankAccount {
     uid: u32,
@@ -131,7 +132,7 @@ impl BankAccount {
         acct
     }
 
-    pub fn get_linechart(&self, app : &mut App) -> Option<LineChart> { 
+    pub fn get_linechart(&self, app: &mut App) -> Option<LineChart> {
         let (start, end) = (app.analysis_start, app.analysis_end);
         let starting_amount_opt = self
             .db
@@ -214,20 +215,21 @@ impl BankAccount {
                     (tstamp, aggregate)
                 })
                 .collect();
-                
-            Some(LineChart { 
-                datasets : vec![data],
-                y_max : max_total, 
-                y_min : min_total,
-                y_step : (max_total-min_total)/5.0,
-                x_max : tstamp_max, 
-                x_min : tstamp_min,
-                x_labels : vec![last.info.date, entries[0].info.date.clone()], 
-                y_labels : float_range(min_total, max_total, (max_total - min_total) / 5.0)
-                            .into_iter()
-                            .map(|x| format!("{:.2}", x)).collect()
+
+            Some(LineChart {
+                datasets: vec![data],
+                y_max: max_total,
+                y_min: min_total,
+                y_step: (max_total - min_total) / 5.0,
+                x_max: tstamp_max,
+                x_min: tstamp_min,
+                x_labels: vec![last.info.date, entries[0].info.date.clone()],
+                y_labels: float_range(min_total, max_total, (max_total - min_total) / 5.0)
+                    .into_iter()
+                    .map(|x| format!("{:.2}", x))
+                    .collect(),
             })
-        } else { 
+        } else {
             None
         }
     }
@@ -912,7 +914,6 @@ impl BankAccount {
     }
 
     fn render_simple_growth(&self, frame: &mut Frame, area: Rect, app: &mut App) {
-        
         let value = app
             .page_cache_f32
             .as_ref()
@@ -955,9 +956,8 @@ impl BankAccount {
     }
 
     fn render_growth_chart(&self, frame: &mut Frame, area: Rect, app: &mut App) {
-
         let linechart = app.linechart_cache.take();
-        if let Some(line_chart) = linechart { 
+        if let Some(line_chart) = linechart {
             app.linechart_cache = Some(line_chart.clone());
 
             let datasets = vec![Dataset::default()
@@ -1129,11 +1129,20 @@ impl LiquidAccount for BankAccount {
 
 #[cfg(feature = "ratatui_support")]
 impl AccountUI for BankAccount {
-    fn populate_page_cache_f32(&self, app : &mut App) {
-        let mut kv : HashMap<String, DisplayValue> = HashMap::new();
+    fn populate_page_cache_f32(&self, app: &mut App) {
+        let mut kv: HashMap<String, DisplayValue> = HashMap::new();
 
-        kv.insert(KEY_TOTAL_VALUE.into(), DisplayValue::Float(self.get_value()));
-        kv.insert(KEY_GROWTH.into(), DisplayValue::Float(self.fixed.simple_rate_of_return(app.analysis_start, app.analysis_end)));
+        kv.insert(
+            KEY_TOTAL_VALUE.into(),
+            DisplayValue::Float(self.get_value()),
+        );
+        kv.insert(
+            KEY_GROWTH.into(),
+            DisplayValue::Float(
+                self.fixed
+                    .simple_rate_of_return(app.analysis_start, app.analysis_end),
+            ),
+        );
 
         app.page_cache_f32 = Some(kv);
 

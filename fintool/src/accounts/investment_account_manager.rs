@@ -76,7 +76,6 @@ use csv::ReaderBuilder;
 use rustyline::Editor;
 use shared_lib::TransferType;
 
-use super::base::{KEY_GROWTH, KEY_TOTAL_VALUE};
 use super::base::variable_account::VariableAccount;
 use super::base::Account;
 use super::base::AccountCreation;
@@ -84,6 +83,7 @@ use super::base::AccountData;
 use super::base::AccountOperations;
 #[cfg(feature = "ratatui_support")]
 use super::base::AccountUI;
+use super::base::{KEY_GROWTH, KEY_TOTAL_VALUE};
 #[cfg(feature = "ratatui_support")]
 use crate::ui::{centered_rect, float_range};
 
@@ -164,7 +164,7 @@ impl InvestmentAccountManager {
         acct
     }
 
-    pub fn get_linechart(&self, app : &mut App) -> Option<LineChart> { 
+    pub fn get_linechart(&self, app: &mut App) -> Option<LineChart> {
         let (start, end) = (app.analysis_start, app.analysis_end);
         let mut ledger = self.get_ledger_within_dates(start, end);
         ledger.push(LedgerRecord {
@@ -270,7 +270,6 @@ impl InvestmentAccountManager {
         };
 
         if let Some(time_period_investments) = time_period_investments_opt {
-
             let mut date = start;
             let mut total_account_values = Vec::new();
             while date < end {
@@ -339,20 +338,21 @@ impl InvestmentAccountManager {
                     };
                 }
             }
-            
-            Some(LineChart { 
-                datasets : vec![time_period_investments, total_account_values],
-                y_max : max_total, 
-                y_min : min_total,
-                y_step : (max_total-min_total)/5.0,
-                x_max : tstamp_max, 
-                x_min : tstamp_min,
-                x_labels : vec![start.to_string(), end.to_string()], 
-                y_labels : float_range(min_total, max_total, (max_total - min_total) / 5.0)
-                            .into_iter()
-                            .map(|x| format!("{:.2}", x)).collect()
+
+            Some(LineChart {
+                datasets: vec![time_period_investments, total_account_values],
+                y_max: max_total,
+                y_min: min_total,
+                y_step: (max_total - min_total) / 5.0,
+                x_max: tstamp_max,
+                x_min: tstamp_min,
+                x_labels: vec![start.to_string(), end.to_string()],
+                y_labels: float_range(min_total, max_total, (max_total - min_total) / 5.0)
+                    .into_iter()
+                    .map(|x| format!("{:.2}", x))
+                    .collect(),
             })
-        } else { 
+        } else {
             None
         }
     }
@@ -1260,24 +1260,32 @@ impl AccountData for InvestmentAccountManager {
         //     .db
         //     .get_ledger_entries_within_timestamps(self.uid, self.id, start, end)
         //     .unwrap();
-        return self.get_ledger().iter().filter(|x| {
-            NaiveDate::parse_from_str(&x.info.date, "%Y-%m-%d").expect("Unable to parse date!") >= start
-        }).filter(|y| { 
-            NaiveDate::parse_from_str(&y.info.date, "%Y-%m-%d").expect("Unable to parse date!") <= end
-        }).cloned().collect();
+        return self
+            .get_ledger()
+            .iter()
+            .filter(|x| {
+                NaiveDate::parse_from_str(&x.info.date, "%Y-%m-%d").expect("Unable to parse date!")
+                    >= start
+            })
+            .filter(|y| {
+                NaiveDate::parse_from_str(&y.info.date, "%Y-%m-%d").expect("Unable to parse date!")
+                    <= end
+            })
+            .cloned()
+            .collect();
     }
     fn get_displayable_ledger(&self) -> Vec<crate::types::ledger::DisplayableLedgerRecord> {
         return self.db.get_displayable_ledger(self.uid, self.id).unwrap();
         // return self.get_ledger().clone().iter().map(|x| {
         //     DisplayableLedgerRecord {
         //         id : x.id.to_string(),
-        //         info : DisplayableLedgerInfo { 
+        //         info : DisplayableLedgerInfo {
         //             date : x.info.date,
         //             amount : x.info.amount.to_string(),
         //             transfer_type : x.info.transfer_type.to_string(),
-        //             participant : x.info.participant.to_string(), 
-        //             category : x.info.category_id.to_string(), 
-        //             description : x.info.description, 
+        //             participant : x.info.participant.to_string(),
+        //             category : x.info.category_id.to_string(),
+        //             description : x.info.description,
         //             labels : x.info.labels
         //         }
         //     }
@@ -1302,16 +1310,15 @@ impl AccountData for InvestmentAccountManager {
 impl InvestmentAccountManager {
     fn render_growth_chart(&self, frame: &mut Frame, area: Rect, app: &mut App) {
         let linechart = app.linechart_cache.take();
-        if let Some(line_chart) = linechart { 
-
+        if let Some(line_chart) = linechart {
             app.linechart_cache = Some(line_chart.clone());
 
             let mut datasets = vec![Dataset::default()
-                    .name("Time Period Investment")
-                    .marker(symbols::Marker::Braille)
-                    .style(Style::default().fg(tailwind::LIME.c400))
-                    .graph_type(GraphType::Line)
-                    .data(&line_chart.datasets[0])];
+                .name("Time Period Investment")
+                .marker(symbols::Marker::Braille)
+                .style(Style::default().fg(tailwind::LIME.c400))
+                .graph_type(GraphType::Line)
+                .data(&line_chart.datasets[0])];
 
             datasets.push(
                 Dataset::default()
@@ -1345,8 +1352,8 @@ impl InvestmentAccountManager {
                 )
                 .style(Style::new().bg(tailwind::SLATE.c900));
 
-                frame.render_widget(chart, area);
-        } else { 
+            frame.render_widget(chart, area);
+        } else {
             let value = ratatuiText::styled(
                 "No data to display!",
                 Style::default().fg(tailwind::ROSE.c400).bold(),
@@ -1378,7 +1385,6 @@ impl InvestmentAccountManager {
     }
 
     fn render_time_weighted_rate_of_return(&self, frame: &mut Frame, area: Rect, app: &mut App) {
-
         let value = app
             .page_cache_f32
             .as_ref()
@@ -1387,7 +1393,7 @@ impl InvestmentAccountManager {
             .and_then(DisplayValue::as_f32)
             .expect("Could not find growth rate!")
             .clone();
-        
+
         let fg_color = if value < 0.0 {
             tailwind::ROSE.c200
         } else {
@@ -1427,12 +1433,20 @@ impl InvestmentAccountManager {
 
 #[cfg(feature = "ratatui_support")]
 impl AccountUI for InvestmentAccountManager {
+    fn populate_page_cache_f32(&self, app: &mut App) {
+        let mut kv: HashMap<String, DisplayValue> = HashMap::new();
 
-    fn populate_page_cache_f32(&self, app : &mut App) {
-        let mut kv : HashMap<String, DisplayValue> = HashMap::new();
-
-        kv.insert(KEY_TOTAL_VALUE.into(), DisplayValue::Float(self.get_value()));
-        kv.insert(KEY_GROWTH.into(), DisplayValue::Float(self.variable.time_weighted_return(app.analysis_start, app.analysis_end)));
+        kv.insert(
+            KEY_TOTAL_VALUE.into(),
+            DisplayValue::Float(self.get_value()),
+        );
+        kv.insert(
+            KEY_GROWTH.into(),
+            DisplayValue::Float(
+                self.variable
+                    .time_weighted_return(app.analysis_start, app.analysis_end),
+            ),
+        );
 
         app.page_cache_f32 = Some(kv);
         app.ledger_entries = Some(self.get_displayable_ledger());
@@ -1465,11 +1479,13 @@ impl AccountUI for InvestmentAccountManager {
         let value_area = reports_chunks[0];
         let twrr_area = reports_chunks[1];
 
-        #[cfg(feature = "timer")] {
+        #[cfg(feature = "timer")]
+        {
             let render_start = Instant::now();
         }
         self.render_ledger_table(frame, ledger_area, app);
-        #[cfg(feature = "timer")] {
+        #[cfg(feature = "timer")]
+        {
             let duration_to_render = render_start.elapsed();
             if duration_to_render > Duration::from_millis(16) {
                 eprintln!("⚠️ slow ledger table: {:?}", duration_to_render);
@@ -1477,7 +1493,8 @@ impl AccountUI for InvestmentAccountManager {
             let render_start = Instant::now();
         }
         self.render_growth_chart(frame, graph_area, app);
-        #[cfg(feature = "timer")] {
+        #[cfg(feature = "timer")]
+        {
             let duration_to_render = render_start.elapsed();
             if duration_to_render > Duration::from_millis(16) {
                 eprintln!("⚠️ slow growth chart: {:?}", duration_to_render);
@@ -1485,7 +1502,8 @@ impl AccountUI for InvestmentAccountManager {
             let render_start = Instant::now();
         }
         self.render_current_value(frame, value_area, app);
-        #[cfg(feature = "timer")] {
+        #[cfg(feature = "timer")]
+        {
             let duration_to_render = render_start.elapsed();
             if duration_to_render > Duration::from_millis(16) {
                 eprintln!("⚠️ slow current value: {:?}", duration_to_render);
@@ -1493,7 +1511,8 @@ impl AccountUI for InvestmentAccountManager {
             let render_start = Instant::now();
         }
         self.render_time_weighted_rate_of_return(frame, twrr_area, app);
-        #[cfg(feature = "timer")] {
+        #[cfg(feature = "timer")]
+        {
             let duration_to_render = render_start.elapsed();
             if duration_to_render > Duration::from_millis(16) {
                 eprintln!("⚠️ slow rate of return: {:?}", duration_to_render);

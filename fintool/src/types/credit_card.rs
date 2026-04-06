@@ -87,7 +87,8 @@ impl DbConn {
         new_statement_due_date: u32,
     ) -> Result<u32> {
         let p = rusqlite::params!(uid, aid, new_statement_due_date);
-        let sql = "UPDATE credit_cards SET statement_due_date = (?3) WHERE uid = (?1) and aid = (?2)";
+        let sql =
+            "UPDATE credit_cards SET statement_due_date = (?3) WHERE uid = (?1) and aid = (?2)";
         let conn_lock = self.conn.lock().unwrap();
         match conn_lock.execute(sql, p) {
             Ok(_) => Ok(new_statement_due_date),

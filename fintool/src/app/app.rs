@@ -33,10 +33,10 @@ use super::screen::{CurrentScreen, CurrentlySelecting, LedgerColors, Pages, User
 const ITEM_HEIGHT: usize = 2;
 
 #[derive(Debug)]
-pub enum DisplayValue { 
-    Float(f32), 
-    UInt(u32), 
-    Text(String)
+pub enum DisplayValue {
+    Float(f32),
+    UInt(u32),
+    Text(String),
 }
 
 impl DisplayValue {
@@ -84,9 +84,9 @@ pub struct App {
     pub load_profile_progress: f64,
     pub display_license_conditions: bool,
     pub display_license_warranty: bool,
-    pub page_cache_f32 : Option<HashMap<String, DisplayValue>>,
-    pub linechart_cache : Option<LineChart>,
-    pub barchart_cache : Option<BarChartData>,
+    pub page_cache_f32: Option<HashMap<String, DisplayValue>>,
+    pub linechart_cache: Option<LineChart>,
+    pub barchart_cache: Option<BarChartData>,
 }
 
 impl App {
@@ -115,9 +115,9 @@ impl App {
             load_profile_progress: 0.0,
             display_license_conditions: false,
             display_license_warranty: false,
-            page_cache_f32 : None,
-            linechart_cache : None,
-            barchart_cache : None,
+            page_cache_f32: None,
+            linechart_cache: None,
+            barchart_cache: None,
         }
     }
 
@@ -154,17 +154,17 @@ impl App {
     }
 
     pub fn advance_account(&mut self) {
-        if self.accounts_for_type.len() == 0 { 
+        if self.accounts_for_type.len() == 0 {
             return;
         }
         self.selected_account_tab = self
             .selected_account_tab
             .saturating_add(1)
-            .min(self.accounts_for_type.clone().len()-1)
+            .min(self.accounts_for_type.clone().len() - 1)
     }
 
     pub fn retreat_account(&mut self) {
-        if self.accounts_for_type.len() == 0 { 
+        if self.accounts_for_type.len() == 0 {
             return;
         }
         self.selected_account_tab = self.selected_account_tab.saturating_sub(1).max(0)
@@ -213,11 +213,11 @@ impl App {
         }
     }
 
-    pub fn update_account(&mut self) { 
-        self.account = if let Some(account) = self.account.take() { 
+    pub fn update_account(&mut self) {
+        self.account = if let Some(account) = self.account.take() {
             account.populate_page_cache_f32(self);
             Some(account)
-        } else { 
+        } else {
             None
         }
     }
@@ -250,7 +250,7 @@ impl App {
         self.ledger_table_state.select(i);
     }
 
-    fn reset_cache(&mut self) { 
+    fn reset_cache(&mut self) {
         self.page_cache_f32 = None;
         self.linechart_cache = None;
         self.barchart_cache = None;
@@ -258,22 +258,22 @@ impl App {
 }
 
 #[derive(Debug, Clone)]
-pub struct LineChart { 
-    pub datasets : Vec<Vec<(f64, f64)>>,
-    pub y_max : f64, 
-    pub y_min : f64, 
-    pub y_step : f64, 
-    pub x_min : f64, 
-    pub x_max : f64,
-    pub x_labels: Vec<String>, 
-    pub y_labels : Vec<String>,
+pub struct LineChart {
+    pub datasets: Vec<Vec<(f64, f64)>>,
+    pub y_max: f64,
+    pub y_min: f64,
+    pub y_step: f64,
+    pub x_min: f64,
+    pub x_max: f64,
+    pub x_labels: Vec<String>,
+    pub y_labels: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
 pub struct BarChartData {
-    pub labels : Vec<String>,
+    pub labels: Vec<String>,
     // hashmap for each datset, each entry is comprised of
     // the category (label), and the value (display value)
     // and numeric value
-    pub groups : HashMap<String, HashMap<String, (f32, u64)>>,
+    pub groups: HashMap<String, HashMap<String, (f32, u64)>>,
 }

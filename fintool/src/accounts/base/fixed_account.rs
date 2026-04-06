@@ -35,7 +35,7 @@ pub struct FixedAccount {
     pub id: u32,
     pub uid: u32,
     pub db: DbConn,
-    pub ledger : Vec<LedgerRecord>,
+    pub ledger: Vec<LedgerRecord>,
 }
 
 impl FixedAccount {
@@ -44,7 +44,7 @@ impl FixedAccount {
             uid: uid,
             id: id,
             db: db.clone(),
-            ledger : db.get_ledger(uid, id).unwrap(),
+            ledger: db.get_ledger(uid, id).unwrap(),
         };
         acct
     }
@@ -987,14 +987,14 @@ impl FixedAccount {
     pub fn get_current_value(&self) -> f32 {
         return self.db.get_current_value(self.uid, self.id).unwrap();
         // return self.ledger.iter().map(|x| {
-        //     match x.info.transfer_type { 
+        //     match x.info.transfer_type {
         //         TransferType::DepositFromExternalAccount|TransferType::DepositFromInternalAccount => {
         //             x.info.amount
         //         }
         //         TransferType::WithdrawalToExternalAccount|TransferType::WithdrawalToInternalAccount => {
         //             -x.info.amount
         //         }
-        //         _ => { 
+        //         _ => {
         //             0.0
         //         }
         //     }
@@ -1012,17 +1012,17 @@ impl FixedAccount {
             return 0.0;
         }
 
-        // return self.ledger.iter().filter(|x| 
+        // return self.ledger.iter().filter(|x|
         //     NaiveDate::parse_from_str(x.info.date.as_str(), "%Y-%m-%d").expect("Unable to parse date!") <= day )
         //     .map(|y| {
-        //         match y.info.transfer_type { 
+        //         match y.info.transfer_type {
         //             TransferType::DepositFromExternalAccount|TransferType::DepositFromInternalAccount => {
         //                 y.info.amount
         //             }
         //             TransferType::WithdrawalToExternalAccount|TransferType::WithdrawalToInternalAccount => {
         //                 -y.info.amount
         //             }
-        //             _ => { 
+        //             _ => {
         //                 0.0
         //             }
         //         }
@@ -1055,33 +1055,61 @@ impl FixedAccount {
         return rate;
     }
 
-    pub fn annualized_rate_of_return(&self, start_date: NaiveDate, end_date: NaiveDate) -> f32 { 
+    pub fn annualized_rate_of_return(&self, start_date: NaiveDate, end_date: NaiveDate) -> f32 {
         let days = start_date.num_days_from_ce() - end_date.num_days_from_ce();
         let cr = self.simple_rate_of_return(start_date, end_date);
-        return (1. + cr).powf(365./(days as f32))-1.;
+        return (1. + cr).powf(365. / (days as f32)) - 1.;
     }
-    
-    pub fn get_external_transactions_between_timestamps(&self, start_date: NaiveDate, end_date: NaiveDate) -> Option<Vec<LedgerRecord>> { 
+
+    pub fn get_external_transactions_between_timestamps(
+        &self,
+        start_date: NaiveDate,
+        end_date: NaiveDate,
+    ) -> Option<Vec<LedgerRecord>> {
         let mut transactions: Vec<LedgerRecord> = Vec::new();
         if self.ledger.is_empty() {
             return None;
         }
-        transactions = self.ledger.iter().filter(|rcrd| { 
-            (rcrd.info.transfer_type == TransferType::WithdrawalToExternalAccount || 
-                rcrd.info.transfer_type == TransferType::DepositFromExternalAccount) 
-            && (NaiveDate::parse_from_str(rcrd.info.date.as_str(), "%Y-%m-%d").expect("Unable to parse date") >= start_date )
-            && (NaiveDate::parse_from_str(rcrd.info.date.as_str(), "%Y-%m-%d").expect("Unable to parse date") <= end_date )
-        }).into_iter().map(|x| x.clone()).collect();
+        transactions = self
+            .ledger
+            .iter()
+            .filter(|rcrd| {
+                (rcrd.info.transfer_type == TransferType::WithdrawalToExternalAccount
+                    || rcrd.info.transfer_type == TransferType::DepositFromExternalAccount)
+                    && (NaiveDate::parse_from_str(rcrd.info.date.as_str(), "%Y-%m-%d")
+                        .expect("Unable to parse date")
+                        >= start_date)
+                    && (NaiveDate::parse_from_str(rcrd.info.date.as_str(), "%Y-%m-%d")
+                        .expect("Unable to parse date")
+                        <= end_date)
+            })
+            .into_iter()
+            .map(|x| x.clone())
+            .collect();
 
         Some(transactions)
     }
 
-    pub fn get_ledger_entries_between_timestamps(&self, start_date: NaiveDate, end_date: NaiveDate) -> Vec<LedgerRecord> { 
+    pub fn get_ledger_entries_between_timestamps(
+        &self,
+        start_date: NaiveDate,
+        end_date: NaiveDate,
+    ) -> Vec<LedgerRecord> {
         let mut transactions: Vec<LedgerRecord> = Vec::new();
-        transactions = self.ledger.iter().filter(|rcrd| {
-            (NaiveDate::parse_from_str(rcrd.info.date.as_str(), "%Y-%m-%d").expect("Unable to parse date") >= start_date )
-            && (NaiveDate::parse_from_str(rcrd.info.date.as_str(), "%Y-%m-%d").expect("Unable to parse date") <= end_date )
-        }).into_iter().map(|x| x.clone()).collect();
+        transactions = self
+            .ledger
+            .iter()
+            .filter(|rcrd| {
+                (NaiveDate::parse_from_str(rcrd.info.date.as_str(), "%Y-%m-%d")
+                    .expect("Unable to parse date")
+                    >= start_date)
+                    && (NaiveDate::parse_from_str(rcrd.info.date.as_str(), "%Y-%m-%d")
+                        .expect("Unable to parse date")
+                        <= end_date)
+            })
+            .into_iter()
+            .map(|x| x.clone())
+            .collect();
 
         transactions
     }

@@ -235,7 +235,7 @@ fn main() {
                 peer = "External Account".to_string();
                 description = txn.description;
             }
-            "withdrawal" => { 
+            "withdrawal" => {
                 ttype = TransferType::WithdrawalToExternalAccount;
                 peer = "External Account".to_string();
                 description = txn.description;
@@ -327,7 +327,7 @@ where
     let s = s.replace(",", "");
 
     // Handle parentheses for negative numbers
-    let cleaned = if s.starts_with('-') && s.len()< 2 {
+    let cleaned = if s.starts_with('-') && s.len() < 2 {
         format!("0")
     } else if s.starts_with('-') {
         let inner = &s[1..s.len()].trim(); // remove parens and trim

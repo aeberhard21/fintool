@@ -15,8 +15,6 @@
   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 -----------------------------------------------------------------------*/
 use chrono::{Datelike, Local, NaiveDate};
-#[cfg(feature = "timer")]
-use std::time::{Duration, Instant};
 #[cfg(not(debug_assertions))]
 use directories::ProjectDirs;
 #[cfg(feature = "ratatui_support")]
@@ -38,10 +36,12 @@ use ratatui::{
 };
 use std::fs::{self};
 use std::io;
-use std::io::Write;
 use std::io::Error;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::result;
+#[cfg(feature = "timer")]
+use std::time::{Duration, Instant};
 
 use crate::accounts::base::Account;
 #[cfg(feature = "ratatui_support")]
@@ -131,19 +131,22 @@ fn init_and_run_app(_db: &mut DbConn) -> io::Result<bool> {
 }
 
 #[cfg(feature = "ratatui_support")]
-fn run_app<B>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<bool> 
-where 
+fn run_app<B>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<bool>
+where
     B: Backend + Write,
 {
     terminal.clear().unwrap();
     loop {
         app.invalid_input = false;
-        #[cfg(feature = "timer")] {
-            let frame_start = Instant::now();d
+        #[cfg(feature = "timer")]
+        {
+            let frame_start = Instant::now();
+            d
         }
         terminal.draw(|f| ui::ui(f, app))?;
 
-        #[cfg(feature = "timer")]{
+        #[cfg(feature = "timer")]
+        {
             let frame_time = frame_start.elapsed();
             if frame_time > Duration::from_millis(16) {
                 eprintln!("⚠️ slow frame: {:?}", frame_time);
@@ -211,7 +214,7 @@ where
                     }
                     (KeyModifiers::CONTROL, KeyCode::Char('c') | KeyCode::Char('C')) => {
                         suspend_tui(terminal)?;
-                        return Ok(true)
+                        return Ok(true);
                     }
                     (KeyModifiers::CONTROL, KeyCode::Char('l')) => {
                         app.display_license_conditions = true;
@@ -223,7 +226,7 @@ where
                         suspend_tui(terminal)?;
 
                         create_user(&mut app.db);
-                        
+
                         resume_tui(terminal)?
                     }
                     (_, KeyCode::Char(value)) => {
@@ -261,7 +264,7 @@ where
                     }
                     (KeyModifiers::CONTROL, KeyCode::Char('c') | KeyCode::Char('C')) => {
                         suspend_tui(terminal)?;
-                        return Ok(true)
+                        return Ok(true);
                     }
                     (_, KeyCode::Right | KeyCode::Char('l')) => {
                         match app.currently_selected {
@@ -468,7 +471,7 @@ where
                                         )
                                         .unwrap()
                                         .unwrap();
-                                    
+
                                     resume_tui(terminal)?;
                                 }
                                 _ => {}
@@ -614,9 +617,9 @@ where
 
 #[cfg(feature = "ratatui_support")]
 fn suspend_tui<B>(terminal: &mut Terminal<B>) -> Result<(), std::io::Error>
-where 
+where
     B: Backend + Write,
-{ 
+{
     disable_raw_mode()?;
     execute!(
         terminal.backend_mut(),
@@ -632,19 +635,14 @@ where
 
 #[cfg(feature = "ratatui_support")]
 fn resume_tui<B>(terminal: &mut Terminal<B>) -> Result<(), std::io::Error>
-where 
+where
     B: Backend + Write,
-{ 
+{
     enable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        EnterAlternateScreen
-    )
-    .unwrap();
+    execute!(terminal.backend_mut(), EnterAlternateScreen).unwrap();
     terminal.clear().unwrap();
     Ok(())
 }
-
 
 #[cfg(feature = "ratatui_support")]
 pub fn is_account_type(x: &Box<dyn Account>, atype: AccountType) -> bool {

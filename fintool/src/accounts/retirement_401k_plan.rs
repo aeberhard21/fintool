@@ -74,7 +74,6 @@ use csv::ReaderBuilder;
 use rustyline::Editor;
 use shared_lib::TransferType;
 
-use super::base::{KEY_GROWTH, KEY_TOTAL_VALUE};
 use super::base::variable_account::VariableAccount;
 use super::base::Account;
 use super::base::AccountCreation;
@@ -82,10 +81,11 @@ use super::base::AccountData;
 use super::base::AccountOperations;
 #[cfg(feature = "ratatui_support")]
 use super::base::AccountUI;
+use super::base::{KEY_GROWTH, KEY_TOTAL_VALUE};
 #[cfg(feature = "ratatui_support")]
 use crate::ui::{centered_rect, float_range};
 
-pub const KEY_REMAINING_CONTRIBUTION : &str = "Remaining Contribution";
+pub const KEY_REMAINING_CONTRIBUTION: &str = "Remaining Contribution";
 pub const KEY_CONTRIBUTION_LIMIT: &str = "Contribution Limit";
 
 pub struct Retirement401kPlan {
@@ -174,7 +174,7 @@ impl Retirement401kPlan {
         return acct.info.contribution_limit;
     }
 
-    pub fn get_remaining_contribution(&self) -> f32 { 
+    pub fn get_remaining_contribution(&self) -> f32 {
         let contribution_limit = self.get_contribution_limit();
         let (start, end) =
             get_analysis_period_dates(self.open_date, &crate::accounts::base::AnalysisPeriod::YTD);
@@ -191,7 +191,7 @@ impl Retirement401kPlan {
     }
 
     #[cfg(feature = "ratatui_support")]
-    pub fn get_linechart(&self, app : &mut App) -> Option<LineChart> {
+    pub fn get_linechart(&self, app: &mut App) -> Option<LineChart> {
         let (start, end) = (app.analysis_start, app.analysis_end);
         let mut ledger = self.get_ledger_within_dates(start, end);
         ledger.push(LedgerRecord {
@@ -296,7 +296,6 @@ impl Retirement401kPlan {
         };
 
         if let Some(time_period_investments) = time_period_investments_opt {
-
             let mut date = start;
             let mut total_account_values = Vec::new();
             while date < end {
@@ -365,24 +364,24 @@ impl Retirement401kPlan {
                     };
                 }
             }
-            
-            Some(LineChart { 
-                datasets : vec![time_period_investments, total_account_values],
-                y_max : max_total, 
-                y_min : min_total,
-                y_step : (max_total-min_total)/5.0,
-                x_max : tstamp_max, 
-                x_min : tstamp_min,
-                x_labels : vec![start.to_string(), end.to_string()], 
-                y_labels : float_range(min_total, max_total, (max_total - min_total) / 5.0)
-                            .into_iter()
-                            .map(|x| format!("{:.2}", x)).collect()
+
+            Some(LineChart {
+                datasets: vec![time_period_investments, total_account_values],
+                y_max: max_total,
+                y_min: min_total,
+                y_step: (max_total - min_total) / 5.0,
+                x_max: tstamp_max,
+                x_min: tstamp_min,
+                x_labels: vec![start.to_string(), end.to_string()],
+                y_labels: float_range(min_total, max_total, (max_total - min_total) / 5.0)
+                    .into_iter()
+                    .map(|x| format!("{:.2}", x))
+                    .collect(),
             })
-        } else { 
+        } else {
             None
         }
     }
-
 }
 
 impl AccountOperations for Retirement401kPlan {
@@ -1325,16 +1324,15 @@ impl AccountData for Retirement401kPlan {
 impl Retirement401kPlan {
     fn render_growth_chart(&self, frame: &mut Frame, area: Rect, app: &mut App) {
         let linechart = app.linechart_cache.take();
-        if let Some(line_chart) = linechart { 
-
+        if let Some(line_chart) = linechart {
             app.linechart_cache = Some(line_chart.clone());
 
             let mut datasets = vec![Dataset::default()
-                    .name("Time Period Investment")
-                    .marker(symbols::Marker::Braille)
-                    .style(Style::default().fg(tailwind::LIME.c400))
-                    .graph_type(GraphType::Line)
-                    .data(&line_chart.datasets[0])];
+                .name("Time Period Investment")
+                .marker(symbols::Marker::Braille)
+                .style(Style::default().fg(tailwind::LIME.c400))
+                .graph_type(GraphType::Line)
+                .data(&line_chart.datasets[0])];
 
             datasets.push(
                 Dataset::default()
@@ -1368,8 +1366,8 @@ impl Retirement401kPlan {
                 )
                 .style(Style::new().bg(tailwind::SLATE.c900));
 
-                frame.render_widget(chart, area);
-        } else { 
+            frame.render_widget(chart, area);
+        } else {
             let value = ratatuiText::styled(
                 "No data to display!",
                 Style::default().fg(tailwind::ROSE.c400).bold(),
@@ -1401,7 +1399,6 @@ impl Retirement401kPlan {
     }
 
     fn render_time_weighted_rate_of_return(&self, frame: &mut Frame, area: Rect, app: &mut App) {
-
         let value = app
             .page_cache_f32
             .as_ref()
@@ -1447,7 +1444,6 @@ impl Retirement401kPlan {
     }
 
     fn render_remaining_contribution(&self, frame: &mut Frame, area: Rect, app: &App) {
-
         let contribution_remaining = app
             .page_cache_f32
             .as_ref()
@@ -1510,16 +1506,30 @@ impl Retirement401kPlan {
 
 #[cfg(feature = "ratatui_support")]
 impl AccountUI for Retirement401kPlan {
-    
-    fn populate_page_cache_f32(&self, app : &mut App) {
-        let mut kv : HashMap<String, DisplayValue> = HashMap::new();
+    fn populate_page_cache_f32(&self, app: &mut App) {
+        let mut kv: HashMap<String, DisplayValue> = HashMap::new();
 
-        kv.insert(KEY_TOTAL_VALUE.into(), DisplayValue::Float(self.get_value()));
-        kv.insert(KEY_GROWTH.into(), DisplayValue::Float(self.variable.time_weighted_return(app.analysis_start, app.analysis_end)));
-        kv.insert(KEY_REMAINING_CONTRIBUTION.into(), DisplayValue::Float(self.get_remaining_contribution()));
-        kv.insert(KEY_CONTRIBUTION_LIMIT.into(),  DisplayValue::Float(self.get_contribution_limit()));
+        kv.insert(
+            KEY_TOTAL_VALUE.into(),
+            DisplayValue::Float(self.get_value()),
+        );
+        kv.insert(
+            KEY_GROWTH.into(),
+            DisplayValue::Float(
+                self.variable
+                    .time_weighted_return(app.analysis_start, app.analysis_end),
+            ),
+        );
+        kv.insert(
+            KEY_REMAINING_CONTRIBUTION.into(),
+            DisplayValue::Float(self.get_remaining_contribution()),
+        );
+        kv.insert(
+            KEY_CONTRIBUTION_LIMIT.into(),
+            DisplayValue::Float(self.get_contribution_limit()),
+        );
 
-        app.page_cache_f32 = Some(kv);        
+        app.page_cache_f32 = Some(kv);
         app.ledger_entries = Some(self.get_displayable_ledger());
         app.linechart_cache = self.get_linechart(app);
         app.barchart_cache = None;

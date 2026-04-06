@@ -36,9 +36,15 @@ use time::Month;
 use super::app::App;
 use super::screen::{CurrentScreen, TabMenu};
 use crate::{
-    accounts::base::{Account, liquid_account},
+    accounts::base::{liquid_account, Account},
     app::screen::CurrentlySelecting,
-    tui::{self, get_analysis_period_dates, tui_accounts::{get_compound_annual_growth_rate, get_net_worth_growth, get_dollar_change_y2y}, tui_license},
+    tui::{
+        self, get_analysis_period_dates,
+        tui_accounts::{
+            get_compound_annual_growth_rate, get_dollar_change_y2y, get_net_worth_growth,
+        },
+        tui_license,
+    },
 };
 use crate::{
     accounts::{self, as_liquid_account, bank_account::BankAccount},
@@ -124,10 +130,9 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
 
         // fill entire background
         let filler = Block::default()
-                    .borders(Borders::ALL)
-                    .style(Style::default().bg(tailwind::SLATE.c900));
+            .borders(Borders::ALL)
+            .style(Style::default().bg(tailwind::SLATE.c900));
         frame.render_widget(filler, chunks[1]);
-
 
         let centered_area = centered_rect(60, 25, frame.area());
 
@@ -462,7 +467,11 @@ fn render_net_worth(app: &App, frame: &mut Frame, area: Rect) {
 
     let asset_areas_split = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(33), Constraint::Percentage(34), Constraint::Percentage(33)])
+        .constraints([
+            Constraint::Percentage(33),
+            Constraint::Percentage(34),
+            Constraint::Percentage(33),
+        ])
         .split(assets_area);
 
     let total_assets_area: Rect = asset_areas_split[0];
@@ -471,34 +480,57 @@ fn render_net_worth(app: &App, frame: &mut Frame, area: Rect) {
 
     let growth_areas_split = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(33), Constraint::Percentage(34), Constraint::Percentage(33)])
+        .constraints([
+            Constraint::Percentage(33),
+            Constraint::Percentage(34),
+            Constraint::Percentage(33),
+        ])
         .split(growth_area);
 
     let ytd_growth_area = growth_areas_split[0];
     let y2y_growth_area = growth_areas_split[1];
     let fiveyr_growth_area = growth_areas_split[2];
 
-    let (assets, liabilities, ytd_growth, dollar_change_y2y, y2y_growth, fiveyr_growth) = if !app.accounts.is_empty() {
+    let (assets, liabilities, ytd_growth, dollar_change_y2y, y2y_growth, fiveyr_growth) = if !app
+        .accounts
+        .is_empty()
+    {
         (
             get_total_assets(&app.accounts),
             get_total_liabilities(&app.accounts),
             {
-                let (ytd_start_date, ytd_end_date) = get_analysis_period_dates(NaiveDate::from_num_days_from_ce_opt(0).expect("Unable to convert to NaiveDate!"), &accounts::base::AnalysisPeriod::YTD);
+                let (ytd_start_date, ytd_end_date) = get_analysis_period_dates(
+                    NaiveDate::from_num_days_from_ce_opt(0)
+                        .expect("Unable to convert to NaiveDate!"),
+                    &accounts::base::AnalysisPeriod::YTD,
+                );
                 get_net_worth_growth(&app.accounts, ytd_start_date, ytd_end_date)
-
-            },  
+            },
             {
-                let (y2y_start_date, y2yd_end_date) = get_analysis_period_dates(NaiveDate::from_num_days_from_ce_opt(0).expect("Unable to convert to NaiveDate!"), &accounts::base::AnalysisPeriod::OneYear);
-                let dollar_change = get_dollar_change_y2y(&app.accounts, y2y_start_date, y2yd_end_date);
+                let (y2y_start_date, y2yd_end_date) = get_analysis_period_dates(
+                    NaiveDate::from_num_days_from_ce_opt(0)
+                        .expect("Unable to convert to NaiveDate!"),
+                    &accounts::base::AnalysisPeriod::OneYear,
+                );
+                let dollar_change =
+                    get_dollar_change_y2y(&app.accounts, y2y_start_date, y2yd_end_date);
                 dollar_change
             },
             {
-                let (y2y_start_date, y2yd_end_date) = get_analysis_period_dates(NaiveDate::from_num_days_from_ce_opt(0).expect("Unable to convert to NaiveDate!"), &accounts::base::AnalysisPeriod::OneYear);
+                let (y2y_start_date, y2yd_end_date) = get_analysis_period_dates(
+                    NaiveDate::from_num_days_from_ce_opt(0)
+                        .expect("Unable to convert to NaiveDate!"),
+                    &accounts::base::AnalysisPeriod::OneYear,
+                );
                 let y2y_growth = get_net_worth_growth(&app.accounts, y2y_start_date, y2yd_end_date);
                 y2y_growth
             },
             {
-                let (fiveyr_start_date, fiveyr_end_date) = get_analysis_period_dates(NaiveDate::from_num_days_from_ce_opt(0).expect("Unable to convert to NaiveDate!"), &accounts::base::AnalysisPeriod::FiveYears);
+                let (fiveyr_start_date, fiveyr_end_date) = get_analysis_period_dates(
+                    NaiveDate::from_num_days_from_ce_opt(0)
+                        .expect("Unable to convert to NaiveDate!"),
+                    &accounts::base::AnalysisPeriod::FiveYears,
+                );
                 get_compound_annual_growth_rate(&app.accounts, fiveyr_start_date, fiveyr_end_date)
             },
         )
@@ -721,12 +753,10 @@ fn render_net_worth(app: &App, frame: &mut Frame, area: Rect) {
     frame.render_widget(dollar_change_widget, dollar_change_area);
     frame.render_widget(total_assets_widget, total_assets_area);
     frame.render_widget(liquid_assets_widget, liquid_assets_area);
-    frame.render_widget(liabilities_widget, liabilities_area);  
+    frame.render_widget(liabilities_widget, liabilities_area);
     frame.render_widget(ytd_growth_widget, ytd_growth_area);
     frame.render_widget(y2y_growth_widget, y2y_growth_area);
     frame.render_widget(fiveyr_growth_widget, fiveyr_growth_area);
-
-
 }
 
 fn render_net_worth_chart(app: &App, frame: &mut Frame, area: Rect) {

@@ -127,8 +127,10 @@ fn main() {
                     panic!("Payment not recognized: {}", txn.description);
                 }
             } else {
-                let re_payment =
-                Regex::new(r"Recurring\s+Loan\s+Advance\s+Bill\s+Payment\s+-\s+#\d+\/([A-Za-z\*\s\.]+)\/").unwrap();
+                let re_payment = Regex::new(
+                    r"Recurring\s+Loan\s+Advance\s+Bill\s+Payment\s+-\s+#\d+\/([A-Za-z\*\s\.]+)\/",
+                )
+                .unwrap();
                 let x = re_payment.captures(&txn.description.as_str());
                 if x.is_some() {
                     let x = x.unwrap();
@@ -144,7 +146,8 @@ fn main() {
                     }
                 } else {
                     let re_payment =
-                    Regex::new(r"Loan\s+Advance\s+Bill\s+Payment\s+#\d+\/([A-Za-z\*\s\.]+)\/").unwrap();
+                        Regex::new(r"Loan\s+Advance\s+Bill\s+Payment\s+#\d+\/([A-Za-z\*\s\.]+)\/")
+                            .unwrap();
                     let x = re_payment.captures(&txn.description.as_str());
                     if x.is_some() {
                         let x = x.unwrap();
@@ -158,13 +161,13 @@ fn main() {
                         } else {
                             panic!("Payment not recognized: {}", txn.description);
                         }
-                    } else { 
-                    panic!(
-                    "Statment could not be matched for charge or payment: {}",
-                    txn.description
-                );
-            }
-            }
+                    } else {
+                        panic!(
+                            "Statment could not be matched for charge or payment: {}",
+                            txn.description
+                        );
+                    }
+                }
             }
         }
 

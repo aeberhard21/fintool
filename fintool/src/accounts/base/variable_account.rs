@@ -20,8 +20,8 @@ use std::collections::HashMap;
 use std::io::Read;
 use std::sync::Arc;
 
-use chrono::{Datelike, NaiveTime};
 use chrono::{Date, Days, Local, NaiveDate, NaiveDateTime};
+use chrono::{Datelike, NaiveTime};
 use csv::DeserializeError;
 use inquire::*;
 use rusqlite::types::Value;
@@ -1285,29 +1285,29 @@ impl VariableAccount {
         return rate;
     }
 
-    pub fn annualized_rate_of_return(&self, period_start : NaiveDate, period_end : NaiveDate) -> f32 {
+    pub fn annualized_rate_of_return(&self, period_start: NaiveDate, period_end: NaiveDate) -> f32 {
         let days = period_start.num_days_from_ce() - period_end.num_days_from_ce();
         let end_value_opt = self.get_account_value_on_day(&period_end);
-        if end_value_opt.is_none() { 
+        if end_value_opt.is_none() {
             return f32::NAN;
         }
         let end_value = end_value_opt.unwrap();
 
         let start_value_opt = self.get_account_value_on_day(&period_start);
-        if start_value_opt.is_none() { 
+        if start_value_opt.is_none() {
             return f32::NAN;
         }
         let start_value = start_value_opt.unwrap();
 
-        let cr = (end_value-start_value)/start_value;
-        return (1. + cr).powf(365./(days as f32))-1.;
+        let cr = (end_value - start_value) / start_value;
+        return (1. + cr).powf(365. / (days as f32)) - 1.;
     }
 
-    pub fn money_weighted_return(&self, period_start : NaiveDate, period_end : NaiveDate) -> f32 {
+    pub fn money_weighted_return(&self, period_start: NaiveDate, period_end: NaiveDate) -> f32 {
         #[derive(Debug)]
         struct CashFlow {
-            amount : f32, 
-            t : f32
+            amount: f32,
+            t: f32,
         };
 
         fn irr(flows: &[CashFlow]) -> Option<f32> {
@@ -1316,7 +1316,8 @@ impl VariableAccount {
             let tolerance = 1e-2;
 
             fn npv(rate: f32, flows: &[CashFlow]) -> f32 {
-                flows.iter()
+                flows
+                    .iter()
                     .map(|x| x.amount / (1.0 + rate).powf(x.t))
                     .sum()
             }
@@ -1339,32 +1340,36 @@ impl VariableAccount {
             Some((low + high) / 2.0)
         }
 
-        let mut cfs : Vec<CashFlow> = Vec::new();
-        let txns = self.db.get_ledger_entries_within_timestamps(self.uid, self.id, period_start, period_end).unwrap();
-        for txn in txns { 
-            let amount = match txn.info.transfer_type { 
-                TransferType::DepositFromExternalAccount => { 
-                    -txn.info.amount
-                }, 
-                TransferType::WithdrawalToExternalAccount => { 
-                    txn.info.amount
-                }, 
-                _ => { 
+        let mut cfs: Vec<CashFlow> = Vec::new();
+        let txns = self
+            .db
+            .get_ledger_entries_within_timestamps(self.uid, self.id, period_start, period_end)
+            .unwrap();
+        for txn in txns {
+            let amount = match txn.info.transfer_type {
+                TransferType::DepositFromExternalAccount => -txn.info.amount,
+                TransferType::WithdrawalToExternalAccount => txn.info.amount,
+                _ => {
                     continue;
                 }
             };
 
-            let t = (NaiveDate::parse_from_str(&txn.info.date,"%Y-%m-%d").unwrap() - period_start).num_days() as f32 / 365.25;
-            let cf = CashFlow { 
-                amount : amount, 
-                t : t
+            let t = (NaiveDate::parse_from_str(&txn.info.date, "%Y-%m-%d").unwrap() - period_start)
+                .num_days() as f32
+                / 365.25;
+            let cf = CashFlow {
+                amount: amount,
+                t: t,
             };
             cfs.push(cf);
         }
 
         let final_value = self.get_value_of_positions_on_day(&period_end);
-        let final_t = (period_end-period_start).num_days() as f32 / 365.25;
-        cfs.push(CashFlow { amount: final_value, t: final_t });
+        let final_t = (period_end - period_start).num_days() as f32 / 365.25;
+        cfs.push(CashFlow {
+            amount: final_value,
+            t: final_t,
+        });
 
         println!("{:?}", cfs);
 
