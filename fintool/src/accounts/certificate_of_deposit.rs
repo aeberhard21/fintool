@@ -123,8 +123,12 @@ impl CertificateOfDepositAccount {
         acct
     }
 
+    #[cfg(feature = "ratatui_support")]
     pub fn get_linechart(&self, app: &mut App) -> Option<LineChart> {
-        let (start, end) = (app.analysis_start, app.analysis_end);
+        let (mut start, end) = (app.analysis_start, app.analysis_end);
+        if start < self.open_date {
+            start = self.open_date;
+        }
         let starting_amount_opt = self
             .db
             .get_cumulative_total_of_ledger_before_date(self.uid, self.id, start)
@@ -1068,13 +1072,19 @@ impl AccountUI for CertificateOfDepositAccount {
     fn populate_page_cache_f32(&self, app: &mut App) {
         let mut kv: HashMap<String, DisplayValue> = HashMap::new();
 
+        let start = if app.analysis_start < self.open_date {
+            self.open_date
+        } else {
+            app.analysis_start
+        };
+
         kv.insert(
             KEY_TOTAL_VALUE.into(),
             DisplayValue::Float(self.get_value()),
         );
         kv.insert(
             KEY_GROWTH.into(),
-            DisplayValue::Float(self.get_growth(app.analysis_start, app.analysis_end)),
+            DisplayValue::Float(self.get_growth(start, app.analysis_end)),
         );
         kv.insert(
             KEY_MATURITY_DATE.into(),

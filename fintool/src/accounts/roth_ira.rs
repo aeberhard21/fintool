@@ -82,12 +82,15 @@ use super::base::AccountData;
 use super::base::AccountOperations;
 #[cfg(feature = "ratatui_support")]
 use super::base::AccountUI;
-use super::base::{KEY_GROWTH, KEY_TOTAL_VALUE};
+use super::base::KEY_TOTAL_VALUE;
 #[cfg(feature = "ratatui_support")]
 use crate::ui::{centered_rect, float_range};
 
 pub const KEY_REMAINING_CONTRIBUTION: &str = "Remaining Contribution";
 pub const KEY_CONTRIBUTION_LIMIT: &str = "Contribution Limit";
+pub const KEY_TWRR_GROWTH: &str = "GROWTH_TWRR";
+pub const KEY_CAGR_GROWTH: &str = "GROWTH_CAGR";
+pub const KEY_MWRR_GROWTH: &str = "GROWTH_MWRR";
 
 pub struct RothIraAccount {
     uid: u32,
@@ -202,7 +205,10 @@ impl RothIraAccount {
 
     #[cfg(feature = "ratatui_support")]
     pub fn get_linechart(&self, app: &mut App) -> Option<LineChart> {
-        let (start, end) = (app.analysis_start, app.analysis_end);
+        let (mut start, end) = (app.analysis_start, app.analysis_end);
+        if start < self.open_date {
+            start = self.open_date;
+        }
         let mut ledger = self.get_ledger_within_dates(start, end);
         ledger.push(LedgerRecord {
             id: 0,
@@ -1413,7 +1419,7 @@ impl RothIraAccount {
             .page_cache_f32
             .as_ref()
             .expect("Account's page has not been cached!")
-            .get(KEY_GROWTH)
+            .get(KEY_TWRR_GROWTH)
             .and_then(DisplayValue::as_f32)
             .expect("Could not find growth rate!")
             .clone();
@@ -1433,10 +1439,7 @@ impl RothIraAccount {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .title(format!(
-                        " Time-Weighted Rate of Return - {} ",
-                        app.analysis_period
-                    ))
+                    .title(format!(" TWRR - {} ", app.analysis_period))
                     .title_alignment(layout::Alignment::Center)
                     .padding(Padding::new(
                         0,
@@ -1451,6 +1454,92 @@ impl RothIraAccount {
             )
             .bg(tailwind::SLATE.c900);
 
+        frame.render_widget(display, area);
+    }
+
+    fn render_annualized_rate_of_return(&self, frame: &mut Frame, area: Rect, app: &mut App) {
+        let value = app
+            .page_cache_f32
+            .as_ref()
+            .expect("Account's page has not been cached!")
+            .get(KEY_CAGR_GROWTH)
+            .and_then(DisplayValue::as_f32)
+            .expect("Could not find growth rate!")
+            .clone();
+
+        let fg_color = if value < 0.0 {
+            tailwind::ROSE.c200
+        } else {
+            tailwind::EMERALD.c400
+        };
+        let value = ratatuiText::styled(
+            format!("{:.2}%", value).to_string(),
+            Style::default().fg(fg_color).bold(),
+        );
+
+        let display = Paragraph::new(value)
+            .centered()
+            .alignment(layout::Alignment::Center)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(format!(" CAGR - {} ", app.analysis_period))
+                    .title_alignment(layout::Alignment::Center)
+                    .padding(Padding::new(
+                        0,
+                        0,
+                        (if area.height > 4 {
+                            area.height / 2 - 2
+                        } else {
+                            0
+                        }),
+                        0,
+                    )),
+            )
+            .bg(tailwind::SLATE.c900);
+        frame.render_widget(display, area);
+    }
+
+    fn render_money_weighted_rate_of_return(&self, frame: &mut Frame, area: Rect, app: &mut App) {
+        let value = app
+            .page_cache_f32
+            .as_ref()
+            .expect("Account's page has not been cached!")
+            .get(KEY_MWRR_GROWTH)
+            .and_then(DisplayValue::as_f32)
+            .expect("Could not find growth rate!")
+            .clone();
+
+        let fg_color = if value < 0.0 {
+            tailwind::ROSE.c200
+        } else {
+            tailwind::EMERALD.c400
+        };
+        let value = ratatuiText::styled(
+            format!("{:.2}%", value).to_string(),
+            Style::default().fg(fg_color).bold(),
+        );
+
+        let display = Paragraph::new(value)
+            .centered()
+            .alignment(layout::Alignment::Center)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(format!(" MWRR - {} ", app.analysis_period))
+                    .title_alignment(layout::Alignment::Center)
+                    .padding(Padding::new(
+                        0,
+                        0,
+                        (if area.height > 4 {
+                            area.height / 2 - 2
+                        } else {
+                            0
+                        }),
+                        0,
+                    )),
+            )
+            .bg(tailwind::SLATE.c900);
         frame.render_widget(display, area);
     }
 
@@ -1520,16 +1609,30 @@ impl AccountUI for RothIraAccount {
     fn populate_page_cache_f32(&self, app: &mut App) {
         let mut kv: HashMap<String, DisplayValue> = HashMap::new();
 
+        let start = if app.analysis_start < self.open_date {
+            self.open_date
+        } else {
+            app.analysis_start
+        };
+
         kv.insert(
             KEY_TOTAL_VALUE.into(),
             DisplayValue::Float(self.get_value()),
         );
         kv.insert(
-            KEY_GROWTH.into(),
+            KEY_TWRR_GROWTH.into(),
+            DisplayValue::Float(self.variable.time_weighted_return(start, app.analysis_end)),
+        );
+        kv.insert(
+            KEY_CAGR_GROWTH.into(),
             DisplayValue::Float(
                 self.variable
-                    .time_weighted_return(app.analysis_start, app.analysis_end),
+                    .annualized_rate_of_return(start, app.analysis_end),
             ),
+        );
+        kv.insert(
+            KEY_MWRR_GROWTH.into(),
+            DisplayValue::Float(self.variable.money_weighted_return(start, app.analysis_end)),
         );
         kv.insert(
             KEY_REMAINING_CONTRIBUTION.into(),
@@ -1565,22 +1668,37 @@ impl AccountUI for RothIraAccount {
 
         let reports_chunks = Layout::default()
             .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(report_area);
+
+        let account_area = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(reports_chunks[0]);
+
+        let value_area = account_area[0];
+        let contribution_area = account_area[1];
+
+        let growth_area = Layout::default()
+            .direction(Direction::Horizontal)
             .constraints([
                 Constraint::Percentage(33),
                 Constraint::Percentage(34),
                 Constraint::Percentage(33),
             ])
-            .split(report_area);
+            .split(reports_chunks[1]);
 
-        let value_area = reports_chunks[0];
-        let twrr_area = reports_chunks[1];
-        let contribution_area = reports_chunks[2];
+        let twrr_area = growth_area[0];
+        let mwrr_area = growth_area[1];
+        let cagr_area = growth_area[2];
 
         self.render_ledger_table(frame, ledger_area, app);
         self.render_growth_chart(frame, graph_area, app);
         self.render_current_value(frame, value_area, app);
         self.render_remaining_contribution(frame, contribution_area, app);
         self.render_time_weighted_rate_of_return(frame, twrr_area, app);
+        self.render_annualized_rate_of_return(frame, cagr_area, app);
+        self.render_money_weighted_rate_of_return(frame, mwrr_area, app);
     }
 }
 

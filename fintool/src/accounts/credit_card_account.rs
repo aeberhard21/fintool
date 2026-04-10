@@ -139,6 +139,7 @@ impl CreditCardAccount {
         acct
     }
 
+    #[cfg(feature = "ratatui_support")]
     pub fn get_barchart_data(&self, app: &mut App) -> Option<BarChartData> {
         if let Some(mut expenditures) = self
             .charge

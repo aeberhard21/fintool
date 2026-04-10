@@ -18,6 +18,7 @@ use core::{alloc, f32};
 use std::backtrace;
 use std::collections::HashMap;
 use std::io::Read;
+use std::ops::Sub;
 use std::sync::Arc;
 
 use chrono::{Date, Days, Local, NaiveDate, NaiveDateTime};
@@ -1194,8 +1195,6 @@ impl VariableAccount {
         let mut vi;
         let mut rate = 0.0;
 
-        // println!("Beginning of analysis: {} - {}", period_start, period_end);
-
         let starting_fixed_value_opt = self
             .db
             .get_cumulative_total_of_ledger_on_date(self.uid, self.id, period_start)
@@ -1208,8 +1207,6 @@ impl VariableAccount {
             return f32::NAN;
         }
 
-        // let starting_fixed_value = self.fixed.get_value_on_day(period_start);
-
         let starting_variable_value = self.get_value_of_positions_on_day(
             &period_start
                 .checked_sub_days(Days::new(1))
@@ -1218,13 +1215,10 @@ impl VariableAccount {
 
         vi = starting_fixed_value + starting_variable_value;
 
-        // println!("Day: {}, Fixed: {}, Variable: {}", period_start.to_string(), starting_fixed_value, starting_variable_value);
-
         let external_transactions = Some(
             self.db
                 .get_ledger_entries_within_timestamps(self.uid, self.id, period_start, period_end)
                 .unwrap(),
-            // self.fixed.get_ledger_entries_between_timestamps(period_start, period_end)
         );
         if let Some(transactions) = external_transactions {
             if !transactions.is_empty() {
@@ -1247,10 +1241,8 @@ impl VariableAccount {
                     } else {
                         return f32::NAN;
                     }
-                    // let final_fixed_value = self.fixed.get_value_on_day(end_period);
 
                     let final_variable_value = self.get_value_of_positions_on_day(&end_period);
-                    // println!("Day: {}, Fixed: {}, Variable: {}", end_period.to_string(), final_fixed_value, final_variable_value);
                     vf = final_fixed_value + final_variable_value;
                     hp = (vf - (cf + vi)) / (cf + vi);
                     hps.push(hp);
@@ -1270,10 +1262,8 @@ impl VariableAccount {
         } else {
             return f32::NAN;
         }
-        // let final_fixed_value = self.fixed.get_value_on_day(period_end);
 
         let final_variable_value = self.get_value_of_positions_on_day(&period_end);
-        // println!("Day: {}, Fixed: {}, Variable: {}", period_end.to_string(), final_fixed_value, final_variable_value);
         vf = final_fixed_value + final_variable_value;
         hp = (vf - vi) / vi;
         hps.push(hp);
@@ -1286,7 +1276,7 @@ impl VariableAccount {
     }
 
     pub fn annualized_rate_of_return(&self, period_start: NaiveDate, period_end: NaiveDate) -> f32 {
-        let days = period_start.num_days_from_ce() - period_end.num_days_from_ce();
+        let days = period_end.num_days_from_ce() - period_start.num_days_from_ce();
         let end_value_opt = self.get_account_value_on_day(&period_end);
         if end_value_opt.is_none() {
             return f32::NAN;
@@ -1300,7 +1290,8 @@ impl VariableAccount {
         let start_value = start_value_opt.unwrap();
 
         let cr = (end_value - start_value) / start_value;
-        return (1. + cr).powf(365. / (days as f32)) - 1.;
+        let n = (days as f32) / 365.25;
+        return ((1. + cr).powf(1. / n) - 1.) * 100.;
     }
 
     pub fn money_weighted_return(&self, period_start: NaiveDate, period_end: NaiveDate) -> f32 {
@@ -1311,8 +1302,8 @@ impl VariableAccount {
         };
 
         fn irr(flows: &[CashFlow]) -> Option<f32> {
-            let mut low = -0.9999;
-            let mut high = 100.0; // allow very high return
+            let mut low = -0.29999;
+            let mut high = 1.; // allow very high return
             let tolerance = 1e-2;
 
             fn npv(rate: f32, flows: &[CashFlow]) -> f32 {
@@ -1341,11 +1332,21 @@ impl VariableAccount {
         }
 
         let mut cfs: Vec<CashFlow> = Vec::new();
+
+        let day_before = period_start.checked_sub_days(Days::new(1)).unwrap();
+        let initial_value = self.get_account_value_on_day(&day_before).unwrap();
+        cfs.push(CashFlow {
+            amount: -initial_value,
+            t: 0.0,
+        });
+
         let txns = self
             .db
             .get_ledger_entries_within_timestamps(self.uid, self.id, period_start, period_end)
             .unwrap();
+
         for txn in txns {
+            let txn_date = NaiveDate::parse_from_str(&txn.info.date, "%Y-%m-%d").unwrap();
             let amount = match txn.info.transfer_type {
                 TransferType::DepositFromExternalAccount => -txn.info.amount,
                 TransferType::WithdrawalToExternalAccount => txn.info.amount,
@@ -1354,9 +1355,7 @@ impl VariableAccount {
                 }
             };
 
-            let t = (NaiveDate::parse_from_str(&txn.info.date, "%Y-%m-%d").unwrap() - period_start)
-                .num_days() as f32
-                / 365.25;
+            let t = (txn_date - period_start).num_days() as f32 / 365.25;
             let cf = CashFlow {
                 amount: amount,
                 t: t,
@@ -1371,13 +1370,33 @@ impl VariableAccount {
             t: final_t,
         });
 
-        println!("{:?}", cfs);
-
-        return irr(&cfs).unwrap();
+        let irr_opt = irr(&cfs);
+        if irr_opt.is_none() {
+            f32::NAN
+        } else {
+            irr_opt.unwrap() * 100.
+        }
     }
 
     pub fn get_positions(&self) -> Option<Vec<(String, f32)>> {
         return self.db.get_positions(self.uid, self.id).unwrap();
+    }
+
+    pub fn get_costbasis(&self, ticker: String) -> f32 {
+        let x = self
+            .db
+            .get_total_cost_basis(self.id, self.uid, ticker)
+            .unwrap();
+        if x.is_none() {
+            return 0.0;
+        } else {
+            return x.unwrap();
+        }
+    }
+
+    #[cfg(feature = "ratatui_support")]
+    pub fn get_position_stats(&self) {
+        let positions = self.get_positions();
     }
 
     pub fn get_value_of_positions_on_day(&self, day: &NaiveDate) -> f32 {

@@ -1741,4 +1741,44 @@ impl DbConn {
             }
         }
     }
+
+    pub fn get_total_cost_basis(
+        &self,
+        uid: u32,
+        aid: u32,
+        ticker: String,
+    ) -> rusqlite::Result<Option<f32>, rusqlite::Error> {
+        let costbasis: f32;
+        let p = rusqlite::params![aid, ticker, uid];
+        let sql = "
+            SELECT
+                SUM(costbasis)
+            FROM stock_purchases 
+            INNER JOIN ledgers, people ON 
+                stock_purchases.lid = ledgers.id AND
+                stock_purchases.aid = ledgers.aid AND
+                stock_purchases.uid = ledgers.uid AND
+                ledgers.pid = people.id and
+                ledgers.aid = people.aid and
+                ledgers.uid = people.uid
+            WHERE 
+                ledgers.aid = (?1) and 
+                ledgers.uid = (?3) and
+                people.name LIKE (?2)
+            HAVING
+                remaining > 0.0
+            ";
+        let conn_lock = self.conn.lock().unwrap();
+        let mut stmt = conn_lock.prepare(sql)?;
+        let exists = stmt.exists(p)?;
+        match exists {
+            true => {
+                costbasis = stmt.query_row(p, |row| row.get(0))?;
+                return Ok(Some(costbasis));
+            }
+            false => {
+                return Ok(None);
+            }
+        }
+    }
 }
