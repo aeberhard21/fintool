@@ -24,7 +24,7 @@ use ratatui::{
 use strum::{Display, EnumIter, EnumString, FromRepr, IntoEnumIterator};
 use unicode_width::UnicodeWidthStr;
 
-use crate::types::ledger::DisplayableLedgerRecord;
+use crate::{accounts::base::DisplayablePositionStatistics, types::ledger::DisplayableLedgerRecord};
 
 pub const PALETTES: [tailwind::Palette; 4] = [
     tailwind::BLUE,
@@ -52,6 +52,7 @@ pub enum CurrentlySelecting {
     AccountTypeTabs,
     AccountTabs,
     Account,
+    Table,
 }
 
 impl CurrentlySelecting {
@@ -116,6 +117,50 @@ impl TabMenu for Pages {
         frame.render_widget(atype_tabs, area);
     }
 }
+
+#[derive(Display, Debug, Clone, Copy, FromRepr, PartialEq, Eq, EnumIter, PartialOrd)]
+pub enum TableView {
+    PrimaryView,
+    AlternateView,
+}
+
+impl TabMenu for TableView {
+    fn previous(self) -> Self {
+        let current = self as usize;
+        let prev = current.saturating_sub(1).min(TableView::PrimaryView as usize);
+        Self::from_repr(prev).unwrap_or(self)
+    }
+    fn next(self) -> Self {
+        let current = self as usize;
+        let next = current.saturating_add(1);
+        Self::from_repr(next).unwrap_or(self)
+    }
+    fn to_tab_title(value: Self) -> Line<'static> {
+        let text = format!("  {value}  ");
+        text.into()
+    }
+    fn render(frame: &mut Frame, area: Rect, selected_tab: usize, title: String, color: Color) {
+        let table_tabs = Tabs::new(
+            TableView::iter()
+                // filter out login screen
+                .filter(|x| *x >= TableView::PrimaryView)
+                .collect::<Vec<TableView>>()
+                .iter()
+                .map(|x| TableView::to_tab_title(*x)),
+        )
+        .highlight_style(color)
+        .select(selected_tab)
+        .block(
+            Block::bordered()
+                .title(title)
+                .style(Style::new().bg(tailwind::SLATE.c900)),
+        )
+        .padding("", "")
+        .divider(" ");
+        frame.render_widget(table_tabs, area);
+    }
+}
+
 
 // all table functions copied from table.rs ratatui example
 pub struct LedgerColors {
@@ -209,5 +254,69 @@ pub fn ledger_table_constraint_len_calculator(
         peer_len as u16,
         desc_len as u16,
         labels_len as u16,
+    )
+}
+
+pub fn positions_table_constraint_len_calculator(
+    entries: &[DisplayablePositionStatistics],
+) -> (u16, u16, u16, u16, u16, u16, u16, u16) {
+    let ticker_len = entries
+        .iter()
+        .map(|d| d.ticker.as_str())
+        .map(UnicodeWidthStr::width)
+        .max()
+        .unwrap_or(0);
+    let quantity_len = entries
+        .iter()
+        .map(|d| d.quantity.as_str())
+        .map(UnicodeWidthStr::width)
+        .max()
+        .unwrap_or(0);
+    let value_len = entries
+        .iter()
+        .map(|d| d.value.as_str())
+        .map(UnicodeWidthStr::width)
+        .max()
+        .unwrap_or(0);
+    let price_len = entries
+        .iter()
+        .map(|d| d.price.as_str())
+        .map(UnicodeWidthStr::width)
+        .max()
+        .unwrap_or(0);
+    let total_cost_basis_len = entries
+        .iter()
+        .map(|d| d.total_cost_basis.as_str())
+        .map(UnicodeWidthStr::width)
+        .max()
+        .unwrap_or(0);
+    let unit_cost_len = entries
+        .iter()
+        .map(|d| d.unit_cost.as_str())
+        .map(UnicodeWidthStr::width)
+        .max()
+        .unwrap_or(0);
+    let unrealized_gl_len = entries
+        .iter()
+        .map(|d| d.unrealized_gl.as_str())
+        .map(UnicodeWidthStr::width)
+        .max()
+        .unwrap_or(0);
+    let unrealized_gl_per_len = entries
+        .iter()
+        .map(|d| d.unrealized_gl_per.as_str())
+        .map(UnicodeWidthStr::width)
+        .max()
+        .unwrap_or(0);
+
+    (
+        (ticker_len as u16).max(DisplayablePositionStatistics::get_ticker_str().len() as u16),
+        (quantity_len as u16).max(DisplayablePositionStatistics::get_quantity_str().len() as u16),
+        (value_len as u16).max(DisplayablePositionStatistics::get_value_str().len() as u16),
+        (price_len as u16).max(DisplayablePositionStatistics::get_price_str().len() as u16),
+        (total_cost_basis_len as u16).max(DisplayablePositionStatistics::get_total_cost_basis_str().len() as u16),
+        (unit_cost_len as u16).max(DisplayablePositionStatistics::get_unit_cost_str().len() as u16),
+        (unrealized_gl_len as u16).max(DisplayablePositionStatistics::get_unrealized_gl_str().len() as u16),
+        (unrealized_gl_per_len as u16).max(DisplayablePositionStatistics::get_unrealized_gl_per_str().len() as u16),
     )
 }

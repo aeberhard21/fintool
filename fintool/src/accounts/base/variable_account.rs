@@ -19,7 +19,7 @@ use std::backtrace;
 use std::collections::HashMap;
 use std::io::Read;
 use std::ops::Sub;
-use std::sync::Arc;
+use std::sync::{Arc, RwLockReadGuard};
 
 use chrono::{Date, Days, Local, NaiveDate, NaiveDateTime};
 use chrono::{Datelike, NaiveTime};
@@ -31,7 +31,7 @@ use time::OffsetDateTime;
 use yahoo_finance_api::Quote;
 use yahoo_finance_api::YahooError;
 
-use crate::accounts::base::{SharesOwned, StockData};
+use crate::accounts::base::{SharesOwned, StockData, DisplayablePositionStatistics};
 use crate::database::DbConn;
 use crate::types::investments::{
     SaleAllocationInfo, SaleAllocationRecord, StockInfo, StockRecord, StockSplitAllocationInfo,
@@ -42,7 +42,7 @@ use crate::types::participants::ParticipantAutoCompleter;
 use crate::types::participants::ParticipantType;
 use crate::types::stock_prices::StockPriceInfo;
 use crate::types::stock_prices::StockPriceRecord;
-use shared_lib::stocks::{self, get_stock_history};
+use shared_lib::stocks::{self, get_stock_history, get_stock_quote};
 use shared_lib::{LedgerEntry, TransferType};
 
 use super::fixed_account::FixedAccount;
@@ -1395,8 +1395,66 @@ impl VariableAccount {
     }
 
     #[cfg(feature = "ratatui_support")]
-    pub fn get_position_stats(&self) {
-        let positions = self.get_positions();
+    pub fn get_position_stats(&self) -> Option<Vec<DisplayablePositionStatistics>> {
+        #[derive(Debug,Clone)]
+        struct Position {
+            ticker: String,
+            shares: f32,
+        };
+
+        if let Some(positions) = self.get_positions() {
+            let positions = positions
+                .iter()
+                .map(|x| Position {ticker : x.0.clone(), shares : x.1})
+                .collect::<Vec<Position>>();
+            let filtered_positions = 
+                positions
+                    .iter()
+                    .filter(|x| x.shares != 0.0)
+                    .into_iter()
+                    .map(|x| x.clone())
+                    .collect::<Vec<Position>>();
+
+            let mut statistics : Vec<DisplayablePositionStatistics> = Vec::new();
+            for position in filtered_positions {    
+                let cost_basis = self.db.get_total_cost_basis(self.uid, self.id, position.ticker.clone()).unwrap().unwrap();
+                // let unit_price = get_stock_quote(position.ticker.clone(), Local::now().date_naive()).unwrap().close as f32;
+                let quote_opt = self.get_latest_quote(position.ticker.clone());
+                let stats = if let Some(quote) = quote_opt {
+                    let unit_price = quote.close as f32;
+                    let current_value = unit_price * position.shares.clone();
+                    let effective_unit_cost = cost_basis / position.shares.clone();
+                    let unrealized_gl = current_value - cost_basis;
+                    let unrealized_gl_percent = (current_value - cost_basis)/(cost_basis) * 100.;
+                    
+                    DisplayablePositionStatistics { 
+                        ticker: position.ticker, 
+                        quantity: format!("{:.2}",position.shares), 
+                        value: format!("{:.2}", current_value), 
+                        price: format!("{:.2}", unit_price), 
+                        total_cost_basis: format!("{:.2}", cost_basis), 
+                        unit_cost: format!("{:.2}", effective_unit_cost), 
+                        unrealized_gl: format!("{:.2}", unrealized_gl), 
+                        unrealized_gl_per: format!("{:.2}", unrealized_gl_percent) 
+                    }
+                } else {
+                    DisplayablePositionStatistics { 
+                        ticker: position.ticker, 
+                        quantity: format!("{:.2}",position.shares), 
+                        value: format!("{}", "Not known!"), 
+                        price: format!("{}", "Not found!"), 
+                        total_cost_basis: format!("{:.2}", cost_basis), 
+                        unit_cost: format!("{}", "Not known!"), 
+                        unrealized_gl: format!("{}", "Not known!"), 
+                        unrealized_gl_per: format!("{}", "Not known!") }
+                };
+
+                statistics.push(stats)
+            }
+            Some(statistics)
+        } else { 
+            None
+        }
     }
 
     pub fn get_value_of_positions_on_day(&self, day: &NaiveDate) -> f32 {
@@ -1560,5 +1618,17 @@ impl VariableAccount {
             });
         }
         return quotes;
+    }
+
+    fn get_latest_quote(&self, ticker : String) -> Option<Quote> {
+        if let Some(buffer) = self.buffer.as_ref() { 
+            let rcrd = buffer.iter().find(|x| x.ticker == ticker);
+            if let Some(record) = rcrd { 
+                return record.quotes.last().cloned();
+            } else { 
+                return None;
+            }
+        }
+        None
     }
 }

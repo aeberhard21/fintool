@@ -25,8 +25,16 @@ pub mod roth_ira;
 pub mod wallet;
 
 use crate::accounts::bank_account::BankAccount;
+#[cfg(feature = "ratatui_support")]
+use crate::accounts::base::VariableAccountUI;
 use crate::accounts::base::liquid_account::LiquidAccount;
 use crate::accounts::base::Account;
+#[cfg(feature = "ratatui_support")]
+use crate::accounts::investment_account_manager::InvestmentAccountManager;
+#[cfg(feature = "ratatui_support")]
+use crate::accounts::retirement_401k_plan::Retirement401kPlan;
+#[cfg(feature = "ratatui_support")]
+use crate::accounts::roth_ira::RothIraAccount;
 use crate::accounts::wallet::Wallet;
 
 #[cfg(feature = "ratatui_support")]
@@ -37,5 +45,19 @@ pub fn as_liquid_account(account: &dyn Account) -> Option<&dyn LiquidAccount> {
     if let Some(ca) = account.as_any().downcast_ref::<Wallet>() {
         return Some(ca);
     }
+    None
+}
+
+#[cfg(feature = "ratatui_support")]
+pub fn as_investment_account(account: &dyn Account) -> Option<&dyn VariableAccountUI> { 
+    if let Some(ca) = account.as_any().downcast_ref::<InvestmentAccountManager>() {
+        return Some(ca);
+    }
+    // if let Some(ca) = account.as_any().downcast_ref::<RothIraAccount>() {
+    //     return Some(ca);
+    // }
+    // if let Some(ca) = account.as_any().downcast_ref::<Retirement401kPlan>() {
+    //     return Some(ca);
+    // }
     None
 }

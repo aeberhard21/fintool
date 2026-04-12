@@ -53,7 +53,13 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 #[cfg(feature = "ratatui_support")]
+use crate::accounts::base::VariableAccountUI;
+#[cfg(feature = "ratatui_support")]
 use crate::app::app::{App, DisplayValue, LineChart};
+#[cfg(feature = "ratatui_support")]
+use crate::app::screen::CurrentlySelecting;
+#[cfg(feature = "ratatui_support")]
+use crate::app::screen::TableView;
 #[cfg(feature = "ratatui_support")]
 use crate::app::screen::ledger_table_constraint_len_calculator;
 use crate::database::DbConn;
@@ -67,6 +73,8 @@ use crate::types::investments::StockInfo;
 use crate::types::investments::StockRecord;
 use crate::types::investments::StockSplitInfo;
 use crate::types::investments::StockSplitRecord;
+#[cfg(feature = "ratatui_support")]
+use crate::types::ledger;
 use crate::types::ledger::DisplayableLedgerInfo;
 use crate::types::ledger::DisplayableLedgerRecord;
 use crate::types::ledger::LedgerInfo;
@@ -88,9 +96,10 @@ use super::base::KEY_TOTAL_VALUE;
 #[cfg(feature = "ratatui_support")]
 use crate::ui::{centered_rect, float_range};
 
-pub const KEY_TWRR_GROWTH: &str = "GROWTH_TWRR";
-pub const KEY_CAGR_GROWTH: &str = "GROWTH_CAGR";
-pub const KEY_MWRR_GROWTH: &str = "GROWTH_MWRR";
+pub const KEY_TWRR_GROWTH: &str = "KEY_GROWTH_TWRR";
+pub const KEY_CAGR_GROWTH: &str = "KEY_GROWTH_CAGR";
+pub const KEY_MWRR_GROWTH: &str = "KEY_GROWTH_MWRR";
+pub const KEY_POSITIONS_TABLE : &str = "KEY_POSITIONS_TABLE";
 
 pub struct InvestmentAccountManager {
     uid: u32,
@@ -1300,20 +1309,6 @@ impl AccountData for InvestmentAccountManager {
     }
     fn get_displayable_ledger(&self) -> Vec<crate::types::ledger::DisplayableLedgerRecord> {
         return self.db.get_displayable_ledger(self.uid, self.id).unwrap();
-        // return self.get_ledger().clone().iter().map(|x| {
-        //     DisplayableLedgerRecord {
-        //         id : x.id.to_string(),
-        //         info : DisplayableLedgerInfo {
-        //             date : x.info.date,
-        //             amount : x.info.amount.to_string(),
-        //             transfer_type : x.info.transfer_type.to_string(),
-        //             participant : x.info.participant.to_string(),
-        //             category : x.info.category_id.to_string(),
-        //             description : x.info.description,
-        //             labels : x.info.labels
-        //         }
-        //     }
-        // })
     }
     fn get_value(&self) -> f32 {
         return self.variable.get_current_value();
@@ -1572,6 +1567,7 @@ impl AccountUI for InvestmentAccountManager {
         app.ledger_entries = Some(self.get_displayable_ledger());
         app.linechart_cache = self.get_linechart(app);
         app.barchart_cache = None;
+        app.positions_entries = self.variable.get_position_stats();
     }
 
     fn render(&self, frame: &mut Frame, area: Rect, app: &mut App) {
@@ -1581,7 +1577,7 @@ impl AccountUI for InvestmentAccountManager {
             .split(area);
 
         let data_area = chunk[0];
-        let ledger_area = chunk[1];
+        let table_area = chunk[1];
 
         let reports_graphs = Layout::default()
             .direction(Direction::Horizontal)
@@ -1610,11 +1606,62 @@ impl AccountUI for InvestmentAccountManager {
         let mwrr_area = growth_area[1];
         let cagr_area = growth_area[2];
 
+        let table_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(3), Constraint::Min(3)])
+            .split(table_area);
+
+        let table_tab_area = table_chunks[0];
+        let ledger_area = table_chunks[1];
+
+        fn render_table_tabs(
+            frame: &mut Frame,
+            area: Rect,
+            tab_names: Vec<String>,
+            selected_tab: usize,
+            highlight_color: Color,
+        ) {
+            let atype_tabs = Tabs::new(tab_names.into_iter())
+                .highlight_style(highlight_color)
+                .select(selected_tab)
+                .block(
+                    Block::bordered()
+                        .title(" Tables ")
+                        .style(Style::new().bg(tailwind::SLATE.c900)),
+                )
+                .padding("", "")
+                .divider(" | ");
+            frame.render_widget(atype_tabs, area);
+        }
+
+        // color according to current selection
+        if let Some(current_selection) = app.currently_selected {
+            match current_selection { 
+                CurrentlySelecting::Account => { 
+                    render_table_tabs(frame, table_tab_area, vec!["Transactions".to_string(), "Positions".to_string()], app.selected_table_tab, Color::Red);
+                }
+                CurrentlySelecting::Table => { 
+                    render_table_tabs(frame, table_tab_area, vec!["Transactions".to_string(), "Positions".to_string()], app.selected_table_tab, Color::Green);
+                }
+                _ => {
+                    render_table_tabs(frame, table_tab_area, vec!["Transactions".to_string(), "Positions".to_string()], app.selected_table_tab, Color::Reset);
+                }
+            }
+
+        }
+
         #[cfg(feature = "timer")]
         {
             let render_start = Instant::now();
         }
-        self.render_ledger_table(frame, ledger_area, app);
+        match app.table_view {
+            TableView::PrimaryView => {
+                self.render_ledger_table(frame, ledger_area, app);
+            }
+            _ => { 
+                self.render_positions_table(frame, ledger_area, app);
+            }
+        }
         #[cfg(feature = "timer")]
         {
             let duration_to_render = render_start.elapsed();
@@ -1623,6 +1670,7 @@ impl AccountUI for InvestmentAccountManager {
             }
             let render_start = Instant::now();
         }
+
         self.render_growth_chart(frame, graph_area, app);
         #[cfg(feature = "timer")]
         {
@@ -1667,6 +1715,9 @@ impl AccountUI for InvestmentAccountManager {
         }
     }
 }
+
+#[cfg(feature = "ratatui_support")]
+impl VariableAccountUI for InvestmentAccountManager {}
 
 impl Account for InvestmentAccountManager {
     fn kind(&self) -> AccountType {

@@ -19,8 +19,8 @@ use std::collections::HashMap;
 use chrono::{Datelike, Local, NaiveDate};
 use ratatui::widgets::{Chart, ScrollbarState, TableState};
 
-use crate::accounts::base::AnalysisPeriod;
-use crate::app::screen::PALETTES;
+use crate::accounts::base::{AnalysisPeriod, DisplayablePositionStatistics};
+use crate::app::screen::{PALETTES};
 use crate::database::DbConn;
 use crate::tui::decode_and_init_account_type;
 use crate::types::accounts::AccountType;
@@ -28,7 +28,7 @@ use crate::types::ledger::{DisplayableLedgerRecord, LedgerRecord};
 use crate::{accounts, is_account_type};
 use crate::{accounts::base::Account, app::screen::TabMenu};
 
-use super::screen::{CurrentScreen, CurrentlySelecting, LedgerColors, Pages, UserLoadedState};
+use super::screen::{CurrentScreen, CurrentlySelecting, LedgerColors, Pages, UserLoadedState, TableView};
 
 const ITEM_HEIGHT: usize = 2;
 
@@ -77,6 +77,7 @@ pub struct App {
     pub ledger_table_state: TableState,
     pub ledger_table_colors: LedgerColors,
     pub ledger_entries: Option<Vec<DisplayableLedgerRecord>>,
+    pub positions_entries : Option<Vec<DisplayablePositionStatistics>>,
     pub analysis_period: AnalysisPeriod,
     pub analysis_start: NaiveDate,
     pub analysis_end: NaiveDate,
@@ -87,6 +88,8 @@ pub struct App {
     pub page_cache_f32: Option<HashMap<String, DisplayValue>>,
     pub linechart_cache: Option<LineChart>,
     pub barchart_cache: Option<BarChartData>,
+    pub table_view : TableView,
+    pub selected_table_tab: usize,
 }
 
 impl App {
@@ -108,6 +111,7 @@ impl App {
             ledger_table_state: TableState::default().with_selected(0),
             ledger_table_colors: LedgerColors::new(&PALETTES[1]),
             ledger_entries: None,
+            positions_entries: None,
             analysis_period: AnalysisPeriod::YTD,
             analysis_start: NaiveDate::from_ymd_opt(Local::now().year(), 1, 1).unwrap(),
             analysis_end: Local::now().date_naive(),
@@ -118,6 +122,8 @@ impl App {
             page_cache_f32: None,
             linechart_cache: None,
             barchart_cache: None,
+            table_view : TableView::PrimaryView,
+            selected_table_tab: 0,
         }
     }
 
@@ -168,6 +174,18 @@ impl App {
             return;
         }
         self.selected_account_tab = self.selected_account_tab.saturating_sub(1).max(0)
+    }
+
+    pub fn advance_table_view(&mut self) { 
+        self.table_view = self.table_view.next();
+        self.selected_table_tab = self.selected_table_tab
+            .saturating_add(1)
+            .min(1);
+    }
+
+    pub fn retreat_table_view(&mut self) { 
+        self.table_view = self.table_view.previous();
+        self.selected_table_tab = self.selected_table_tab.saturating_sub(1).max(0)
     }
 
     pub fn skip_to_last_account(&mut self) {

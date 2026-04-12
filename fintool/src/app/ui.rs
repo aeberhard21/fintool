@@ -72,6 +72,12 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
             ),
             CurrentScreen::Landing => {
                 match app.currently_selected.unwrap() {
+                    CurrentlySelecting::Table => {
+                        Span::styled (
+                        "(q) to quit / (◀︎) Move Tab Left / (▶︎) Move Tab Right / (⏎) Select / (⌫) Deselect",
+                        Style::default().fg(Color::LightBlue),
+                        )
+                    }
                     CurrentlySelecting::AccountTypeTabs|CurrentlySelecting::AccountTabs => {
                         Span::styled (
                         "(q) to quit / (◀︎) Move Tab Left / (▶︎) Move Tab Right / (⏎) Select / (⌫) Deselect / (c) Create Account",
@@ -267,7 +273,7 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
                             Color::Red,
                         );
                     }
-                    CurrentlySelecting::AccountTabs | CurrentlySelecting::Account => {
+                    CurrentlySelecting::AccountTabs | CurrentlySelecting::Account | CurrentlySelecting::Table => {
                         AccountType::render(
                             frame,
                             account_chunks[0],
@@ -288,6 +294,7 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
                 }
             }
 
+            // color code selected account
             if let Some(current_selection) = app.currently_selected {
                 match current_selection {
                     CurrentlySelecting::AccountTabs => render_account_tabs(
@@ -297,7 +304,7 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
                         app.selected_account_tab,
                         Color::Red,
                     ),
-                    CurrentlySelecting::Account => render_account_tabs(
+                    CurrentlySelecting::Account | CurrentlySelecting::Table => render_account_tabs(
                         frame,
                         account_chunks[1],
                         app.accounts_for_type.clone(),

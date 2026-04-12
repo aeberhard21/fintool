@@ -1752,7 +1752,7 @@ impl DbConn {
         let p = rusqlite::params![aid, ticker, uid];
         let sql = "
             SELECT
-                SUM(costbasis)
+                SUM(amount)
             FROM stock_purchases 
             INNER JOIN ledgers, people ON 
                 stock_purchases.lid = ledgers.id AND

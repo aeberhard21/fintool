@@ -17,7 +17,7 @@
 #[cfg(feature = "ratatui_support")]
 use crate::app::app::{App, DisplayValue};
 #[cfg(feature = "ratatui_support")]
-use crate::app::screen::ledger_table_constraint_len_calculator;
+use crate::app::screen::{ledger_table_constraint_len_calculator, positions_table_constraint_len_calculator};
 use crate::database::DbConn;
 use crate::types::accounts::AccountRecord;
 use crate::types::accounts::AccountType;
@@ -25,6 +25,8 @@ use crate::types::ledger::{DisplayableLedgerRecord, LedgerRecord};
 #[cfg(feature = "ratatui_support")]
 use crate::ui::centered_rect;
 use chrono::{naive, NaiveDate, NaiveDateTime};
+#[cfg(feature = "ratatui_support")]
+use ratatui::symbols::block;
 #[cfg(feature = "ratatui_support")]
 use ratatui::{
     buffer::Buffer,
@@ -238,6 +240,146 @@ pub trait AccountUI: AccountData {
     }
 }
 
+#[cfg(feature = "ratatui_support")]
+pub trait VariableAccountUI : AccountData {
+    fn render_positions_table(&self, frame: &mut Frame, area: Rect, app: &mut App) {
+
+        let block_title = "Positions";
+
+        let header_style = Style::default()
+            .fg(app.ledger_table_colors.header_fg)
+            .bg(app.ledger_table_colors.header_bg);
+
+        let selected_row_style = Style::new()
+            .add_modifier(Modifier::REVERSED)
+            .fg(app.ledger_table_colors.selected_row_style_fg);
+
+        let header = [
+            DisplayablePositionStatistics::get_ticker_str(),
+            DisplayablePositionStatistics::get_quantity_str(),
+            DisplayablePositionStatistics::get_value_str(),
+            DisplayablePositionStatistics::get_price_str(),
+            DisplayablePositionStatistics::get_total_cost_basis_str(),
+            DisplayablePositionStatistics::get_unit_cost_str(),
+            DisplayablePositionStatistics::get_unrealized_gl_str(),
+            DisplayablePositionStatistics::get_unrealized_gl_per_str()
+        ]        
+        .into_iter()
+        .map(Cell::from)
+        .collect::<Row>()
+        .style(header_style)
+        .height(1);
+
+        let position_entries = app.positions_entries.take();
+        if let Some(ledger) = position_entries.as_ref() {
+            let data = ledger;
+
+            let rows = data.iter().enumerate().map(|(i, record)| {
+                let color = match i % 2 {
+                    0 => app.ledger_table_colors.normal_row_color,
+                    _ => app.ledger_table_colors.alt_row_color,
+                };
+                let item = [
+                    &record.ticker,
+                    &record.quantity,
+                    &record.value,
+                    &record.price,
+                    &record.total_cost_basis,
+                    &record.unit_cost,
+                    &record.unrealized_gl,
+                    &record.unrealized_gl_per,
+                ];
+                item.into_iter()
+                    .enumerate()
+                    .map(|content| {
+                        let index = content.0;
+                        let value = content.1;
+                        match index {
+                            0|1|3|5 => {
+                                Cell::from(ratatuiText::from(format!("\n{value}\n")).style(tailwind::WHITE))
+                            }
+                            _ => {
+                                if value.parse::<f32>().unwrap() < 0.0 { 
+                                    Cell::from(ratatuiText::from(format!("\n{value}\n")).style(tailwind::ROSE.c500))
+                                } else { 
+                                    Cell::from(ratatuiText::from(format!("\n{value}\n")).style(tailwind::EMERALD.c500))
+                                }
+                            }
+                        }
+                    })
+                    .collect::<Row>()
+                    .style(Style::new().fg(app.ledger_table_colors.row_fg).bg(color))
+                    .height(4)
+            });
+
+            let bar: &'static str = " █ ";
+            let constraint_lens = positions_table_constraint_len_calculator(&data);
+            let t = Table::new(
+                rows,
+                [
+                    Constraint::Length(constraint_lens.0 + 1),
+                    Constraint::Min(constraint_lens.1 + 1),
+                    Constraint::Min(constraint_lens.2 + 1),
+                    Constraint::Min(constraint_lens.3 + 1),
+                    Constraint::Min(constraint_lens.4 + 1),
+                    Constraint::Min(constraint_lens.5 + 1),
+                    // don't take more than 25% of screen when display descriptions
+                    Constraint::Min(area.width / 4),
+                    Constraint::Min(constraint_lens.7 + 1),
+                ],
+            )
+            .header(header)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(block_title)
+                    .title_alignment(layout::Alignment::Center),
+            )
+            .row_highlight_style(selected_row_style)
+            .highlight_symbol(ratatuiText::from(vec![
+                "".into(),
+                bar.into(),
+                bar.into(),
+                "".into(),
+            ]))
+            .bg(app.ledger_table_colors.buffer_bg)
+            .highlight_spacing(HighlightSpacing::Always);
+
+            frame.render_stateful_widget(t, area, &mut app.ledger_table_state);
+        } else {
+            let value = ratatuiText::styled(
+                "No data to display!",
+                Style::default().fg(tailwind::ROSE.c400).bold(),
+            );
+
+            let display = Paragraph::new(value)
+                .centered()
+                .alignment(layout::Alignment::Center)
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title(block_title)
+                        .title_alignment(layout::Alignment::Center)
+                        .padding(Padding::new(
+                            0,
+                            0,
+                            (if area.height > 4 {
+                                area.height / 2 - 2
+                            } else {
+                                0
+                            }),
+                            0,
+                        )),
+                )
+                .bg(tailwind::SLATE.c900);
+
+            frame.render_widget(display, area);
+        }
+
+        app.positions_entries = position_entries;
+    }
+}
+
 #[cfg(not(feature = "ratatui_support"))]
 pub trait Account: AccountData + AccountOperations + Any {
     fn kind(&self) -> AccountType;
@@ -298,4 +440,43 @@ struct StockData {
 struct SharesOwned {
     date: NaiveDate,
     shares: f32,
+}
+
+#[derive(Debug, Clone)]
+pub struct DisplayablePositionStatistics { 
+    pub ticker : String,
+    pub quantity : String, 
+    pub value : String, 
+    pub price : String,
+    pub total_cost_basis : String, 
+    pub unit_cost : String, 
+    pub unrealized_gl : String,
+    pub unrealized_gl_per : String,
+}
+
+impl DisplayablePositionStatistics {
+    pub fn get_ticker_str() -> String { 
+        "Ticker".to_string()
+    }
+    pub fn get_quantity_str() -> String { 
+        "Quantity (UoM)".to_string()
+    }
+    pub fn get_value_str() -> String { 
+        "Value ($)".to_string()
+    }    
+    pub fn get_price_str() -> String { 
+        "Price ($)".to_string()
+    }    
+    pub fn get_total_cost_basis_str() -> String { 
+        "Total Cost Basis ($)".to_string()
+    }
+    pub fn get_unit_cost_str() -> String { 
+        "Unit Cost ($)".to_string()
+    }
+    pub fn get_unrealized_gl_str() -> String { 
+        "Unrealized G/L ($)".to_string()
+    }
+    pub fn get_unrealized_gl_per_str() -> String { 
+        "Unrealized G/L (%)".to_string()
+    }   
 }
