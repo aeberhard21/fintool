@@ -118,50 +118,6 @@ impl TabMenu for Pages {
     }
 }
 
-#[derive(Display, Debug, Clone, Copy, FromRepr, PartialEq, Eq, EnumIter, PartialOrd)]
-pub enum TableView {
-    PrimaryView,
-    AlternateView,
-}
-
-impl TabMenu for TableView {
-    fn previous(self) -> Self {
-        let current = self as usize;
-        let prev = current.saturating_sub(1).min(TableView::PrimaryView as usize);
-        Self::from_repr(prev).unwrap_or(self)
-    }
-    fn next(self) -> Self {
-        let current = self as usize;
-        let next = current.saturating_add(1);
-        Self::from_repr(next).unwrap_or(self)
-    }
-    fn to_tab_title(value: Self) -> Line<'static> {
-        let text = format!("  {value}  ");
-        text.into()
-    }
-    fn render(frame: &mut Frame, area: Rect, selected_tab: usize, title: String, color: Color) {
-        let table_tabs = Tabs::new(
-            TableView::iter()
-                // filter out login screen
-                .filter(|x| *x >= TableView::PrimaryView)
-                .collect::<Vec<TableView>>()
-                .iter()
-                .map(|x| TableView::to_tab_title(*x)),
-        )
-        .highlight_style(color)
-        .select(selected_tab)
-        .block(
-            Block::bordered()
-                .title(title)
-                .style(Style::new().bg(tailwind::SLATE.c900)),
-        )
-        .padding("", "")
-        .divider(" ");
-        frame.render_widget(table_tabs, area);
-    }
-}
-
-
 // all table functions copied from table.rs ratatui example
 pub struct LedgerColors {
     pub buffer_bg: Color,

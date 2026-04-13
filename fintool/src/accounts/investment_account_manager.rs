@@ -59,9 +59,6 @@ use crate::app::app::{App, DisplayValue, LineChart};
 #[cfg(feature = "ratatui_support")]
 use crate::app::screen::CurrentlySelecting;
 #[cfg(feature = "ratatui_support")]
-use crate::app::screen::TableView;
-#[cfg(feature = "ratatui_support")]
-use crate::app::screen::ledger_table_constraint_len_calculator;
 use crate::database::DbConn;
 use crate::tui::get_analysis_period_dates;
 use crate::tui::query_user_for_analysis_period;
@@ -95,6 +92,7 @@ use super::base::AccountUI;
 use super::base::KEY_TOTAL_VALUE;
 #[cfg(feature = "ratatui_support")]
 use super::base::render_table_tabs;
+#[cfg(feature = "ratatui_support")]
 use crate::ui::{centered_rect, float_range};
 
 pub const KEY_TWRR_GROWTH: &str = "KEY_GROWTH_TWRR";
@@ -1628,15 +1626,14 @@ impl AccountUI for InvestmentAccountManager {
                     render_table_tabs(frame, table_tab_area, self.renders_tables(), app.selected_table_tab, Color::Reset);
                 }
             }
-
         }
 
         #[cfg(feature = "timer")]
         {
             let render_start = Instant::now();
         }
-        match app.table_view {
-            TableView::PrimaryView => {
+        match app.selected_table_tab {
+            0 => {
                 self.render_ledger_table(frame, ledger_area, app);
             }
             _ => { 
@@ -1720,9 +1717,11 @@ impl Account for InvestmentAccountManager {
             .update_account(self.uid, self.id, &acct.info)
             .unwrap();
     }
+    #[cfg(feature = "ratatui_support")]
     fn as_variable_account(&self) -> Option<&dyn VariableAccountUI> {
         return Some(self);
     }
+    #[cfg(feature = "ratatui_support")]
     fn renders_tables(&self) -> Vec<String> {
         return vec!["Transactions".to_string(), "Positions".to_string()];
     }

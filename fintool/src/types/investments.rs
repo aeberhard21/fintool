@@ -1764,9 +1764,8 @@ impl DbConn {
             WHERE 
                 ledgers.aid = (?1) and 
                 ledgers.uid = (?3) and
-                people.name LIKE (?2)
-            HAVING
-                remaining > 0.0
+                people.name LIKE (?2) and
+                stock_purchases.remaining > 0.0;
             ";
         let conn_lock = self.conn.lock().unwrap();
         let mut stmt = conn_lock.prepare(sql)?;

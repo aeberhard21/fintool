@@ -1415,10 +1415,20 @@ impl VariableAccount {
                     .map(|x| x.clone())
                     .collect::<Vec<Position>>();
 
+            use std::fs::OpenOptions;
+            use std::io::Write;
+            // let mut file = OpenOptions::new()
+            //     .create(true)
+            //     .append(true)
+            //     .open("debug.log")
+            //     .unwrap();
+
             let mut statistics : Vec<DisplayablePositionStatistics> = Vec::new();
-            for position in filtered_positions {    
+            for position in filtered_positions {
+                let x = format!("{},{},{}", self.uid, self.id, position.ticker.to_string());
+                // writeln!(file,"{x}").expect("failed to write");
+                // file.flush().ok();
                 let cost_basis = self.db.get_total_cost_basis(self.uid, self.id, position.ticker.clone()).unwrap().unwrap();
-                // let unit_price = get_stock_quote(position.ticker.clone(), Local::now().date_naive()).unwrap().close as f32;
                 let quote_opt = self.get_latest_quote(position.ticker.clone());
                 let stats = if let Some(quote) = quote_opt {
                     let unit_price = quote.close as f32;

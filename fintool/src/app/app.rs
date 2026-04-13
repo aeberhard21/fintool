@@ -28,7 +28,7 @@ use crate::types::ledger::{DisplayableLedgerRecord, LedgerRecord};
 use crate::{accounts, is_account_type};
 use crate::{accounts::base::Account, app::screen::TabMenu};
 
-use super::screen::{CurrentScreen, CurrentlySelecting, LedgerColors, Pages, UserLoadedState, TableView};
+use super::screen::{CurrentScreen, CurrentlySelecting, LedgerColors, Pages, UserLoadedState};
 
 const ITEM_HEIGHT: usize = 2;
 
@@ -88,7 +88,6 @@ pub struct App {
     pub page_cache_f32: Option<HashMap<String, DisplayValue>>,
     pub linechart_cache: Option<LineChart>,
     pub barchart_cache: Option<BarChartData>,
-    pub table_view : TableView,
     pub selected_table_tab: usize,
 }
 
@@ -122,7 +121,6 @@ impl App {
             page_cache_f32: None,
             linechart_cache: None,
             barchart_cache: None,
-            table_view : TableView::PrimaryView,
             selected_table_tab: 0,
         }
     }
@@ -177,14 +175,12 @@ impl App {
     }
 
     pub fn advance_table_view(&mut self) { 
-        self.table_view = self.table_view.next();
         self.selected_table_tab = self.selected_table_tab
             .saturating_add(1)
             .min(1);
     }
 
     pub fn retreat_table_view(&mut self) { 
-        self.table_view = self.table_view.previous();
         self.selected_table_tab = self.selected_table_tab.saturating_sub(1).max(0)
     }
 
