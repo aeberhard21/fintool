@@ -1103,6 +1103,9 @@ impl Account for Wallet {
             .update_account(self.uid, self.id, &acct.info)
             .unwrap();
     }
+    fn as_liquid_account(&self) -> Option<&dyn LiquidAccount> {
+        return Some(self);
+    }
 }
 
 impl LiquidAccount for Wallet {

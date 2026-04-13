@@ -94,6 +94,7 @@ use super::base::AccountOperations;
 use super::base::AccountUI;
 use super::base::KEY_TOTAL_VALUE;
 #[cfg(feature = "ratatui_support")]
+use super::base::render_table_tabs;
 use crate::ui::{centered_rect, float_range};
 
 pub const KEY_TWRR_GROWTH: &str = "KEY_GROWTH_TWRR";
@@ -1614,37 +1615,17 @@ impl AccountUI for InvestmentAccountManager {
         let table_tab_area = table_chunks[0];
         let ledger_area = table_chunks[1];
 
-        fn render_table_tabs(
-            frame: &mut Frame,
-            area: Rect,
-            tab_names: Vec<String>,
-            selected_tab: usize,
-            highlight_color: Color,
-        ) {
-            let atype_tabs = Tabs::new(tab_names.into_iter())
-                .highlight_style(highlight_color)
-                .select(selected_tab)
-                .block(
-                    Block::bordered()
-                        .title(" Tables ")
-                        .style(Style::new().bg(tailwind::SLATE.c900)),
-                )
-                .padding("", "")
-                .divider(" | ");
-            frame.render_widget(atype_tabs, area);
-        }
-
         // color according to current selection
         if let Some(current_selection) = app.currently_selected {
             match current_selection { 
                 CurrentlySelecting::Account => { 
-                    render_table_tabs(frame, table_tab_area, vec!["Transactions".to_string(), "Positions".to_string()], app.selected_table_tab, Color::Red);
+                    render_table_tabs(frame, table_tab_area, self.renders_tables(), app.selected_table_tab, Color::Red);
                 }
                 CurrentlySelecting::Table => { 
-                    render_table_tabs(frame, table_tab_area, vec!["Transactions".to_string(), "Positions".to_string()], app.selected_table_tab, Color::Green);
+                    render_table_tabs(frame, table_tab_area, self.renders_tables(), app.selected_table_tab, Color::Green);
                 }
                 _ => {
-                    render_table_tabs(frame, table_tab_area, vec!["Transactions".to_string(), "Positions".to_string()], app.selected_table_tab, Color::Reset);
+                    render_table_tabs(frame, table_tab_area, self.renders_tables(), app.selected_table_tab, Color::Reset);
                 }
             }
 
@@ -1738,5 +1719,11 @@ impl Account for InvestmentAccountManager {
             .db
             .update_account(self.uid, self.id, &acct.info)
             .unwrap();
+    }
+    fn as_variable_account(&self) -> Option<&dyn VariableAccountUI> {
+        return Some(self);
+    }
+    fn renders_tables(&self) -> Vec<String> {
+        return vec!["Transactions".to_string(), "Positions".to_string()];
     }
 }

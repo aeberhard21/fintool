@@ -45,7 +45,7 @@ use std::time::{Duration, Instant};
 
 use crate::accounts::base::Account;
 #[cfg(feature = "ratatui_support")]
-use crate::{accounts::as_investment_account, app::app::App};
+use crate::{app::app::App};
 #[cfg(feature = "ratatui_support")]
 use crate::app::screen::{CurrentScreen, CurrentlySelecting, Pages, UserLoadedState};
 #[cfg(feature = "ratatui_support")]
@@ -269,12 +269,10 @@ where
                     (_, KeyCode::Right | KeyCode::Char('l')) => {
                         match app.currently_selected {
                             Some(CurrentlySelecting::Account) => { 
-                                let x = app.account.take().unwrap();
-                                if as_investment_account(x.as_ref()).is_some() {
+                                if app.account.as_ref().unwrap().renders_tables().len() > 1 {
                                     app.go_to_first_ledger_table_row();
                                     app.advance_table_view();
                                 }
-                                app.account = Some(x);
                             }
                             Some(CurrentlySelecting::AccountTabs) => {
                                 app.restore_account();
@@ -327,12 +325,10 @@ where
                     }
                     (_, KeyCode::Left | KeyCode::Char('h')) => match app.currently_selected {
                         Some(CurrentlySelecting::Account) => { 
-                            let x = app.account.take().unwrap();
-                            if as_investment_account(x.as_ref()).is_some() {
+                            if app.account.as_ref().unwrap().renders_tables().len() > 1 {
                                 app.go_to_first_ledger_table_row();
                                 app.retreat_table_view();
                             }
-                            app.account = Some(x);
                         }
                         Some(CurrentlySelecting::AccountTabs) => {
                             app.restore_account();
@@ -389,7 +385,6 @@ where
                                     app.selected_account_tab = 0;
                                 }
                                 CurrentlySelecting::Account => {
-                                    // app.restore_account();
                                     app.retreat_currently_selecting();
                                 }
                                 CurrentlySelecting::AccountTypeTabs => {
@@ -419,11 +414,9 @@ where
                                     app.advance_currently_selecting()
                                 }
                                 CurrentlySelecting::Account => { 
-                                    let x = app.account.take().unwrap();
-                                    if as_investment_account(x.as_ref()).is_some() { 
+                                    if app.account.as_ref().unwrap().renders_tables().len() > 1 {
                                         app.advance_currently_selecting();
                                     }
-                                    app.account = Some(x);
                                 }
                                 _ => {}
                             }
@@ -647,15 +640,15 @@ fn suspend_tui<B>(terminal: &mut Terminal<B>) -> Result<(), std::io::Error>
 where
     B: Backend + Write,
 {
-    disable_raw_mode()?;
     execute!(
         terminal.backend_mut(),
-        // io::stdout(),
         LeaveAlternateScreen,
+        DisableMouseCapture,
         Clear(ratatui::crossterm::terminal::ClearType::All),
         MoveTo(0, 0),
     )
     .unwrap();
+    disable_raw_mode()?;
     terminal.show_cursor();
     Ok(())
 }
@@ -666,7 +659,7 @@ where
     B: Backend + Write,
 {
     enable_raw_mode()?;
-    execute!(terminal.backend_mut(), EnterAlternateScreen).unwrap();
+    execute!(terminal.backend_mut(), EnableMouseCapture, EnterAlternateScreen).unwrap();
     terminal.clear().unwrap();
     Ok(())
 }

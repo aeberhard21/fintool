@@ -47,7 +47,7 @@ use crate::{
     },
 };
 use crate::{
-    accounts::{self, as_liquid_account, bank_account::BankAccount},
+    accounts::{self, bank_account::BankAccount},
     app::screen::{Pages, UserLoadedState},
     tui::tui_accounts::{get_total_assets, get_total_liabilities},
     types::accounts::AccountType,
@@ -957,16 +957,11 @@ fn render_cash_flow_chart(app: &App, frame: &mut Frame, area: Rect) {
     let mut liquid_accounts = Vec::new();
 
     for account in &app.accounts {
-        let acct_record = app
-            .db
-            .get_account(app.user_id.unwrap(), account.get_id())
-            .unwrap();
-        if !acct_record.is_liquid_account() {
-            // skip any non-liquid accounts
+        if let Some(liquid) = account.as_ref().as_liquid_account() { 
+            liquid_accounts.push(liquid);
+        } else { 
             continue;
         }
-        let liquid = as_liquid_account(account.as_ref()).unwrap();
-        liquid_accounts.push(liquid);
     }
 
     if liquid_accounts.is_empty() {

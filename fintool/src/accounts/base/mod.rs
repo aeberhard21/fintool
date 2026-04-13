@@ -1,3 +1,5 @@
+#[cfg(feature = "ratatui_support")]
+use crate::accounts::base::liquid_account::LiquidAccount;
 /* ------------------------------------------------------------------------
   Copyright (C) 2025  Andrew J. Eberhard
 
@@ -393,6 +395,15 @@ pub trait Account: AccountData + AccountOperations + AccountUI + Any {
     fn as_any(&self) -> &dyn Any;
     fn has_budget(&self) -> bool;
     fn set_budget(&self);
+    fn as_liquid_account(&self) -> Option<&dyn LiquidAccount> { 
+        return None;
+    }
+    fn as_variable_account(&self) -> Option<&dyn VariableAccountUI> { 
+        return None;
+    }
+    fn renders_tables(&self) -> Vec<String> { 
+        return vec!["Transactions".to_string()];
+    }
 }
 
 #[derive(Clone, Display, Debug, FromRepr, EnumIter, EnumString)]
@@ -479,4 +490,24 @@ impl DisplayablePositionStatistics {
     pub fn get_unrealized_gl_per_str() -> String { 
         "Unrealized G/L (%)".to_string()
     }   
+}
+
+pub fn render_table_tabs(
+    frame: &mut Frame,
+    area: Rect,
+    tab_names: Vec<String>,
+    selected_tab: usize,
+    highlight_color: Color,
+) {
+    let atype_tabs = Tabs::new(tab_names.into_iter())
+        .highlight_style(highlight_color)
+        .select(selected_tab)
+        .block(
+            Block::bordered()
+                .title(" Tables ")
+                .style(Style::new().bg(tailwind::SLATE.c900)),
+        )
+        .padding("", "")
+        .divider(" | ");
+    frame.render_widget(atype_tabs, area);
 }
