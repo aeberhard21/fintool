@@ -286,7 +286,7 @@ impl AccountCreation for BankAccount {
 
 impl AccountOperations for BankAccount {
     fn record(&mut self) {
-        const RECORD_OPTIONS: [&'static str; 4] = ["Deposit", "Withdrawal", "Budget", "None"];
+        const RECORD_OPTIONS: [&'static str; 6] = ["Accrual", "Budget", "Deposit", "Fee", "Withdrawal", "None"];
         loop {
             let action = Select::new(
                 "\nWhat transaction would you like to record?",
@@ -296,6 +296,12 @@ impl AccountOperations for BankAccount {
             .unwrap()
             .to_string();
             match action.as_str() {
+                "Accrual" => { 
+                    self.fixed.accrual(None, false);
+                }
+                "Fee" => {
+                    self.fixed.fee(None, false);
+                }
                 "Deposit" => {
                     self.fixed.deposit(None, false);
                 }

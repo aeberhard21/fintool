@@ -406,13 +406,15 @@ impl HealthSavingsAccount {
 
 impl AccountOperations for HealthSavingsAccount {
     fn record(&mut self) {
-        const RECORD_OPTIONS: [&'static str; 7] = [
+        const RECORD_OPTIONS: [&'static str; 9] = [
+            "Accrual",
             "Deposit",
-            "Withdrawal",
+            "Fee",
             "Purchase",
             "Sale",
             "Stock Split",
             "Stock Price",
+            "Withdrawal",
             "None",
         ];
         loop {
@@ -424,6 +426,12 @@ impl AccountOperations for HealthSavingsAccount {
             .unwrap()
             .to_string();
             match action.as_str() {
+                "Accrual" => { 
+                    self.variable.fixed.accrual(None, false);
+                }
+                "Fee" => {
+                    self.variable.fixed.fee(None, false);
+                }
                 "Deposit" => {
                     self.variable.fixed.deposit(None, false);
                 }

@@ -325,7 +325,7 @@ impl AccountCreation for Wallet {
 
 impl AccountOperations for Wallet {
     fn record(&mut self) {
-        const RECORD_OPTIONS: [&'static str; 3] = ["Deposit", "Withdrawal", "None"];
+        const RECORD_OPTIONS: [&'static str; 5] = ["Accrual", "Deposit", "Fee", "Withdrawal", "None"];
         loop {
             let action = Select::new(
                 "\nWhat transaction would you like to record?",
@@ -335,6 +335,12 @@ impl AccountOperations for Wallet {
             .unwrap()
             .to_string();
             match action.as_str() {
+                "Accrual" => { 
+                    self.fixed.accrual(None, false);
+                }
+                "Fee" => {
+                    self.fixed.fee(None, false);
+                }
                 "Deposit" => {
                     self.fixed.deposit(None, false);
                 }

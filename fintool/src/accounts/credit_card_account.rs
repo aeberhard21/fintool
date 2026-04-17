@@ -343,7 +343,7 @@ impl AccountCreation for CreditCardAccount {
 
 impl AccountOperations for CreditCardAccount {
     fn record(&mut self) {
-        const RECORD_OPTIONS: [&'static str; 4] = ["Charge", "Payment", "Budget", "None"];
+        const RECORD_OPTIONS: [&'static str; 6] = ["Accrual", "Budget", "Charge", "Fee", "Payment", "None"];
         loop {
             let action = Select::new(
                 "\nWhat transaction would you like to record?",
@@ -353,6 +353,12 @@ impl AccountOperations for CreditCardAccount {
             .unwrap()
             .to_string();
             match action.as_str() {
+                "Accrual" => { 
+                    self.charge.accrual(None, false);
+                }
+                "Fee" => {
+                    self.charge.fee(None, false);
+                }
                 "Payment" => {
                     self.charge.pay(None, false);
                 }

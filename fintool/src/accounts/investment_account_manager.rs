@@ -377,13 +377,15 @@ impl InvestmentAccountManager {
 
 impl AccountOperations for InvestmentAccountManager {
     fn record(&mut self) {
-        const RECORD_OPTIONS: [&'static str; 7] = [
+        const RECORD_OPTIONS: [&'static str; 9] = [
+            "Accrual",
             "Deposit",
-            "Withdrawal",
+            "Fee",
             "Purchase",
             "Sale",
             "Stock Split",
             "Stock Price",
+            "Withdrawal",
             "None",
         ];
         loop {
@@ -395,6 +397,14 @@ impl AccountOperations for InvestmentAccountManager {
             .unwrap()
             .to_string();
             match action.as_str() {
+                "Accrual" => { 
+                    self.variable.fixed.accrual(None, false);
+                    self.get_ledger();
+                }
+                "Fee" => {
+                    self.variable.fixed.fee(None, false);
+                    self.get_ledger();
+                }
                 "Deposit" => {
                     self.variable.fixed.deposit(None, false);
                     // update ledger
