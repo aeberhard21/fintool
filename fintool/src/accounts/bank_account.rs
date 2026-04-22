@@ -48,11 +48,14 @@ use rustyline::Highlighter;
 use rustyline::Hinter;
 use rustyline::Validator;
 use shared_lib::{FlatLedgerEntry, LedgerEntry, StockInfo};
+use core::f32;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::path::Path;
 use std::{option, rc};
 
+use crate::accounts::base::BaseGrowth;
+use crate::accounts::base::BaseActions;
 use crate::accounts::base::budget::Budget;
 use crate::accounts::base::liquid_account::LiquidAccount;
 #[cfg(feature = "ratatui_support")]
@@ -788,7 +791,7 @@ impl AccountOperations for BankAccount {
                 .to_string();
         match choice.as_str() {
             "Total Value" => {
-                let value = self.fixed.get_current_value();
+                let value = self.get_value();
                 println!("\tTotal Account Value: {}", value);
             }
             "Simple Growth Rate" => {
@@ -1053,10 +1056,20 @@ impl AccountData for BankAccount {
         return self.db.get_displayable_ledger(self.uid, self.id).unwrap();
     }
     fn get_value(&self) -> f32 {
-        return self.fixed.get_current_value();
+        let x = self.fixed.get_current_value();
+        if x.is_none() {
+            f32::NAN
+        } else {
+            x.unwrap()
+        }
     }
     fn get_value_on_day(&self, day: NaiveDate) -> f32 {
-        return self.fixed.get_value_on_day(day);
+        let x = self.fixed.get_account_value_on_day(&day);
+        if x.is_none() {
+            f32::NAN
+        } else {
+            x.unwrap()
+        }
     }
     fn get_open_date(&self) -> NaiveDate {
         return self.open_date;
@@ -1206,6 +1219,7 @@ impl Account for BankAccount {
             .update_account(self.uid, self.id, &acct.info)
             .unwrap();
     }
+    #[cfg(feature = "ratatui_support")]
     fn as_liquid_account(&self) -> Option<&dyn LiquidAccount> {
         return Some(self);
     }

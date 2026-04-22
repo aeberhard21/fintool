@@ -459,6 +459,7 @@ where
 
                                     app.skip_to_last_account();
                                     app.get_account();
+                                    app.advance_currently_selecting();
                                 }
                                 _ => {}
                             }
@@ -472,25 +473,34 @@ where
                                     suspend_tui(terminal)?;
 
                                     if let Some(acct) = &app.account {
-                                        rename_account(
-                                            &app.db,
+                                        let id = acct.get_id();
+                                        let retval = edit_account(
                                             app.user_id.unwrap(),
-                                            acct.get_id(),
+                                            &app.db, 
+                                            id
                                         );
-                                    } else {
-                                        // no account selected so just ignore keystroke.
-                                        continue;
-                                    }
 
-                                    // update accounts for type
-                                    app.accounts_for_type = app
-                                        .db
-                                        .get_user_accounts_by_type(
-                                            app.user_id.unwrap(),
-                                            app.selected_atype_tab,
-                                        )
-                                        .unwrap()
-                                        .unwrap();
+                                        // update accounts for type
+                                        app.accounts_for_type = app
+                                            .db
+                                            .get_user_accounts_by_type(
+                                                app.user_id.unwrap(),
+                                                app.selected_atype_tab,
+                                            )
+                                            .unwrap()
+                                            .unwrap();
+
+                                        match retval {
+                                            EditAccount::RemoveAccount => {
+                                                app.retreat_account();
+                                                app.get_account();
+                                                app.retreat_currently_selecting();
+                                            }
+                                            _ => {
+                                            }
+                                        }
+
+                                    }
 
                                     resume_tui(terminal)?;
                                 }

@@ -48,6 +48,12 @@ pub mod tui_accounts;
 pub mod tui_license;
 pub mod tui_user;
 
+pub enum EditAccount {
+    NoAction, 
+    RemoveAccount,
+    RenameAccount
+}
+
 pub fn menu(_db: &mut DbConn) {
     let mut uid: u32;
 
@@ -119,16 +125,19 @@ pub fn menu(_db: &mut DbConn) {
 fn access_account(uid: u32, db: &mut DbConn) {
     const ACCOUNT_OPTIONS: [&'static str; 4] =
         ["Create Account", "Select Account", "Edit Account", "Exit"];
-    let mut accounts: Vec<AccountRecord> = db.get_user_accounts(uid).unwrap();
+    let mut accounts: Vec<AccountRecord>;
     let mut acct: Box<dyn Account>;
     let mut choice;
     let mut new_account;
     const ACCT_ACTIONS: [&'static str; 6] =
         ["Import", "Export", "Modify", "Record", "Report", "None"];
 
-    let mut accounts_is_empty = accounts.is_empty();
+    let mut accounts_is_empty: bool;
 
     loop {
+        accounts = db.get_user_accounts(uid).unwrap();
+        accounts_is_empty = accounts.is_empty();
+        
         if accounts_is_empty {
             choice = ACCOUNT_OPTIONS[0].to_string();
         } else {
@@ -223,31 +232,10 @@ fn access_account(uid: u32, db: &mut DbConn) {
                     .get(&selected_account)
                     .expect("Account not found!");
                 acct = decode_and_init_account_type(uid, db, acctx);
-
-                let selected_action =
-                    Select::new("What would you like to do:", MODIFY_ACCT_ACTIONS.to_vec())
-                        .prompt()
-                        .unwrap();
-
                 let id = acct.get_id();
 
-                match selected_action {
-                    "Rename" => {
-                        // acct
-                        rename_account(db, uid, id);
-                        return;
-                    }
-                    "Remove" => {
-                        db.remove_account(uid, id).unwrap();
-                        return;
-                    }
-                    "None" => {
-                        continue;
-                    }
-                    _ => {
-                        panic!("Unrecognized input: {}", selected_action);
-                    }
-                }
+                let x = edit_account(uid, db, id);
+                continue;
             }
             "Exit" => {
                 return;
@@ -501,6 +489,33 @@ pub fn rename_account(db: &DbConn, uid: u32, id: u32) {
         }
     }
     db.rename_account(uid, id, name).unwrap();
+}
+
+// returns 0 -> None, 1 -> removed, 2 -> renamed.
+pub fn edit_account(uid : u32, db : &DbConn, aid : u32,) -> EditAccount {
+    const MODIFY_ACCT_ACTIONS: [&'static str; 3] = ["Rename", "Remove", "None"];
+    let selected_action =
+        Select::new("What would you like to do:", MODIFY_ACCT_ACTIONS.to_vec())
+            .prompt()
+            .unwrap();
+
+    match selected_action {
+        "Rename" => {
+            // acct
+            rename_account(db, uid, aid);
+            return EditAccount::RenameAccount;
+        }
+        "Remove" => {
+            db.remove_account(uid, aid).unwrap();
+            return EditAccount::RemoveAccount;
+        }
+        "None" => {
+            return EditAccount::NoAction;
+        }
+        _ => {
+            panic!("Unrecognized input: {}", selected_action);
+        }
+    }
 }
 
 pub fn modify_labels(uid: u32, db: &DbConn) {

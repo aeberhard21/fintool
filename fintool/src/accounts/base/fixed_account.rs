@@ -17,12 +17,13 @@
 use crate::database::DbConn;
 use crate::tui::{decode_and_init_account_type, prompt_and_create_new_account};
 use crate::types::accounts::AccountRecord;
+use crate::accounts::base::{BaseActions, BaseGrowth};
 use crate::types::categories::CategoryAutoCompleter;
 use crate::types::labels::LabelAutoCompleter;
 use crate::types::ledger::{LedgerInfo, LedgerRecord};
 use crate::types::participants::{ParticipantAutoCompleter, ParticipantType};
-use chrono::{Datelike, NaiveDate};
-use core::panic;
+use chrono::{Datelike, Days, NaiveDate};
+use core::{f32, panic};
 use inquire::validator::MinLengthValidator;
 use inquire::*;
 use shared_lib::{LedgerEntry, TransferType};
@@ -1228,193 +1229,9 @@ impl FixedAccount {
             info: deposit,
         };
     }
+}
 
-    pub fn modify(&self, selected_record: LedgerRecord) -> LedgerRecord {
-        if selected_record.info.transfer_type == TransferType::ZeroSumChange {
-            println!("Unable to modify a zero-sum change!");
-            return selected_record;
-        }
-
-        const OPTIONS: [&'static str; 3] = ["Update", "Remove", "None"];
-        let modify_choice = Select::new("What would you like to do:", OPTIONS.to_vec())
-            .prompt()
-            .unwrap();
-        match modify_choice {
-            "Update" => {
-                let account_transaction_opt: Option<
-                    crate::types::accounts::AccountTransactionRecord,
-                >;
-                let updated_record = match selected_record.info.transfer_type {
-                    TransferType::DepositFromExternalAccount => {
-                    account_transaction_opt = self
-                        .db
-                        .check_and_get_account_transaction_record_matching_to_ledger_id(
-                            self.uid,
-                            self.id,
-                            selected_record.id,
-                        )
-                        .unwrap();
-                    if account_transaction_opt.is_some() {
-                        let account_transaction = account_transaction_opt.unwrap();
-                        self.db
-                            .remove_account_transaction(self.uid, account_transaction.id)
-                            .unwrap();
-                        self.db
-                            .remove_ledger_item(
-                                self.uid,
-                                account_transaction.info.from_account,
-                                account_transaction.info.from_ledger,
-                            )
-                            .unwrap();
-                    }
-                    self.deposit(Some(selected_record.clone()), true)
-                    }
-                    TransferType::DepositFromInternalAccount => { 
-                        self.accrual(Some(selected_record.clone()), true)
-                    }
-                    TransferType::WithdrawalToExternalAccount => {
-                    account_transaction_opt = self
-                        .db
-                        .check_and_get_account_transaction_record_matching_from_ledger_id(
-                            self.uid,
-                            self.id,
-                            selected_record.id,
-                        )
-                        .unwrap();
-                    if account_transaction_opt.is_some() {
-                        let account_transaction = account_transaction_opt.unwrap();
-                        self.db
-                            .remove_ledger_item(
-                                self.uid,
-                                account_transaction.info.to_account,
-                                account_transaction.info.to_ledger,
-                            )
-                            .unwrap();
-                    }
-                    self.withdrawal(Some(selected_record.clone()), true)
-                    }
-                    TransferType::WithdrawalToInternalAccount => {
-                        self.fee(Some(selected_record.clone()), true)
-                    }
-                    _ => {
-                        selected_record
-                    }
-                };
-                return updated_record;
-            }
-            "Remove" => {
-                let account_transaction_opt: Option<
-                    crate::types::accounts::AccountTransactionRecord,
-                >;
-                match selected_record.info.transfer_type {
-                    TransferType::DepositFromExternalAccount => {
-                    account_transaction_opt = self
-                        .db
-                        .check_and_get_account_transaction_record_matching_to_ledger_id(
-                            self.uid,
-                            self.id,
-                            selected_record.id,
-                        )
-                        .unwrap();
-                    if account_transaction_opt.is_some() {
-                        let account_transaction = account_transaction_opt.unwrap();
-                        self.db
-                            .remove_account_transaction(self.uid, account_transaction.id)
-                            .unwrap();
-                        self.db
-                            .remove_ledger_item(
-                                self.uid,
-                                account_transaction.info.from_account,
-                                account_transaction.info.from_ledger,
-                            )
-                            .unwrap();
-                    }
-                    }
-                    TransferType::WithdrawalToExternalAccount => {
-                    account_transaction_opt = self
-                        .db
-                        .check_and_get_account_transaction_record_matching_from_ledger_id(
-                            self.uid,
-                            self.id,
-                            selected_record.id,
-                        )
-                        .unwrap();
-                    if account_transaction_opt.is_some() {
-                        let account_transaction = account_transaction_opt.unwrap();
-                        self.db
-                            .remove_account_transaction(self.uid, account_transaction.id)
-                            .unwrap();
-                        self.db
-                            .remove_ledger_item(
-                                self.uid,
-                                account_transaction.info.to_account,
-                                account_transaction.info.to_ledger,
-                            )
-                            .unwrap();
-                    }
-                    }
-                    _ => {},
-                }
-                self.db
-                    .remove_ledger_item(self.uid, self.id, selected_record.id.clone())
-                    .unwrap();
-            }
-            "None" => {
-                return selected_record.clone();
-            }
-            _ => {
-                panic!("Unrecognized input!");
-            }
-        }
-
-        return selected_record;
-    }
-
-    // returns uid of selected ledger entry
-    pub fn select_ledger_entry(&self) -> Option<LedgerRecord> {
-        let records = self.db.get_ledger(self.uid, self.id).unwrap();
-        let mut entries: HashMap<String, u32> = HashMap::new();
-        let mut strings: Vec<String> = Vec::new();
-        let mut mapped_records: HashMap<u32, LedgerInfo> = HashMap::new();
-        for rcrd in records {
-            let v: String = format!(
-                "{} | {} | {} | {} | ",
-                rcrd.info.date,
-                self.db
-                    .get_category_name(self.uid, self.id, rcrd.info.category_id)
-                    .unwrap(),
-                self.db
-                    .get_participant(self.uid, self.id, rcrd.info.participant)
-                    .unwrap(),
-                rcrd.info.amount
-            );
-            strings.push(v.clone());
-            entries.insert(v.clone(), rcrd.id);
-            mapped_records.insert(rcrd.id, rcrd.info);
-        }
-        strings.push("None".to_string());
-        let errant_record: String = Select::new("What item would you like to modify: ", strings)
-            .prompt()
-            .unwrap()
-            .to_string();
-
-        if errant_record == "None".to_string() {
-            return None;
-        }
-
-        let id = *entries
-            .get(&errant_record)
-            .expect("Unable to find matching ID!");
-
-        let selected_record = LedgerRecord {
-            id: id.clone(),
-            info: mapped_records
-                .get(&id)
-                .expect("Record not found!")
-                .to_owned(),
-        };
-        Some(selected_record)
-    }
+impl FixedAccount {
 
     pub fn link_transaction(
         &self,
@@ -1490,83 +1307,6 @@ impl FixedAccount {
         return Some((acct, selected_account.clone()));
     }
 
-    pub fn get_current_value(&self) -> f32 {
-        return self.db.get_current_value(self.uid, self.id).unwrap();
-        // return self.ledger.iter().map(|x| {
-        //     match x.info.transfer_type {
-        //         TransferType::DepositFromExternalAccount|TransferType::DepositFromInternalAccount => {
-        //             x.info.amount
-        //         }
-        //         TransferType::WithdrawalToExternalAccount|TransferType::WithdrawalToInternalAccount => {
-        //             -x.info.amount
-        //         }
-        //         _ => {
-        //             0.0
-        //         }
-        //     }
-        // }).sum()
-    }
-
-    pub fn get_value_on_day(&self, day: NaiveDate) -> f32 {
-        let value_opt = self
-            .db
-            .get_cumulative_total_of_ledger_before_date(self.uid, self.id, day)
-            .unwrap();
-        if let Some(value) = value_opt {
-            return value;
-        } else {
-            return 0.0;
-        }
-
-        // return self.ledger.iter().filter(|x|
-        //     NaiveDate::parse_from_str(x.info.date.as_str(), "%Y-%m-%d").expect("Unable to parse date!") <= day )
-        //     .map(|y| {
-        //         match y.info.transfer_type {
-        //             TransferType::DepositFromExternalAccount|TransferType::DepositFromInternalAccount => {
-        //                 y.info.amount
-        //             }
-        //             TransferType::WithdrawalToExternalAccount|TransferType::WithdrawalToInternalAccount => {
-        //                 -y.info.amount
-        //             }
-        //             _ => {
-        //                 0.0
-        //             }
-        //         }
-        //     }).sum();
-    }
-
-    pub fn simple_rate_of_return(&self, start_date: NaiveDate, end_date: NaiveDate) -> f32 {
-        let mut rate: f32 = 0.0;
-        let starting_amount;
-        let ending_amount;
-        let starting_amount_opt = self
-            .db
-            .get_cumulative_total_of_ledger_before_date(self.uid, self.id, start_date)
-            .unwrap();
-        if starting_amount_opt.is_some() {
-            starting_amount = starting_amount_opt.unwrap();
-        } else {
-            return f32::NAN;
-        }
-        let ending_amount_opt = self
-            .db
-            .get_cumulative_total_of_ledger_before_date(self.uid, self.id, end_date)
-            .unwrap();
-        if ending_amount_opt.is_some() {
-            ending_amount = ending_amount_opt.unwrap();
-        } else {
-            return f32::NAN;
-        }
-        rate = (ending_amount - starting_amount) / (starting_amount);
-        return rate;
-    }
-
-    pub fn annualized_rate_of_return(&self, start_date: NaiveDate, end_date: NaiveDate) -> f32 {
-        let days = start_date.num_days_from_ce() - end_date.num_days_from_ce();
-        let cr = self.simple_rate_of_return(start_date, end_date);
-        return (1. + cr).powf(365. / (days as f32)) - 1.;
-    }
-
     pub fn get_external_transactions_between_timestamps(
         &self,
         start_date: NaiveDate,
@@ -1620,32 +1360,301 @@ impl FixedAccount {
         transactions
     }
 
-    pub fn compound_annual_growth_rate(&self, start_date: NaiveDate, end_date: NaiveDate) -> f32 {
-        let mut rate: f32 = 0.0;
-        let starting_amount;
-        let ending_amount;
-        let starting_amount_opt = self
-            .db
-            .get_cumulative_total_of_ledger_before_date(self.uid, self.id, start_date)
-            .unwrap();
-        if starting_amount_opt.is_some() {
-            starting_amount = starting_amount_opt.unwrap();
-        } else {
-            return f32::NAN;
+    // returns uid of selected ledger entry
+    pub fn select_ledger_entry(&self) -> Option<LedgerRecord> {
+        let records = self.db.get_ledger(self.uid, self.id).unwrap();
+        let mut entries: HashMap<String, u32> = HashMap::new();
+        let mut strings: Vec<String> = Vec::new();
+        let mut mapped_records: HashMap<u32, LedgerInfo> = HashMap::new();
+        for rcrd in records {
+            let v: String = format!(
+                "{} | {} | {} | {} | ",
+                rcrd.info.date,
+                self.db
+                    .get_category_name(self.uid, self.id, rcrd.info.category_id)
+                    .unwrap(),
+                self.db
+                    .get_participant(self.uid, self.id, rcrd.info.participant)
+                    .unwrap(),
+                rcrd.info.amount
+            );
+            strings.push(v.clone());
+            entries.insert(v.clone(), rcrd.id);
+            mapped_records.insert(rcrd.id, rcrd.info);
         }
-        let ending_amount_opt = self
-            .db
-            .get_cumulative_total_of_ledger_before_date(self.uid, self.id, end_date)
-            .unwrap();
-        if ending_amount_opt.is_some() {
-            ending_amount = ending_amount_opt.unwrap();
-        } else {
-            return f32::NAN;
-        }
-        let date_diff: i32 = end_date.num_days_from_ce() - start_date.num_days_from_ce();
-        let year_diff: f32 = date_diff as f32 / 365.0;
+        strings.push("None".to_string());
+        let errant_record: String = Select::new("What item would you like to modify: ", strings)
+            .prompt()
+            .unwrap()
+            .to_string();
 
-        rate = (ending_amount / starting_amount).powf(1 as f32 / year_diff);
-        return rate;
+        if errant_record == "None".to_string() {
+            return None;
+        }
+
+        let id = *entries
+            .get(&errant_record)
+            .expect("Unable to find matching ID!");
+
+        let selected_record = LedgerRecord {
+            id: id.clone(),
+            info: mapped_records
+                .get(&id)
+                .expect("Record not found!")
+                .to_owned(),
+        };
+        Some(selected_record)
     }
 }
+
+impl BaseActions for FixedAccount { 
+    fn get_current_value(&self) -> Option<f32> {
+        let value= self.db.get_current_value(self.uid, self.id).unwrap();
+        Some(value)
+    }
+
+    fn get_account_value_on_day(&self, day: &NaiveDate) -> Option<f32> {
+        let value_opt = self
+            .db
+            .get_cumulative_total_of_ledger_before_date(self.uid, self.id, *day)
+            .unwrap();
+        return value_opt;
+    }
+
+    fn modify(&mut self, selected_record: LedgerRecord) -> Option<LedgerRecord> {
+
+        if selected_record.info.transfer_type == TransferType::ZeroSumChange {
+            println!("Unable to modify a zero-sum change!");
+            return None;
+        }
+
+        const OPTIONS: [&'static str; 3] = ["Update", "Remove", "None"];
+        let modify_choice = Select::new("What would you like to do:", OPTIONS.to_vec())
+            .prompt()
+            .unwrap();
+        match modify_choice {
+            "Update" => {
+                let account_transaction_opt: Option<
+                    crate::types::accounts::AccountTransactionRecord,
+                >;
+                let updated_record = match selected_record.info.transfer_type {
+                    TransferType::DepositFromExternalAccount => {
+                        account_transaction_opt = self
+                            .db
+                            .check_and_get_account_transaction_record_matching_to_ledger_id(
+                                self.uid,
+                                self.id,
+                                selected_record.id,
+                            )
+                            .unwrap();
+                        if account_transaction_opt.is_some() {
+                            let account_transaction = account_transaction_opt.unwrap();
+                            self.db
+                                .remove_account_transaction(self.uid, account_transaction.id)
+                                .unwrap();
+                            self.db
+                                .remove_ledger_item(
+                                    self.uid,
+                                    account_transaction.info.from_account,
+                                    account_transaction.info.from_ledger,
+                                )
+                                .unwrap();
+                        }
+                        self.deposit(Some(selected_record.clone()), true)
+                    }
+                    TransferType::DepositFromInternalAccount => { 
+                        self.accrual(Some(selected_record.clone()), true)
+                    }
+                    TransferType::WithdrawalToExternalAccount => {
+                        account_transaction_opt = self
+                            .db
+                            .check_and_get_account_transaction_record_matching_from_ledger_id(
+                                self.uid,
+                                self.id,
+                                selected_record.id,
+                            )
+                            .unwrap();
+                        if account_transaction_opt.is_some() {
+                            let account_transaction = account_transaction_opt.unwrap();
+                            self.db
+                                .remove_ledger_item(
+                                    self.uid,
+                                    account_transaction.info.to_account,
+                                    account_transaction.info.to_ledger,
+                                )
+                                .unwrap();
+                        }
+                        self.withdrawal(Some(selected_record.clone()), true)
+                    }
+                    TransferType::WithdrawalToInternalAccount => {
+                        self.fee(Some(selected_record.clone()), true)
+                    }
+                    _ => {
+                        selected_record
+                    }
+                };
+                return Some(updated_record);
+            }
+            "Remove" => {
+                let account_transaction_opt: Option<
+                    crate::types::accounts::AccountTransactionRecord,
+                >;
+                match selected_record.info.transfer_type {
+                    TransferType::DepositFromExternalAccount => {
+                        account_transaction_opt = self
+                            .db
+                            .check_and_get_account_transaction_record_matching_to_ledger_id(
+                                self.uid,
+                                self.id,
+                                selected_record.id,
+                            )
+                            .unwrap();
+                        if account_transaction_opt.is_some() {
+                            let account_transaction = account_transaction_opt.unwrap();
+                            self.db
+                                .remove_account_transaction(self.uid, account_transaction.id)
+                                .unwrap();
+                            self.db
+                                .remove_ledger_item(
+                                    self.uid,
+                                    account_transaction.info.from_account,
+                                    account_transaction.info.from_ledger,
+                                )
+                                .unwrap();
+                        }
+                    }
+                    TransferType::WithdrawalToExternalAccount => {
+                        account_transaction_opt = self
+                            .db
+                            .check_and_get_account_transaction_record_matching_from_ledger_id(
+                                self.uid,
+                                self.id,
+                                selected_record.id,
+                            )
+                            .unwrap();
+                        if account_transaction_opt.is_some() {
+                            let account_transaction = account_transaction_opt.unwrap();
+                            self.db
+                                .remove_account_transaction(self.uid, account_transaction.id)
+                                .unwrap();
+                            self.db
+                                .remove_ledger_item(
+                                    self.uid,
+                                    account_transaction.info.to_account,
+                                    account_transaction.info.to_ledger,
+                                )
+                                .unwrap();
+                        }
+                    }
+                    _ => {},
+                }
+                self.db
+                    .remove_ledger_item(self.uid, self.id, selected_record.id.clone())
+                    .unwrap();
+            }
+            "None" => {
+                return None;
+            }
+            _ => {
+                panic!("Unrecognized input!");
+            }
+        }
+
+        return Some(selected_record);
+    }
+}
+
+impl BaseGrowth for FixedAccount {
+    fn money_weighted_return(&self, start_date : NaiveDate, end_date : NaiveDate) -> f32 {
+        #[derive(Debug)]
+        struct CashFlow {
+            amount: f32,
+            t: f32,
+        };
+
+        fn irr(flows: &[CashFlow]) -> Option<f32> {
+            let mut low = -0.29999;
+            let mut high = 1.; // allow very high return
+            let tolerance = 1e-2;
+
+            fn npv(rate: f32, flows: &[CashFlow]) -> f32 {
+                flows
+                    .iter()
+                    .map(|x| x.amount / (1.0 + rate).powf(x.t))
+                    .sum()
+            }
+
+            if npv(low, flows) * npv(high, flows) > 0.0 {
+                return None; // no guaranteed root
+            }
+
+            while (high - low) > tolerance {
+                let mid = (low + high) / 2.0;
+                let value = npv(mid, flows);
+
+                if value > 0.0 {
+                    low = mid;
+                } else {
+                    high = mid;
+                }
+            }
+
+            Some((low + high) / 2.0)
+        }
+
+        let mut cfs: Vec<CashFlow> = Vec::new();
+
+        let day_before = start_date.checked_sub_days(Days::new(1)).unwrap();
+        let initial_value = self.get_account_value_on_day(&day_before).unwrap();
+        cfs.push(CashFlow {
+            amount: -initial_value,
+            t: 0.0,
+        });
+
+        let txns = self
+            .db
+            .get_ledger_entries_within_timestamps(self.uid, self.id, start_date, end_date)
+            .unwrap();
+
+        for txn in txns {
+            let txn_date = NaiveDate::parse_from_str(&txn.info.date, "%Y-%m-%d").unwrap();
+            let amount = match txn.info.transfer_type {
+                TransferType::DepositFromExternalAccount => -txn.info.amount,
+                TransferType::WithdrawalToExternalAccount => txn.info.amount,
+                _ => {
+                    continue;
+                }
+            };
+
+            let t = (txn_date - start_date).num_days() as f32 / 365.25;
+            let cf = CashFlow {
+                amount: amount,
+                t: t,
+            };
+            cfs.push(cf);
+        }
+
+        let final_value_opt = self.get_account_value_on_day(&end_date);
+        if final_value_opt.is_none() {
+            return f32::NAN;
+        }
+        let final_value = final_value_opt.unwrap();
+        let final_t = (end_date - start_date).num_days() as f32 / 365.25;
+        cfs.push(CashFlow {
+            amount: final_value,
+            t: final_t,
+        });
+
+        let irr_opt = irr(&cfs);
+        if irr_opt.is_none() {
+            f32::NAN
+        } else {
+            irr_opt.unwrap() * 100.
+        }
+    }
+    fn time_weighted_return(&self, start_date : NaiveDate, end_date : NaiveDate) -> f32 {
+        return f32::NAN;
+    }
+}
+
+

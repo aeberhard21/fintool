@@ -15,6 +15,7 @@
   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 -----------------------------------------------------------------------*/
 use chrono::{Datelike, Days, Local, NaiveDate, NaiveTime};
+use core::f32;
 use core::f64;
 use inquire::Confirm;
 use inquire::CustomType;
@@ -50,13 +51,13 @@ use shared_lib::{FlatLedgerEntry, LedgerEntry};
 use std::collections::HashMap;
 use std::path::Path;
 
+use crate::accounts::base::{BaseActions, BaseGrowth};
 #[cfg(feature = "ratatui_support")]
 use crate::accounts::base::VariableAccountUI;
 #[cfg(feature = "ratatui_support")]
 use crate::app::screen::CurrentlySelecting;
 #[cfg(feature = "ratatui_support")]
 use crate::app::app::{App, DisplayValue, LineChart};
-#[cfg(feature = "ratatui_support")]
 use crate::database::DbConn;
 use crate::tui::get_analysis_period_dates;
 use crate::tui::query_user_for_analysis_period;
@@ -1165,11 +1166,11 @@ impl AccountOperations for Retirement401kPlan {
                 }
             }
             "Total Value" => {
-                let value = self.variable.get_current_value();
+                let value = self.get_value();
                 println!("\tTotal Account Value: {}", value);
                 println!(
                     "\t\tFixed Account Value: {}",
-                    self.variable.fixed.get_current_value()
+                    self.variable.fixed.get_current_value().unwrap_or(f32::NAN)
                 );
                 let today = Local::now().date_naive();
                 println!(
@@ -1325,7 +1326,7 @@ impl AccountData for Retirement401kPlan {
         return self.db.get_displayable_ledger(self.uid, self.id).unwrap();
     }
     fn get_value(&self) -> f32 {
-        return self.variable.get_current_value();
+        return self.variable.get_current_value().unwrap_or(f32::NAN);
     }
     fn get_value_on_day(&self, day: NaiveDate) -> f32 {
         if let Some(value) = self.variable.get_account_value_on_day(&day) {
@@ -1629,7 +1630,7 @@ impl AccountUI for Retirement401kPlan {
             KEY_CAGR_GROWTH.into(),
             DisplayValue::Float(
                 self.variable
-                    .annualized_rate_of_return(start, app.analysis_end),
+                    .compound_annual_growth_rate(start, app.analysis_end),
             ),
         );
         kv.insert(

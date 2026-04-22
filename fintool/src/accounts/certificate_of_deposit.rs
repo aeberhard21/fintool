@@ -49,9 +49,12 @@ use rustyline::Highlighter;
 use rustyline::Hinter;
 use rustyline::Validator;
 use shared_lib::LedgerEntry;
+use core::f32;
 use std::collections::HashMap;
 use std::path::Path;
 
+use crate::accounts::base::BaseActions;
+use crate::accounts::base::BaseGrowth;
 #[cfg(feature = "ratatui_support")]
 use crate::app::app::{App, DisplayValue, LineChart};
 #[cfg(feature = "ratatui_support")]
@@ -511,7 +514,11 @@ impl AccountOperations for CertificateOfDepositAccount {
                             break;
                         }
                         let selected_record = record_or_none.unwrap();
-                        let updated_record = self.fixed.modify(selected_record.clone());
+                        let updated_record_opt = self.fixed.modify(selected_record.clone());
+                        if updated_record_opt.is_none() {
+                            break;
+                        }
+                        let updated_record = updated_record_opt.unwrap();
                         // record 0 should always be the initial of the account.
                         // if the date of the deposit changed, then so should the maturity date
                         if updated_record.id == 0 {
@@ -908,7 +915,7 @@ impl AccountOperations for CertificateOfDepositAccount {
                 .to_string();
         match choice.as_str() {
             "Total Value" => {
-                let value = self.fixed.get_current_value();
+                let value = self.get_value();
                 println!("\tTotal Account Value: {}", value);
             }
             "Simple Growth Rate" => {
@@ -1057,10 +1064,18 @@ impl AccountData for CertificateOfDepositAccount {
         return self.db.get_displayable_ledger(self.uid, self.id).unwrap();
     }
     fn get_value(&self) -> f32 {
-        return self.fixed.get_current_value();
+        let x = self.fixed.get_current_value();
+        if x.is_none() {
+            return f32::NAN;
+        }
+        return x.unwrap();
     }
     fn get_value_on_day(&self, day: NaiveDate) -> f32 {
-        return self.fixed.get_value_on_day(day);
+        let x = self.fixed.get_account_value_on_day(&day);
+        if x.is_none() {
+            return f32::NAN;
+        }
+        return x.unwrap();
     }
     fn get_open_date(&self) -> NaiveDate {
         return self.open_date;
@@ -1139,7 +1154,7 @@ impl AccountUI for CertificateOfDepositAccount {
 #[cfg(feature = "ratatui_support")]
 impl CertificateOfDepositAccount {
     fn get_growth(&self, start: NaiveDate, end: NaiveDate) -> f32 {
-        return self.fixed.annualized_rate_of_return(start, end);
+        return self.fixed.compound_annual_growth_rate(start, end);
     }
 
     fn get_maturity_date(&self) -> String {

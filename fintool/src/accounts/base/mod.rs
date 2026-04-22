@@ -26,7 +26,7 @@ use crate::types::accounts::AccountType;
 use crate::types::ledger::{DisplayableLedgerRecord, LedgerRecord};
 #[cfg(feature = "ratatui_support")]
 use crate::ui::centered_rect;
-use chrono::{naive, NaiveDate, NaiveDateTime};
+use chrono::{Datelike, NaiveDate, NaiveDateTime, naive};
 #[cfg(feature = "ratatui_support")]
 use ratatui::symbols::block;
 #[cfg(feature = "ratatui_support")]
@@ -43,6 +43,7 @@ use ratatui::{
     Frame,
 };
 use rusqlite::config::DbConfig;
+use core::f32;
 use std::any::Any;
 use strum::{Display, EnumIter, EnumString, FromRepr};
 use yahoo_finance_api::Quote;
@@ -52,6 +53,53 @@ pub mod charge_account;
 pub mod fixed_account;
 pub mod liquid_account;
 pub mod variable_account;
+
+#[derive(Clone, Display, Debug, FromRepr, EnumIter, EnumString)]
+pub enum AnalysisPeriod {
+    #[strum(to_string = "1 Day")]
+    OneDay,
+    #[strum(to_string = "1 Week")]
+    OneWeek,
+    #[strum(to_string = "1 Month")]
+    OneMonth,
+    #[strum(to_string = "3 Months")]
+    ThreeMonths,
+    #[strum(to_string = "6 Months")]
+    SixMonths,
+    #[strum(to_string = "1 Year")]
+    OneYear,
+    #[strum(to_string = "2 Years")]
+    TwoYears,
+    #[strum(to_string = "5 Years")]
+    FiveYears,
+    #[strum(to_string = "10 Years")]
+    TenYears,
+    #[strum(to_string = "YTD")]
+    YTD,
+    #[strum(to_string = "All Time")]
+    AllTime,
+    #[strum(to_string = "Custom")]
+    Custom,
+}
+
+impl AnalysisPeriod {
+    pub fn to_menu_selection(value: Self) -> String {
+        format!("{value}")
+    }
+}
+
+#[derive(Debug, Clone)]
+struct StockData {
+    ticker: String,
+    quotes: Vec<Quote>,
+    history: Vec<SharesOwned>,
+}
+
+#[derive(Debug, Clone)]
+struct SharesOwned {
+    date: NaiveDate,
+    shares: f32,
+}
 
 pub const KEY_TOTAL_VALUE: &str = "Current Value";
 pub const KEY_GROWTH: &str = "Growth";
@@ -406,53 +454,6 @@ pub trait Account: AccountData + AccountOperations + AccountUI + Any {
     }
 }
 
-#[derive(Clone, Display, Debug, FromRepr, EnumIter, EnumString)]
-pub enum AnalysisPeriod {
-    #[strum(to_string = "1 Day")]
-    OneDay,
-    #[strum(to_string = "1 Week")]
-    OneWeek,
-    #[strum(to_string = "1 Month")]
-    OneMonth,
-    #[strum(to_string = "3 Months")]
-    ThreeMonths,
-    #[strum(to_string = "6 Months")]
-    SixMonths,
-    #[strum(to_string = "1 Year")]
-    OneYear,
-    #[strum(to_string = "2 Years")]
-    TwoYears,
-    #[strum(to_string = "5 Years")]
-    FiveYears,
-    #[strum(to_string = "10 Years")]
-    TenYears,
-    #[strum(to_string = "YTD")]
-    YTD,
-    #[strum(to_string = "All Time")]
-    AllTime,
-    #[strum(to_string = "Custom")]
-    Custom,
-}
-
-impl AnalysisPeriod {
-    pub fn to_menu_selection(value: Self) -> String {
-        format!("{value}")
-    }
-}
-
-#[derive(Debug, Clone)]
-struct StockData {
-    ticker: String,
-    quotes: Vec<Quote>,
-    history: Vec<SharesOwned>,
-}
-
-#[derive(Debug, Clone)]
-struct SharesOwned {
-    date: NaiveDate,
-    shares: f32,
-}
-
 #[derive(Debug, Clone)]
 pub struct DisplayablePositionStatistics { 
     pub ticker : String,
@@ -492,6 +493,7 @@ impl DisplayablePositionStatistics {
     }   
 }
 
+#[cfg(feature = "ratatui_support")]
 pub fn render_table_tabs(
     frame: &mut Frame,
     area: Rect,
@@ -511,3 +513,34 @@ pub fn render_table_tabs(
         .divider(" | ");
     frame.render_widget(atype_tabs, area);
 }
+
+pub trait BaseActions { 
+    fn get_account_value_on_day(&self, date: &NaiveDate) -> Option<f32>;
+    fn get_current_value(&self) -> Option<f32>;
+    fn modify(&mut self, selected_record: LedgerRecord) -> Option<LedgerRecord>;
+}
+
+pub trait BaseGrowth : BaseActions {
+    fn simple_rate_of_return(&self, start_date : NaiveDate, end_date : NaiveDate) -> f32 {
+        let ev_opt = Self::get_account_value_on_day(&self, &end_date);
+        if ev_opt.is_none() {
+            return f32::NAN;
+        }
+        let ev = ev_opt.unwrap();
+        let sv_opt = Self::get_account_value_on_day(&self, &start_date);
+        if sv_opt.is_none() {
+            return f32::NAN;
+        }
+        let sv = sv_opt.unwrap();
+        return (ev-sv)/(sv)*100.;
+    }
+    fn compound_annual_growth_rate(&self, start_date : NaiveDate, end_date : NaiveDate) -> f32 {
+        let cr = (Self::simple_rate_of_return(&self, start_date, end_date))/100.;
+        let days = end_date.num_days_from_ce() - start_date.num_days_from_ce();
+        let n = (days as f32) / 365.25;
+        return ((1. + cr).powf(1. / n) - 1.) * 100.;
+    }
+    fn money_weighted_return(&self, start_date : NaiveDate, end_date : NaiveDate) -> f32;
+    fn time_weighted_return(&self, start_date : NaiveDate, end_date : NaiveDate) -> f32;
+}
+

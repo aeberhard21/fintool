@@ -222,7 +222,6 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
                 .filled_style(Style::default().fg(Color::Blue).bg(tailwind::EMERALD.c400))
                 .unfilled_style(Style::default().fg(Color::Red).bg(tailwind::SLATE.c700))
                 .ratio(app.load_profile_progress);
-            // .render(area, buf);
             frame.render_widget(lg, centered_area);
         }
     }

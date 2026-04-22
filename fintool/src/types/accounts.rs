@@ -302,8 +302,8 @@ impl DbConn {
             }
             Err(error) => {
                 panic!(
-                    "Unable to add account {} for user {}: {}!",
-                    &info.name, &uid, error
+                    "Unable to add account {}:{} for user {}: {}!",
+                    aid, &info.name, &uid, error
                 );
             }
         }
@@ -1090,24 +1090,24 @@ impl DbConn {
                 panic!("Unable to remove account: {}!", error);
             }
         }
-        let sql = "UPDATE accounts SET id = id -1 WHERE id > (?2) and uid = (?1)";
-        let rs = conn_lock.execute(sql, p);
-        match rs {
-            Ok(_usize) => {}
-            Err(error) => {
-                panic!("Unable to remove account: {}!", error);
-            }
-        }
+        // let sql = "UPDATE accounts SET id = id -1 WHERE id > (?2) and uid = (?1)";
+        // let rs = conn_lock.execute(sql, p);
+        // match rs {
+        //     Ok(_usize) => {}
+        //     Err(error) => {
+        //         panic!("Unable to remove account: {}!", error);
+        //     }
+        // }
 
-        let p = rusqlite::params![uid];
-        let sql = "UPDATE account_ids SET next_account_id = next_account_id -1 WHERE uid = (?1)";
-        let rs = conn_lock.execute(sql, p);
-        match rs {
-            Ok(_usize) => {}
-            Err(error) => {
-                panic!("Unable to remove account: {}!", error);
-            }
-        }
+        // let p = rusqlite::params![uid];
+        // let sql = "UPDATE account_ids SET next_account_id = next_account_id -1 WHERE uid = (?1)";
+        // let rs = conn_lock.execute(sql, p);
+        // match rs {
+        //     Ok(_usize) => {}
+        //     Err(error) => {
+        //         panic!("Unable to remove account: {}!", error);
+        //     }
+        // }
         Ok(aid)
     }
 
