@@ -51,9 +51,34 @@ use shared_lib::{FlatLedgerEntry, LedgerEntry};
 use std::collections::HashMap;
 use std::path::Path;
 
-use crate::accounts::base::{BaseActions, BaseGrowth};
+use crate::accounts::AnalysisPeriod;
 #[cfg(feature = "ratatui_support")]
-use crate::accounts::base::VariableAccountUI;
+use crate::accounts::KEY_TOTAL_VALUE;
+use crate::accounts::base::AccountContext;
+use crate::accounts::base::AccountFileIO;
+use crate::accounts::base::HasContext;
+use crate::accounts::base::HasVariableAccountContext;
+use crate::accounts::base::LedgerOps;
+use crate::accounts::base::Valuable;
+use crate::accounts::base::VariableAccountContext;
+use crate::accounts::base::fixed_account::FixedAccount;
+use crate::accounts::base::interest_bearing_fixed_account::InterestBearingFixedAccount;
+use crate::accounts::base::interest_bearing_fixed_account::InterestBearingLedger;
+use crate::accounts::base::variable_account::VariableGrowth;
+use crate::accounts::base::variable_account::VariableLedger;
+use crate::accounts::base::variable_account::VariableValuable;
+use crate::accounts::base::variable_account::VariableAccountFileIO;
+use crate::accounts::base::ValueLimited;
+use crate::accounts::FilePathHelper;
+use crate::accounts::growth::GrowthCalculable;
+use crate::accounts::growth::GrowthMetric;
+#[cfg(feature = "ratatui_support")]
+use crate::accounts::{KEY_COMPOUNDED_ANNUAL_RATE_OF_RETURN, KEY_MONEY_WEIGHTED_RATE_OF_RETURN, KEY_TIME_WEIGHTED_RATE_OF_RETURN, KEY_REMAINING_CONTRIBUTION, KEY_CONTRIBUTION_LIMIT};
+use crate::accounts::growth::report_growth;
+use crate::accounts::base::variable_account::get_positions;
+use crate::accounts::base::variable_account::{allocate_stock_split, allocate_sale_stock,confirm_public_ticker,get_position_stats,get_value_of_positions_on_day, initialize_buffer, manually_record_stock_close_price};
+#[cfg(feature = "ratatui_support")]
+use crate::accounts::render::*;
 #[cfg(feature = "ratatui_support")]
 use crate::app::screen::CurrentlySelecting;
 #[cfg(feature = "ratatui_support")]
@@ -79,44 +104,107 @@ use rustyline::Editor;
 use shared_lib::TransferType;
 
 use super::base::variable_account::VariableAccount;
-use super::base::Account;
-use super::base::AccountCreation;
-use super::base::AccountData;
-use super::base::AccountOperations;
+use super::Account;
+use super::AccountCreation;
+use super::AccountData;
+use super::AccountOperations;
 #[cfg(feature = "ratatui_support")]
-use super::base::AccountUI;
-use super::base::KEY_TOTAL_VALUE;
-#[cfg(feature = "ratatui_support")]
-use super::base::render_table_tabs;
+use super::AccountUI;
 #[cfg(feature = "ratatui_support")]
 use crate::ui::{centered_rect, float_range};
-
-pub const KEY_REMAINING_CONTRIBUTION: &str = "Remaining Contribution";
-pub const KEY_CONTRIBUTION_LIMIT: &str = "Contribution Limit";
-pub const KEY_TWRR_GROWTH: &str = "GROWTH_TWRR";
-pub const KEY_CAGR_GROWTH: &str = "GROWTH_CAGR";
-pub const KEY_MWRR_GROWTH: &str = "GROWTH_MWRR";
+#[cfg(feature = "ratatui_support")]
+use super::render_table_tabs;
 
 pub struct RothIraAccount {
-    uid: u32,
-    id: u32,
-    db: DbConn,
-    variable: VariableAccount,
-    open_date: NaiveDate,
+    ctx : AccountContext,
+    vctx : VariableAccountContext,
 }
 
-#[derive(Helper, Completer, Hinter, Highlighter, Validator)]
-struct FilePathHelper {
-    #[rustyline(Completer)]
-    completer: FilenameCompleter,
-    #[rustyline(Highlighter)]
-    highlighter: MatchingBracketHighlighter,
-    #[rustyline(Validator)]
-    validator: MatchingBracketValidator,
-    #[rustyline(Hinter)]
-    hinter: HistoryHinter,
-    colored_prompt: String,
+impl HasContext for RothIraAccount {
+    fn ctx(&self) -> &AccountContext {
+        &self.ctx
+    }
+    fn ctx_mut(&mut self) -> &mut AccountContext {
+        &mut self.ctx
+    }
 }
+
+impl HasVariableAccountContext for RothIraAccount {
+    fn variable_ctx(&self) -> &VariableAccountContext {
+        &self.vctx
+    }
+    fn variable_ctx_mut(&mut self) -> &mut VariableAccountContext {
+        &mut self.vctx
+    }
+}
+
+impl VariableAccount for RothIraAccount {}
+
+impl LedgerOps for RothIraAccount {
+    fn modify(&mut self, selected_record: LedgerRecord) -> Option<LedgerRecord> {
+        self.modify_variable(selected_record)
+    }
+}
+
+impl InterestBearingLedger for RothIraAccount {}
+
+impl VariableLedger for RothIraAccount {}
+
+impl InterestBearingFixedAccount for RothIraAccount {}
+
+impl FixedAccount for RothIraAccount {}
+
+impl Valuable for RothIraAccount {
+    fn account_value(&self) -> Option<f32> {
+        self.variable_value()
+    }
+
+    fn get_account_value_on_day(&self, day: &NaiveDate) -> Option<f32> {
+        self.variable_value_on_day(day)   
+    }
+}
+
+impl VariableValuable for RothIraAccount {}
+
+impl GrowthCalculable for RothIraAccount { 
+    fn calculate_growth(&self, metric: GrowthMetric, start_date : NaiveDate, end_date : NaiveDate) -> f32 {
+        self.variable_growth(metric, start_date, end_date)
+    }
+}
+
+impl VariableGrowth for RothIraAccount {}
+
+impl ValueLimited for RothIraAccount {
+    fn account_limit(&self) -> f32 {
+        let acct = self.ctx.db.get_roth_ira(self.ctx.uid, self.ctx.aid).unwrap();
+        return acct.info.contribution_limit;
+    }
+    fn remaining(&self) -> f32 {
+        let contribution_limit = self.account_limit();
+        let (start, end) =
+            get_analysis_period_dates(self.get_open_date(), &AnalysisPeriod::YTD);
+        let contributions_ytd = self.ctx.db
+            .get_ledger_entries_within_timestamps(self.ctx.uid, self.ctx.aid, start, end)
+            .unwrap();
+        let aggregate: f32 = contributions_ytd
+            .iter()
+            .filter(|x| x.info.transfer_type == TransferType::DepositFromExternalAccount)
+            .map(|x| x.info.amount)
+            .sum();
+        contribution_limit - aggregate
+    }
+}
+
+impl AccountFileIO for RothIraAccount {
+    fn import(&self) {
+        self.import_variable_account();
+    }
+    fn export(&self) {
+        self.export_variable_account();
+    }
+}
+
+impl VariableAccountFileIO for RothIraAccount {}
 
 impl AccountCreation for RothIraAccount {
     fn create(uid: u32, name: String, _db: &DbConn) -> AccountRecord {
@@ -156,7 +244,7 @@ impl AccountCreation for RothIraAccount {
                 .unwrap();
 
         if initialize_account {
-            acct.variable.fixed.deposit(None, false);
+            acct.deposit(None, false);
         }
 
         return AccountRecord {
@@ -176,232 +264,20 @@ impl RothIraAccount {
             Local::now().date_naive()
         };
 
-        let acct = Self {
-            uid: uid,
-            id: id,
-            db: db.clone(),
-            variable: VariableAccount::new(uid, id, db, open_date),
-            open_date: open_date,
+        let mut acct = Self {
+            ctx : AccountContext { 
+                uid : uid, 
+                aid : id,
+                db : db.clone(), 
+                open_date : open_date,
+            },
+            vctx : VariableAccountContext { buffer: None }
         };
+
+        let data = initialize_buffer(&acct.ctx, &acct.vctx);
+        acct.vctx.buffer = data;
 
         acct
-    }
-
-    pub fn get_contribution_limit(&self) -> f32 {
-        let acct = self.db.get_roth_ira(self.uid, self.id).unwrap();
-        return acct.info.contribution_limit;
-    }
-
-    pub fn get_remaining_contribution(&self) -> f32 {
-        let contribution_limit = self.get_contribution_limit();
-        let (start, end) =
-            get_analysis_period_dates(self.open_date, &crate::accounts::base::AnalysisPeriod::YTD);
-        let contributions_ytd = self
-            .db
-            .get_ledger_entries_within_timestamps(self.uid, self.id, start, end)
-            .unwrap();
-        let aggregate: f32 = contributions_ytd
-            .iter()
-            .filter(|x| x.info.transfer_type == TransferType::DepositFromExternalAccount)
-            .map(|x| x.info.amount)
-            .sum();
-        contribution_limit - aggregate
-    }
-
-    #[cfg(feature = "ratatui_support")]
-    pub fn get_linechart(&self, app: &mut App) -> Option<LineChart> {
-        let (mut start, end) = (app.analysis_start, app.analysis_end);
-        if start < self.open_date {
-            start = self.open_date;
-        }
-        let mut ledger = self.get_ledger_within_dates(start, end);
-        ledger.push(LedgerRecord {
-            id: 0,
-            info: LedgerInfo {
-                date: Local::now().date_naive().to_string(),
-                amount: 0.0,
-                transfer_type: TransferType::ZeroSumChange,
-                participant: 0,
-                category_id: 0,
-                description: "".to_string(),
-            },
-        });
-        let external_transfers = self
-            .variable
-            .db
-            .get_external_transactions_between_timestamps(self.uid, self.id, start, end)
-            .unwrap();
-
-        let mut tstamp_min = f64::MAX;
-        let mut tstamp_max = f64::MIN;
-        let mut min_total = f64::MAX;
-        let mut max_total = f64::MIN;
-
-        // time period starting amount
-        let time_period_investments_opt = if let Some(mut transactions) = external_transfers {
-            if !transactions.is_empty() {
-                // this has to return a value because it will be inclusive of first entry
-                let tpi_starting_amount = self
-                    .db
-                    .get_cumulative_total_of_ledger_of_external_transactions_on_date(
-                        self.uid, self.id, start,
-                    )
-                    .unwrap()
-                    .unwrap();
-                let initial = transactions.remove(0);
-                let timestamp = NaiveDate::parse_from_str(&initial.info.date, "%Y-%m-%d")
-                    .expect(format!("Unexpected data: {}", initial.info.date).as_str())
-                    .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
-                    .and_utc()
-                    .timestamp_millis() as f64;
-                let mut aggregate = tpi_starting_amount as f64;
-                let mut dataset = vec![(timestamp, aggregate)];
-                transactions.push(LedgerRecord {
-                    id: 0,
-                    info: LedgerInfo {
-                        date: Local::now().date_naive().to_string(),
-                        amount: 0.0,
-                        transfer_type: TransferType::ZeroSumChange,
-                        participant: 0,
-                        category_id: 0,
-                        description: "".to_string(),
-                    },
-                });
-                min_total = aggregate;
-                max_total = aggregate;
-                tstamp_min = timestamp;
-                tstamp_max = tstamp_min;
-
-                dataset.append(
-                    &mut transactions
-                        .iter()
-                        .map(|record| {
-                            let date =
-                                NaiveDate::parse_from_str(&record.info.date, "%Y-%m-%d").unwrap();
-                            let dt = date.and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap());
-                            let tstamp = dt.and_utc().timestamp_millis() as f64;
-                            aggregate = match record.info.transfer_type {
-                                TransferType::DepositFromExternalAccount => {
-                                    aggregate + record.info.amount as f64
-                                }
-                                TransferType::WithdrawalToExternalAccount => {
-                                    aggregate - record.info.amount as f64
-                                }
-                                _ => aggregate,
-                            };
-                            max_total = if aggregate > max_total {
-                                aggregate
-                            } else {
-                                max_total
-                            };
-                            min_total = if aggregate < min_total {
-                                aggregate
-                            } else {
-                                min_total
-                            };
-                            tstamp_max = if tstamp > tstamp_max {
-                                tstamp
-                            } else {
-                                tstamp_max
-                            };
-                            (tstamp, aggregate)
-                        })
-                        .collect(),
-                );
-                Some(dataset)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
-        if let Some(time_period_investments) = time_period_investments_opt {
-            let mut date = start;
-            let mut total_account_values = Vec::new();
-            while date < end {
-                let value = self.variable.get_account_value_on_day(&date.clone());
-                if value.is_none() {
-                    break;
-                } else {
-                    use crate::accounts::base::AnalysisPeriod;
-
-                    let tstamp = NaiveDate::parse_from_str(&date.to_string(), "%Y-%m-%d")
-                        .expect(format!("Unexpected data: {}", date).as_str())
-                        .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
-                        .and_utc()
-                        .timestamp_millis() as f64;
-
-                    let partial_value = self.variable.get_account_value_on_day(&date);
-                    let mut aggregate = 0.0;
-                    if partial_value.is_none() {
-                        aggregate = aggregate;
-                    } else {
-                        aggregate = partial_value.unwrap() as f64;
-                    }
-                    max_total = if aggregate > max_total {
-                        aggregate
-                    } else {
-                        max_total
-                    };
-                    min_total = if aggregate < min_total {
-                        aggregate
-                    } else {
-                        min_total
-                    };
-                    tstamp_max = if tstamp > tstamp_max {
-                        tstamp
-                    } else {
-                        tstamp_max
-                    };
-                    total_account_values.push((tstamp, aggregate));
-
-                    date = match app.analysis_period {
-                        AnalysisPeriod::OneDay | AnalysisPeriod::OneWeek => {
-                            date.checked_add_days(Days::new(1)).unwrap()
-                        }
-                        AnalysisPeriod::OneMonth => date.checked_add_days(Days::new(2)).unwrap(),
-                        AnalysisPeriod::OneYear
-                        | AnalysisPeriod::ThreeMonths
-                        | AnalysisPeriod::SixMonths
-                        | AnalysisPeriod::YTD => date.checked_add_days(Days::new(7)).unwrap(),
-                        AnalysisPeriod::TwoYears => date.checked_add_days(Days::new(20)).unwrap(),
-                        AnalysisPeriod::FiveYears => date.checked_add_days(Days::new(50)).unwrap(),
-                        AnalysisPeriod::TenYears => date.checked_add_days(Days::new(100)).unwrap(),
-                        AnalysisPeriod::Custom | AnalysisPeriod::AllTime => {
-                            let diff = (end.num_days_from_ce() - start.num_days_from_ce()) as u32;
-                            let days_to_add: u32 = if diff <= 365 {
-                                1
-                            } else if diff <= (365 * 2) {
-                                2
-                            } else if diff <= (365 * 5) {
-                                5
-                            } else {
-                                10
-                            };
-                            date.checked_add_days(Days::new(days_to_add as u64))
-                                .unwrap()
-                        }
-                    };
-                }
-            }
-
-            Some(LineChart {
-                datasets: vec![time_period_investments, total_account_values],
-                y_max: max_total,
-                y_min: min_total,
-                y_step: (max_total - min_total) / 5.0,
-                x_max: tstamp_max,
-                x_min: tstamp_min,
-                x_labels: vec![start.to_string(), end.to_string()],
-                y_labels: float_range(min_total, max_total, (max_total - min_total) / 5.0)
-                    .into_iter()
-                    .map(|x| format!("{:.2}", x))
-                    .collect(),
-            })
-        } else {
-            None
-        }
     }
 }
 
@@ -428,28 +304,28 @@ impl AccountOperations for RothIraAccount {
             .to_string();
             match action.as_str() {
                 "Accrual" => { 
-                    self.variable.fixed.accrual(None, false);
+                    self.accrual(None, false);
                 }
                 "Fee" => {
-                    self.variable.fixed.fee(None, false);
+                    self.fee(None, false);
                 }
                 "Deposit" => {
-                    self.variable.fixed.deposit(None, false);
+                    self.deposit(None, false);
                 }
                 "Withdrawal" => {
-                    self.variable.fixed.withdrawal(None, false);
+                    self.withdrawal(None, false);
                 }
                 "Purchase" => {
-                    self.variable.purchase_stock(None, false);
+                    self.purchase_stock(None, false);
                 }
                 "Sale" => {
-                    self.variable.sell_stock(None, false);
+                    self.sell_stock(None, false);
                 }
                 "Stock Split" => {
-                    self.variable.split_stock(None, false);
+                    self.split_stock(None, false);
                 }
                 "Stock Price" => {
-                    self.variable.manually_record_stock_close_price();
+                    manually_record_stock_close_price(&self.ctx);
                 }
                 "None" => {
                     return;
@@ -469,278 +345,10 @@ impl AccountOperations for RothIraAccount {
     }
 
     fn import(&mut self) {
-        let g = FilePathHelper {
-            completer: FilenameCompleter::new(),
-            highlighter: MatchingBracketHighlighter::new(),
-            hinter: HistoryHinter::new(),
-            validator: MatchingBracketValidator::new(),
-            colored_prompt: "".to_owned(),
-        };
-        let config = Config::builder()
-            .history_ignore_space(true)
-            .completion_type(CompletionType::List)
-            .edit_mode(EditMode::Vi)
-            .build();
-        let mut rl = Editor::with_config(config).unwrap();
-        rl.set_helper(Some(g));
-
-        let mut fp = Path::new("~");
-        let mut bad_path;
-        let mut csv: String = String::new();
-        loop {
-            csv = rl.readline("Enter path to CSV file: ").unwrap();
-            if csv.to_string() == "none" {
-                return;
-            }
-            bad_path = match Path::new(&csv).try_exists() {
-                Ok(true) => false,
-                Ok(false) => {
-                    println!("File {} cannot be found!", Path::new(&csv).display());
-                    true
-                }
-                Err(e) => {
-                    println!("File {} cannot be found: {}!", e, Path::new(&csv).display());
-                    true
-                }
-            };
-            if !bad_path {
-                break;
-            } else {
-                let try_again = Confirm::new("Continue import?").prompt().unwrap();
-                if !try_again {
-                    return;
-                }
-            }
-        }
-        fp = Path::new(&csv);
-
-        let mut rdr = ReaderBuilder::new()
-            .has_headers(false)
-            .from_path(fp)
-            .unwrap();
-
-        let mut ledger_entries = Vec::new();
-        for result in rdr.deserialize::<LedgerEntry>() {
-            ledger_entries.push(result.unwrap());
-        }
-        ledger_entries.sort_by(|x, y| {
-            (NaiveDate::parse_from_str(&x.date, "%Y-%m-%d").unwrap())
-                .cmp(&NaiveDate::parse_from_str(&y.date, "%Y-%m-%d").unwrap())
-        });
-
-        for entry in ledger_entries {
-            let ptype = if entry.transfer_type
-                == shared_lib::TransferType::WithdrawalToExternalAccount
-            {
-                ParticipantType::Payee
-            } else if entry.transfer_type == shared_lib::TransferType::WithdrawalToInternalAccount {
-                ParticipantType::Payee
-            } else if entry.transfer_type == shared_lib::TransferType::DepositFromExternalAccount {
-                ParticipantType::Payer
-            } else {
-                ParticipantType::Payer
-            };
-
-            let lid: u32;
-            let txn: LedgerInfo;
-            if entry.stock_info.is_some() {
-                let s: shared_lib::StockInfo = entry
-                    .stock_info
-                    .expect("Unable to obtain stock information!");
-
-                if s.is_buy {
-                    if s.is_split {
-                        // if split, check that we own this symbol
-                        let symbols_owned = self.db.get_stock_tickers(self.uid, self.id).unwrap();
-                        let symbol_found = symbols_owned
-                            .iter()
-                            .any(|i| *i == entry.participant.clone());
-                        if !symbol_found {
-                            panic!("Attempting to register split of symbol not owned by account!");
-                        }
-
-                        txn = LedgerInfo {
-                            date: entry.date,
-                            amount: entry.amount,
-                            transfer_type: entry.transfer_type as TransferType,
-                            participant: self.db.check_and_add_participant(
-                                self.uid,
-                                self.id,
-                                entry.participant.clone(),
-                                ptype,
-                                false,
-                            ),
-                            category_id: self.db.check_and_add_category(
-                                self.uid,
-                                self.id,
-                                entry.category.to_ascii_uppercase(),
-                            ),
-                            description: entry.description,
-                        };
-
-                        lid = self
-                            .db
-                            .add_ledger_entry(self.uid, self.id, txn.clone())
-                            .unwrap();
-
-                        // get total shares for ticker and divide by split
-                        let stocks_owned = self
-                            .db
-                            .get_stocks(self.uid, self.id, entry.participant.clone())
-                            .unwrap();
-                        let all_shares: f32 = stocks_owned.iter().map(|x| x.info.remaining).sum();
-                        // lpl takes the split and adds the difference to your account
-                        // i.e., if the split is 3:1, it will take your 1 part and add 2 parts
-                        let split_factor = (s.shares + all_shares) / all_shares;
-                        let stock_split_id = self
-                            .db
-                            .add_stock_split(self.uid, self.id, split_factor.clone(), lid)
-                            .unwrap();
-
-                        let stock_split_record = StockSplitRecord {
-                            id: stock_split_id,
-                            info: StockSplitInfo {
-                                split: split_factor,
-                                ledger_id: lid,
-                            },
-                            txn_opt: Some(txn),
-                        };
-
-                        self.variable.allocate_stock_split(stock_split_record);
-                    } else {
-                        // if buy, confirm it is a public ticker
-                        let public_ticker = self
-                            .variable
-                            .confirm_public_ticker(entry.participant.clone());
-
-                        let pid = self.db.check_and_add_participant(
-                            self.uid,
-                            self.id,
-                            entry.participant.clone(),
-                            ptype,
-                            false,
-                        );
-
-                        txn = LedgerInfo {
-                            date: NaiveDate::parse_from_str(entry.date.as_str(), "%Y-%m-%d")
-                                .unwrap()
-                                .format("%Y-%m-%d")
-                                .to_string(),
-                            amount: entry.amount,
-                            transfer_type: entry.transfer_type as TransferType,
-                            participant: pid,
-                            category_id: self.db.check_and_add_category(
-                                self.uid,
-                                self.id,
-                                entry.category.to_ascii_uppercase(),
-                            ),
-                            description: entry.description,
-                        };
-
-                        lid = self.db.add_ledger_entry(self.uid, self.id, txn).unwrap();
-
-                        let my_s: crate::types::investments::StockInfo = StockInfo {
-                            shares: s.shares,
-                            costbasis: s.costbasis,
-                            remaining: s.remaining,
-                            ledger_id: lid,
-                        };
-
-                        self.db.add_stock_purchase(self.uid, self.id, my_s).unwrap();
-
-                        if !public_ticker {
-                            let stock_price_info = StockPriceInfo {
-                                date: entry.date.clone(),
-                                stock_ticker_peer_id: pid,
-                                price_per_unit_share: s.costbasis,
-                            };
-
-                            self.db
-                                .add_stock_price(self.uid, self.id, stock_price_info)
-                                .unwrap();
-                        }
-                    }
-                } else {
-                    // if sale, check that we own this symbol
-                    let symbols_owned = self.db.get_stock_tickers(self.uid, self.id).unwrap();
-                    let symbol_found = symbols_owned
-                        .iter()
-                        .any(|i| *i == entry.participant.clone());
-                    if !symbol_found {
-                        panic!("Attempting to register sale of symbol not owned by account!");
-                    }
-
-                    txn = LedgerInfo {
-                        date: entry.date,
-                        amount: entry.amount,
-                        transfer_type: entry.transfer_type as TransferType,
-                        participant: self.db.check_and_add_participant(
-                            self.uid,
-                            self.id,
-                            entry.participant.clone(),
-                            ptype,
-                            false,
-                        ),
-                        category_id: self.db.check_and_add_category(
-                            self.uid,
-                            self.id,
-                            entry.category.to_ascii_uppercase(),
-                        ),
-                        description: entry.description,
-                    };
-
-                    lid = self
-                        .db
-                        .add_ledger_entry(self.uid, self.id, txn.clone())
-                        .unwrap();
-
-                    let my_s: crate::types::investments::StockInfo = StockInfo {
-                        shares: s.shares,
-                        costbasis: s.costbasis,
-                        remaining: s.remaining,
-                        ledger_id: lid,
-                    };
-                    let sale_id = self
-                        .db
-                        .add_stock_sale(self.uid, self.id, my_s.clone())
-                        .unwrap();
-                    self.variable.allocate_sale_stock(
-                        StockRecord {
-                            id: sale_id,
-                            info: my_s,
-                            txn_opt: Some(txn),
-                        },
-                        "LIFO".to_string(),
-                    );
-                }
-            } else {
-                // this is just a normal ledger transaction
-                let txn: LedgerInfo = LedgerInfo {
-                    date: NaiveDate::parse_from_str(entry.date.as_str(), "%Y-%m-%d")
-                        .unwrap()
-                        .format("%Y-%m-%d")
-                        .to_string(),
-                    amount: entry.amount,
-                    transfer_type: entry.transfer_type as TransferType,
-                    participant: self.db.check_and_add_participant(
-                        self.uid,
-                        self.id,
-                        entry.participant,
-                        ptype,
-                        false,
-                    ),
-                    category_id: self.db.check_and_add_category(
-                        self.uid,
-                        self.id,
-                        entry.category.to_ascii_uppercase(),
-                    ),
-                    description: entry.description,
-                };
-
-                lid = self.db.add_ledger_entry(self.uid, self.id, txn).unwrap();
-            }
-        }
-        self.variable.initialize_buffer();
+         <Self as AccountFileIO>::import(self);
+        // initialize buffer after import
+        let data = initialize_buffer(&self.ctx, &self.vctx);
+        self.vctx.buffer = data;
     }
 
     fn modify(&mut self) {
@@ -759,26 +367,26 @@ impl AccountOperations for RothIraAccount {
 
             match modify_choice {
                 "Contribution Limit" => {
-                    let k401 = self.db.get_401k(self.uid, self.id).unwrap();
+                    let k401 = self.ctx.db.get_401k(self.ctx.uid, self.ctx.aid).unwrap();
                     let new_contribution_limit =
                         CustomType::<f32>::new("Enter new contribution limit:")
                             .with_default(k401.info.contribution_limit)
                             .with_error_message("Please type a valid amount!")
                             .prompt()
                             .unwrap();
-                    self.db.update_401k_contribution_limit(
-                        self.uid,
-                        self.id,
+                    self.ctx.db.update_401k_contribution_limit(
+                        self.ctx.uid,
+                        self.ctx.aid,
                         new_contribution_limit,
                     );
                 }
                 "Ledger" => loop {
-                    let record_or_none = self.variable.fixed.select_ledger_entry();
+                    let record_or_none = self.select_ledger_entry();
                     if record_or_none.is_none() {
                         break;
                     }
                     let selected_record = record_or_none.unwrap();
-                    self.variable.fixed.modify(selected_record);
+                    <RothIraAccount as LedgerOps>::modify(self, selected_record);
                     let go_again = Confirm::new("Modify additional records? (y/n)")
                         .prompt()
                         .unwrap();
@@ -788,7 +396,7 @@ impl AccountOperations for RothIraAccount {
                 },
                 "Categories" => {
                     loop {
-                        let records = self.db.get_categories(self.uid, self.id).unwrap();
+                        let records = self.ctx.db.get_categories(self.ctx.uid, self.ctx.aid).unwrap();
                         let mut choices: Vec<String> = records
                             .iter()
                             .map(|x| x.category.name.clone())
@@ -813,20 +421,19 @@ impl AccountOperations for RothIraAccount {
                                     .prompt()
                                     .unwrap()
                                     .to_string();
-                                self.db.update_category_name(
-                                    self.uid,
-                                    self.id,
+                                self.ctx.db.update_category_name(
+                                    self.ctx.uid,
+                                    self.ctx.aid,
                                     chosen_category,
                                     new_name,
                                 );
                             }
                             "Remove" => {
                                 // check if category is referenced by any current ledger
-                                let is_referenced = self
-                                    .db
+                                let is_referenced = self.ctx.db
                                     .check_if_ledger_references_category(
-                                        self.uid,
-                                        self.id,
+                                        self.ctx.uid,
+                                        self.ctx.aid,
                                         chosen_category.clone(),
                                     )
                                     .unwrap();
@@ -838,10 +445,10 @@ impl AccountOperations for RothIraAccount {
                                             "{} | {} | {} | {} ",
                                             record.info.date,
                                             chosen_category.clone(),
-                                            self.db
+                                            self.ctx.db
                                                 .get_participant(
-                                                    self.uid,
-                                                    self.id,
+                                                    self.ctx.uid,
+                                                    self.ctx.aid,
                                                     record.info.participant
                                                 )
                                                 .unwrap(),
@@ -856,9 +463,9 @@ impl AccountOperations for RothIraAccount {
                                 let rm_msg = format!("Are you sure you want to delete the category {} (this will also delete found records)?", chosen_category);
                                 let delete = Confirm::new(&rm_msg).prompt().unwrap();
                                 if delete {
-                                    self.db.remove_category(
-                                        self.uid,
-                                        self.id,
+                                    self.ctx.db.remove_category(
+                                        self.ctx.uid,
+                                        self.ctx.aid,
                                         chosen_category.clone(),
                                     );
                                 }
@@ -894,7 +501,7 @@ impl AccountOperations for RothIraAccount {
                             }
                         };
                         let participants =
-                            self.db.get_participants(self.uid, self.id, ptype).unwrap();
+                            self.ctx.db.get_participants(self.ctx.uid, self.ctx.aid, ptype).unwrap();
                         let mut people = participants
                             .iter()
                             .map(|x| x.participant.name.clone())
@@ -924,10 +531,10 @@ impl AccountOperations for RothIraAccount {
                                     .prompt()
                                     .unwrap()
                                     .to_string();
-                                self.db
+                                self.ctx.db
                                     .update_participant_name(
-                                        self.uid,
-                                        self.id,
+                                        self.ctx.uid,
+                                        self.ctx.aid,
                                         ptype,
                                         chosen_person.clone(),
                                         new_name,
@@ -936,11 +543,10 @@ impl AccountOperations for RothIraAccount {
                             }
                             "Remove" => {
                                 // check if participant is referenced by any current ledger
-                                let is_referenced = self
-                                    .db
+                                let is_referenced = self.ctx.db
                                     .check_if_ledger_references_participant(
-                                        self.uid,
-                                        self.id,
+                                        self.ctx.uid,
+                                        self.ctx.aid,
                                         ptype,
                                         chosen_person.clone(),
                                     )
@@ -952,10 +558,10 @@ impl AccountOperations for RothIraAccount {
                                         let v = format!(
                                             "{} | {} | {} | {} ",
                                             record.info.date,
-                                            self.db
+                                            self.ctx.db
                                                 .get_category_name(
-                                                    self.uid,
-                                                    self.id,
+                                                    self.ctx.uid,
+                                                    self.ctx.aid,
                                                     record.info.category_id
                                                 )
                                                 .unwrap(),
@@ -972,38 +578,38 @@ impl AccountOperations for RothIraAccount {
                                 if delete {
                                     match ptype {
                                         ParticipantType::Payee => {
-                                            self.db
+                                            self.ctx.db
                                                 .remove_participant(
-                                                    self.uid,
-                                                    self.id,
+                                                    self.ctx.uid,
+                                                    self.ctx.aid,
                                                     ParticipantType::Payee,
                                                     chosen_person.clone(),
                                                 )
                                                 .unwrap();
                                         }
                                         ParticipantType::Payer => {
-                                            self.db
+                                            self.ctx.db
                                                 .remove_participant(
-                                                    self.uid,
-                                                    self.id,
+                                                    self.ctx.uid,
+                                                    self.ctx.aid,
                                                     ParticipantType::Payer,
                                                     chosen_person.clone(),
                                                 )
                                                 .unwrap();
                                         }
                                         _ => {
-                                            self.db
+                                            self.ctx.db
                                                 .remove_participant(
-                                                    self.uid,
-                                                    self.id,
+                                                    self.ctx.uid,
+                                                    self.ctx.aid,
                                                     ParticipantType::Payee,
                                                     chosen_person.clone(),
                                                 )
                                                 .unwrap();
-                                            self.db
+                                            self.ctx.db
                                                 .remove_participant(
-                                                    self.uid,
-                                                    self.id,
+                                                    self.ctx.uid,
+                                                    self.ctx.aid,
                                                     ParticipantType::Payer,
                                                     chosen_person.clone(),
                                                 )
@@ -1044,117 +650,14 @@ impl AccountOperations for RothIraAccount {
     }
 
     fn export(&self) {
-        let g = FilePathHelper {
-            completer: FilenameCompleter::new(),
-            highlighter: MatchingBracketHighlighter::new(),
-            hinter: HistoryHinter::new(),
-            validator: MatchingBracketValidator::new(),
-            colored_prompt: "".to_owned(),
-        };
-        let config = Config::builder()
-            .history_ignore_space(true)
-            .completion_type(CompletionType::List)
-            .edit_mode(EditMode::Vi)
-            .build();
-        let mut rl = Editor::with_config(config).unwrap();
-        rl.set_helper(Some(g));
-
-        let mut wtr =
-            csv::Writer::from_path(rl.readline("Enter path to CSV file: ").unwrap()).unwrap();
-        let ledger = self.get_ledger();
-        if !ledger.is_empty() {
-            for record in ledger {
-                let stock_record_opt = match record.info.transfer_type {
-                    TransferType::ZeroSumChange => {
-                        // this is a stock split
-                        let stock_split_opt = self
-                            .db
-                            .check_and_get_stock_split_record_matching_from_ledger_id(
-                                self.uid, self.id, record.id,
-                            )
-                            .unwrap();
-                        if let Some(_ss_record) = stock_split_opt {
-                            Some(shared_lib::StockInfo {
-                                shares: 0.0,
-                                costbasis: 0.0,
-                                remaining: 0.0,
-                                is_buy: true,
-                                is_split: true,
-                            })
-                        } else {
-                            None
-                        }
-                    }
-                    TransferType::DepositFromInternalAccount => {
-                        // this could either be a sale or a dividend, if dividend than expect to return none
-                        let stock_sale_opt = self
-                            .db
-                            .check_and_get_stock_sale_record_matching_from_ledger_id(
-                                self.uid, self.id, record.id,
-                            )
-                            .unwrap();
-                        if let Some(stock_sale) = stock_sale_opt {
-                            Some(shared_lib::StockInfo {
-                                shares: stock_sale.info.shares,
-                                costbasis: stock_sale.info.costbasis,
-                                remaining: 0.0,
-                                is_buy: false,
-                                is_split: false,
-                            })
-                        } else {
-                            None
-                        }
-                    }
-                    TransferType::WithdrawalToInternalAccount => {
-                        // this is purchase
-                        let purchase_opt = self
-                            .db
-                            .check_and_get_stock_purchase_record_matching_from_ledger_id(
-                                self.uid, self.id, self.id,
-                            )
-                            .unwrap();
-                        if let Some(purchase) = purchase_opt {
-                            Some(shared_lib::StockInfo {
-                                shares: purchase.info.shares,
-                                costbasis: purchase.info.costbasis,
-                                remaining: 0.0,
-                                is_buy: false,
-                                is_split: false,
-                            })
-                        } else {
-                            None
-                        }
-                    }
-                    TransferType::DepositFromExternalAccount
-                    | TransferType::WithdrawalToExternalAccount => None,
-                };
-
-                let csv_ledger_record: shared_lib::LedgerEntry = LedgerEntry {
-                    date: record.info.date,
-                    amount: record.info.amount,
-                    transfer_type: record.info.transfer_type,
-                    participant: self
-                        .db
-                        .get_participant(self.uid, self.id, record.info.participant)
-                        .unwrap(),
-                    category: self
-                        .db
-                        .get_category_name(self.uid, self.id, record.info.category_id)
-                        .unwrap(),
-                    description: record.info.description,
-                    stock_info: stock_record_opt,
-                };
-                let flattened = FlatLedgerEntry::from(csv_ledger_record);
-                wtr.serialize(flattened).unwrap();
-            }
-        }
+        <Self as AccountFileIO>::export(self);
     }
 
     fn report(&self) {
         const REPORT_OPTIONS: [&'static str; 4] = [
             "Positions",
+            "Growth",
             "Total Value",
-            "Time-Weighted Rate of Return",
             "None",
         ];
         let choice = Select::new("What would you like to report: ", REPORT_OPTIONS.to_vec())
@@ -1163,7 +666,7 @@ impl AccountOperations for RothIraAccount {
             .to_string();
         match choice.as_str() {
             "Positions" => {
-                let positions_wrapped = self.variable.get_positions();
+                let positions_wrapped = get_positions(&self.ctx);
                 if positions_wrapped.is_some() {
                     let positions = positions_wrapped.unwrap();
                     println!("\nPositions:");
@@ -1179,19 +682,17 @@ impl AccountOperations for RothIraAccount {
                 println!("\tTotal Account Value: {}", value);
                 println!(
                     "\t\tFixed Account Value: {}",
-                    self.variable.fixed.get_current_value().unwrap_or(f32::NAN)
+                    self.fixed_value().unwrap_or(f32::NAN)
                 );
                 let today = Local::now().date_naive();
                 println!(
                     "\t\tVariable Account Value: {}",
-                    self.variable.get_value_of_positions_on_day(&today)
+                    get_value_of_positions_on_day(self.ctx(), self.variable_ctx(), &today)
                 );
             }
-            "Time-Weighted Rate of Return" => {
-                let (period_start, period_end, _) =
-                    query_user_for_analysis_period(self.get_open_date());
-                let twr = self.variable.time_weighted_return(period_start, period_end);
-                println!("\tRate of return: {}%", twr);
+            "Growth" => {
+                let rate = report_growth(self).unwrap_or(f32::NAN);
+                println!("\tRate of return: {}%", rate);
             }
             "None" => {
                 return;
@@ -1201,429 +702,17 @@ impl AccountOperations for RothIraAccount {
             }
         }
     }
-
-    fn link(&self, transacting_account: u32, entry: LedgerRecord) -> Option<u32> {
-        let from_account;
-        let to_account;
-
-        let cid;
-        let pid;
-        let transacting_account_name: String;
-        let (new_ttype, description) = match entry.info.transfer_type {
-            TransferType::DepositFromExternalAccount => {
-                // if the transacting account received a deposit, then self must be the "from" account
-                from_account = self.id;
-                to_account = transacting_account;
-                cid = self.db.check_and_add_category(
-                    self.uid,
-                    self.id,
-                    "Withdrawal".to_ascii_uppercase(),
-                );
-                transacting_account_name = self
-                    .db
-                    .get_account_name(self.uid, transacting_account)
-                    .unwrap();
-                pid = self.db.check_and_add_participant(
-                    self.uid,
-                    self.id,
-                    transacting_account_name.clone(),
-                    ParticipantType::Payee,
-                    true,
-                );
-                (
-                    TransferType::WithdrawalToExternalAccount,
-                    format!(
-                        "[Link]: Withdrawal of ${} to account {} on {}.",
-                        entry.info.amount, transacting_account_name, entry.info.date
-                    ),
-                )
-            }
-            TransferType::WithdrawalToExternalAccount => {
-                // if the transacting account had an amount withdrawn, then self must be the "to" account
-                from_account = transacting_account;
-                to_account = self.id;
-                cid = self.db.check_and_add_category(
-                    self.uid,
-                    self.id,
-                    "Deposit".to_ascii_uppercase(),
-                );
-                transacting_account_name = self
-                    .db
-                    .get_account_name(self.uid, transacting_account)
-                    .unwrap();
-                pid = self.db.check_and_add_participant(
-                    self.uid,
-                    self.id,
-                    transacting_account_name.clone(),
-                    ParticipantType::Payer,
-                    true,
-                );
-                (
-                    TransferType::DepositFromExternalAccount,
-                    format!(
-                        "[Link]: Deposit of ${} from account {} on {}.",
-                        entry.info.amount, transacting_account_name, entry.info.date
-                    ),
-                )
-            }
-            _ => {
-                return None;
-            }
-        };
-
-        let linked_entry = LedgerInfo {
-            date: entry.info.date,
-            amount: entry.info.amount,
-            transfer_type: new_ttype.clone(),
-            participant: pid,
-            category_id: cid,
-            description: description,
-        };
-
-        let (from_ledger_id, to_ledger_id) = match new_ttype {
-            TransferType::WithdrawalToExternalAccount => (
-                self.db
-                    .add_ledger_entry(self.uid, self.id, linked_entry)
-                    .unwrap(),
-                entry.id,
-            ),
-            TransferType::DepositFromExternalAccount => (
-                entry.id,
-                self.db
-                    .add_ledger_entry(self.uid, self.id, linked_entry)
-                    .unwrap(),
-            ),
-            _ => {
-                panic!("Unrecognized input!")
-            }
-        };
-
-        let transaction_record = AccountTransaction {
-            from_account: from_account,
-            to_account: to_account,
-            from_ledger: from_ledger_id,
-            to_ledger: to_ledger_id,
-        };
-
-        return Some(
-            self.db
-                .add_account_transaction(self.uid, transaction_record)
-                .unwrap(),
-        );
-    }
 }
 
-impl AccountData for RothIraAccount {
-    fn get_id(&self) -> u32 {
-        return self.id;
-    }
-    fn get_name(&self) -> String {
-        return self.db.get_account_name(self.uid, self.id).unwrap();
-    }
-    fn get_ledger(&self) -> Vec<LedgerRecord> {
-        let ledger = self.db.get_ledger(self.uid, self.id).unwrap();
-        return ledger;
-    }
-    fn get_ledger_within_dates(&self, start: NaiveDate, end: NaiveDate) -> Vec<LedgerRecord> {
-        let ledger = self
-            .db
-            .get_ledger_entries_within_timestamps(self.uid, self.id, start, end)
-            .unwrap();
-        return ledger;
-    }
-    fn get_displayable_ledger(&self) -> Vec<crate::types::ledger::DisplayableLedgerRecord> {
-        return self.db.get_displayable_ledger(self.uid, self.id).unwrap();
-    }
-    fn get_value(&self) -> f32 {
-        return self.variable.get_current_value().unwrap_or(f32::NAN);
-    }
-    fn get_value_on_day(&self, day: NaiveDate) -> f32 {
-        if let Some(value) = self.variable.get_account_value_on_day(&day) {
-            value
-        } else {
-            0.0
-        }
-    }
-    fn get_open_date(&self) -> NaiveDate {
-        return self.open_date;
-    }
-}
-
-#[cfg(feature = "ratatui_support")]
-impl RothIraAccount {
-    fn render_growth_chart(&self, frame: &mut Frame, area: Rect, app: &mut App) {
-        let linechart = app.linechart_cache.take();
-        if let Some(line_chart) = linechart {
-            app.linechart_cache = Some(line_chart.clone());
-
-            let mut datasets = vec![Dataset::default()
-                .name("Time Period Investment")
-                .marker(symbols::Marker::Braille)
-                .style(Style::default().fg(tailwind::LIME.c400))
-                .graph_type(GraphType::Line)
-                .data(&line_chart.datasets[0])];
-
-            datasets.push(
-                Dataset::default()
-                    .name("Total Value")
-                    .marker(symbols::Marker::Braille)
-                    .style(Style::default().fg(tailwind::BLUE.c400))
-                    .graph_type(GraphType::Line)
-                    .data(&line_chart.datasets[1]),
-            );
-
-            let chart = Chart::new(datasets)
-                .block(
-                    Block::bordered()
-                        .title(Line::from(" Value Over Time ").cyan().bold().centered())
-                        .style(Style::new().bg(tailwind::SLATE.c900)),
-                )
-                .legend_position(Some(LegendPosition::TopLeft))
-                .x_axis(
-                    Axis::default()
-                        .title("Time")
-                        .style(Style::default().gray())
-                        .bounds([line_chart.x_min, line_chart.x_max])
-                        .labels(line_chart.x_labels),
-                )
-                .y_axis(
-                    Axis::default()
-                        .title("Value (💰)")
-                        .style(Style::default().gray())
-                        .bounds([line_chart.y_min, line_chart.y_max])
-                        .labels(line_chart.y_labels),
-                )
-                .style(Style::new().bg(tailwind::SLATE.c900));
-
-            frame.render_widget(chart, area);
-        } else {
-            let value = ratatuiText::styled(
-                "No data to display!",
-                Style::default().fg(tailwind::ROSE.c400).bold(),
-            );
-
-            let display = Paragraph::new(value)
-                .centered()
-                .alignment(layout::Alignment::Center)
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .title(Line::from(" Value Over Time ").cyan().bold().centered())
-                        .title_alignment(layout::Alignment::Center)
-                        .padding(Padding::new(
-                            0,
-                            0,
-                            (if area.height > 4 {
-                                area.height / 2 - 2
-                            } else {
-                                0
-                            }),
-                            0,
-                        )),
-                )
-                .bg(tailwind::SLATE.c900);
-
-            frame.render_widget(display, area);
-        }
-    }
-
-    fn render_time_weighted_rate_of_return(&self, frame: &mut Frame, area: Rect, app: &mut App) {
-        let value = app
-            .page_cache_f32
-            .as_ref()
-            .expect("Account's page has not been cached!")
-            .get(KEY_TWRR_GROWTH)
-            .and_then(DisplayValue::as_f32)
-            .expect("Could not find growth rate!")
-            .clone();
-        let fg_color = if value < 0.0 {
-            tailwind::ROSE.c200
-        } else {
-            tailwind::EMERALD.c400
-        };
-        let value = ratatuiText::styled(
-            format!("{:.2}%", value).to_string(),
-            Style::default().fg(fg_color).bold(),
-        );
-
-        let display = Paragraph::new(value)
-            .centered()
-            .alignment(layout::Alignment::Center)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(format!(" TWRR - {} ", app.analysis_period))
-                    .title_alignment(layout::Alignment::Center)
-                    .padding(Padding::new(
-                        0,
-                        0,
-                        (if area.height > 4 {
-                            area.height / 2 - 2
-                        } else {
-                            0
-                        }),
-                        0,
-                    )),
-            )
-            .bg(tailwind::SLATE.c900);
-
-        frame.render_widget(display, area);
-    }
-
-    fn render_annualized_rate_of_return(&self, frame: &mut Frame, area: Rect, app: &mut App) {
-        let value = app
-            .page_cache_f32
-            .as_ref()
-            .expect("Account's page has not been cached!")
-            .get(KEY_CAGR_GROWTH)
-            .and_then(DisplayValue::as_f32)
-            .expect("Could not find growth rate!")
-            .clone();
-
-        let fg_color = if value < 0.0 {
-            tailwind::ROSE.c200
-        } else {
-            tailwind::EMERALD.c400
-        };
-        let value = ratatuiText::styled(
-            format!("{:.2}%", value).to_string(),
-            Style::default().fg(fg_color).bold(),
-        );
-
-        let display = Paragraph::new(value)
-            .centered()
-            .alignment(layout::Alignment::Center)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(format!(" CAGR - {} ", app.analysis_period))
-                    .title_alignment(layout::Alignment::Center)
-                    .padding(Padding::new(
-                        0,
-                        0,
-                        (if area.height > 4 {
-                            area.height / 2 - 2
-                        } else {
-                            0
-                        }),
-                        0,
-                    )),
-            )
-            .bg(tailwind::SLATE.c900);
-        frame.render_widget(display, area);
-    }
-
-    fn render_money_weighted_rate_of_return(&self, frame: &mut Frame, area: Rect, app: &mut App) {
-        let value = app
-            .page_cache_f32
-            .as_ref()
-            .expect("Account's page has not been cached!")
-            .get(KEY_MWRR_GROWTH)
-            .and_then(DisplayValue::as_f32)
-            .expect("Could not find growth rate!")
-            .clone();
-
-        let fg_color = if value < 0.0 {
-            tailwind::ROSE.c200
-        } else {
-            tailwind::EMERALD.c400
-        };
-        let value = ratatuiText::styled(
-            format!("{:.2}%", value).to_string(),
-            Style::default().fg(fg_color).bold(),
-        );
-
-        let display = Paragraph::new(value)
-            .centered()
-            .alignment(layout::Alignment::Center)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(format!(" MWRR - {} ", app.analysis_period))
-                    .title_alignment(layout::Alignment::Center)
-                    .padding(Padding::new(
-                        0,
-                        0,
-                        (if area.height > 4 {
-                            area.height / 2 - 2
-                        } else {
-                            0
-                        }),
-                        0,
-                    )),
-            )
-            .bg(tailwind::SLATE.c900);
-        frame.render_widget(display, area);
-    }
-
-    fn render_remaining_contribution(&self, frame: &mut Frame, area: Rect, app: &App) {
-        let contribution_remaining = app
-            .page_cache_f32
-            .as_ref()
-            .expect("Account's page has not been cached!")
-            .get(KEY_REMAINING_CONTRIBUTION)
-            .and_then(DisplayValue::as_f32)
-            .expect("Could not find remaining contribution!")
-            .clone();
-        let contribution_limit = app
-            .page_cache_f32
-            .as_ref()
-            .expect("Account's page has not been cached!")
-            .get(KEY_CONTRIBUTION_LIMIT)
-            .and_then(DisplayValue::as_f32)
-            .expect("Could not find contribution limit!")
-            .clone();
-
-        let remaining_contribution_text = vec![
-            Span::styled(
-                format!("${:.2}", contribution_remaining),
-                Style::default().bold().fg(if contribution_limit < 500. {
-                    tailwind::EMERALD.c400
-                } else if contribution_remaining < 1500. {
-                    tailwind::ROSE.c200
-                } else {
-                    tailwind::ROSE.c100
-                }),
-            ),
-            Span::styled(
-                format!(" of ${:.2} remaining.", contribution_limit),
-                Style::default().bold().fg(tailwind::EMERALD.c400),
-            ),
-        ];
-
-        let line = Line::from(remaining_contribution_text);
-        let text = ratatuiText::from(line);
-        let p = Paragraph::new(text)
-            .centered()
-            .alignment(layout::Alignment::Center)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title("Remaining Contribution")
-                    .title_alignment(layout::Alignment::Center)
-                    .padding(Padding::new(
-                        0,
-                        0,
-                        (if area.height > 4 {
-                            area.height / 2 - 2
-                        } else {
-                            0
-                        }),
-                        0,
-                    )),
-            )
-            .bg(tailwind::SLATE.c900);
-        frame.render_widget(p, area);
-    }
-}
+impl AccountData for RothIraAccount {}
 
 #[cfg(feature = "ratatui_support")]
 impl AccountUI for RothIraAccount {
     fn populate_page_cache_f32(&self, app: &mut App) {
         let mut kv: HashMap<String, DisplayValue> = HashMap::new();
 
-        let start = if app.analysis_start < self.open_date {
-            self.open_date
+        let start = if app.analysis_start < self.get_open_date() {
+            self.get_open_date()
         } else {
             app.analysis_start
         };
@@ -1633,34 +722,31 @@ impl AccountUI for RothIraAccount {
             DisplayValue::Float(self.get_value()),
         );
         kv.insert(
-            KEY_TWRR_GROWTH.into(),
-            DisplayValue::Float(self.variable.time_weighted_return(start, app.analysis_end)),
+            KEY_TIME_WEIGHTED_RATE_OF_RETURN.into(),
+            DisplayValue::Float(self.calculate_growth(GrowthMetric::TWRR, start, app.analysis_end)),
         );
         kv.insert(
-            KEY_CAGR_GROWTH.into(),
-            DisplayValue::Float(
-                self.variable
-                    .compound_annual_growth_rate(start, app.analysis_end),
-            ),
+            KEY_COMPOUNDED_ANNUAL_RATE_OF_RETURN.into(),
+            DisplayValue::Float(self.calculate_growth(GrowthMetric::CAGR, start, app.analysis_end)),
         );
         kv.insert(
-            KEY_MWRR_GROWTH.into(),
-            DisplayValue::Float(self.variable.money_weighted_return(start, app.analysis_end)),
+            KEY_MONEY_WEIGHTED_RATE_OF_RETURN.into(),
+            DisplayValue::Float(self.calculate_growth(GrowthMetric::MWRR, start, app.analysis_end)),
         );
         kv.insert(
             KEY_REMAINING_CONTRIBUTION.into(),
-            DisplayValue::Float(self.get_remaining_contribution()),
+            DisplayValue::Float(self.remaining()),
         );
         kv.insert(
             KEY_CONTRIBUTION_LIMIT.into(),
-            DisplayValue::Float(self.get_contribution_limit()),
+            DisplayValue::Float(self.account_limit()),
         );
 
         app.page_cache_f32 = Some(kv);
         app.ledger_entries = Some(self.get_displayable_ledger());
-        app.linechart_cache = self.get_linechart(app);
+        app.linechart_cache = get_time_period_investment_linechart(self,app);
         app.barchart_cache = None;
-        app.positions_entries = self.variable.get_position_stats();
+        app.positions_entries = get_position_stats(&self.ctx, &self.vctx);
     }
 
     fn render(&self, frame: &mut Frame, area: Rect, app: &mut App) {
@@ -1731,23 +817,20 @@ impl AccountUI for RothIraAccount {
 
         match app.selected_table_tab {
             0 => {
-                self.render_ledger_table(frame, ledger_area, app);
+                render_ledger_table(frame, ledger_area, app);
             }
             _ => { 
-                self.render_positions_table(frame, ledger_area, app);
+                render_positions_table(frame, ledger_area, app);
             }
         }        
-        self.render_growth_chart(frame, graph_area, app);
-        self.render_current_value(frame, value_area, app);
-        self.render_remaining_contribution(frame, contribution_area, app);
-        self.render_time_weighted_rate_of_return(frame, twrr_area, app);
-        self.render_annualized_rate_of_return(frame, cagr_area, app);
-        self.render_money_weighted_rate_of_return(frame, mwrr_area, app);
+        render_time_period_investment_linechart(frame, graph_area, app);
+        render_current_value(frame, value_area, app);
+        render_remaining_contribution(frame, contribution_area, app);
+        render_time_weighted_rate_of_return(frame, twrr_area, app);
+        render_annualized_rate_of_return(frame, cagr_area, app);
+        render_money_weighted_rate_of_return(frame, mwrr_area, app);
     }
 }
-
-#[cfg(feature = "ratatui_support")]
-impl VariableAccountUI for RothIraAccount {}
 
 impl Account for RothIraAccount {
     fn kind(&self) -> AccountType {
@@ -1758,20 +841,15 @@ impl Account for RothIraAccount {
         self
     }
     fn has_budget(&self) -> bool {
-        let acct = self.db.get_account(self.uid, self.id).unwrap();
+        let acct = self.ctx.db.get_account(self.ctx.uid, self.ctx.aid).unwrap();
         acct.info.has_budget
     }
     fn set_budget(&self) {
-        let mut acct = self.db.get_account(self.uid, self.id).unwrap();
+        let mut acct = self.ctx.db.get_account(self.ctx.uid, self.ctx.aid).unwrap();
         acct.info.has_budget = true;
-        let _ = self
-            .db
-            .update_account(self.uid, self.id, &acct.info)
+        let _ = self.ctx.db
+            .update_account(self.ctx.uid, self.ctx.aid, &acct.info)
             .unwrap();
-    }
-    #[cfg(feature = "ratatui_support")]
-    fn as_variable_account(&self) -> Option<&dyn VariableAccountUI> {
-        return Some(self);
     }
     #[cfg(feature = "ratatui_support")]
     fn renders_tables(&self) -> Vec<String> {

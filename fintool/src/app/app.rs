@@ -19,14 +19,15 @@ use std::collections::HashMap;
 use chrono::{Datelike, Local, NaiveDate};
 use ratatui::widgets::{Chart, ScrollbarState, TableState};
 
-use crate::accounts::base::{AnalysisPeriod, DisplayablePositionStatistics};
+use crate::accounts::AnalysisPeriod;
+use crate::accounts::base::DisplayablePositionStatistics;
 use crate::app::screen::{PALETTES};
 use crate::database::DbConn;
 use crate::tui::decode_and_init_account_type;
 use crate::types::accounts::AccountType;
 use crate::types::ledger::{DisplayableLedgerRecord, LedgerRecord};
 use crate::{accounts, is_account_type};
-use crate::{accounts::base::Account, app::screen::TabMenu};
+use crate::{accounts::Account, app::screen::TabMenu};
 
 use super::screen::{CurrentScreen, CurrentlySelecting, LedgerColors, Pages, UserLoadedState};
 

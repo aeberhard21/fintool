@@ -1,3 +1,4 @@
+use chrono::format::Fixed;
 /* ------------------------------------------------------------------------
   Copyright (C) 2025  Andrew J. Eberhard
 
@@ -53,8 +54,19 @@ use core::f32;
 use std::collections::HashMap;
 use std::path::Path;
 
-use crate::accounts::base::BaseActions;
-use crate::accounts::base::BaseGrowth;
+#[cfg(feature = "ratatui_support")]
+use crate::accounts::{KEY_COMPOUNDED_ANNUAL_RATE_OF_RETURN, KEY_SIMPLE_RATE_OF_RETURN, KEY_DAYS_TO_MATURITY, KEY_MATURITY_DATE};
+use crate::accounts::base::fixed_account::{FixedAccountFileIO, FixedGrowth, FixedValuable};
+use crate::accounts::base::{AccountContext, AccountFileIO, Valuable};
+use crate::accounts::base::budget::Budget;
+use crate::accounts::base::{HasContext, LedgerOps};
+use crate::accounts::base::interest_bearing_fixed_account::{InterestBearingFixedAccount, InterestBearingLedger};
+use crate::accounts::base::liquid_account::LiquidAccount;
+use crate::accounts::FilePathHelper;
+use crate::accounts::growth::GrowthCalculable;
+use crate::accounts::growth::GrowthMetric;
+#[cfg(feature = "ratatui_support")]
+use crate::accounts::render::*;
 #[cfg(feature = "ratatui_support")]
 use crate::app::app::{App, DisplayValue, LineChart};
 #[cfg(feature = "ratatui_support")]
@@ -76,160 +88,88 @@ use crate::ui::{centered_rect, float_range};
 use shared_lib::{FlatLedgerEntry, TransferType};
 
 use super::base::fixed_account::FixedAccount;
-use super::base::Account;
-use super::base::AccountCreation;
-use super::base::AccountData;
-use super::base::AccountOperations;
+use super::Account;
+use super::AccountCreation;
+use super::AccountData;
+use super::AccountOperations;
 #[cfg(feature = "ratatui_support")]
-use super::base::AccountUI;
-use super::base::AnalysisPeriod;
-use super::base::{KEY_GROWTH, KEY_TOTAL_VALUE};
-
-pub const KEY_MATURITY_DATE: &str = "Maturity Date";
-pub const KEY_DAYS_TO_MATURITY: &str = "Days to Maturity";
+use super::AccountUI;
+use super::AnalysisPeriod;
+use super::{KEY_TOTAL_VALUE};
 
 pub struct CertificateOfDepositAccount {
-    uid: u32,
-    id: u32,
-    db: DbConn,
-    fixed: FixedAccount,
-    open_date: NaiveDate,
+    ctx : AccountContext
 }
 
-#[derive(Helper, Completer, Hinter, Highlighter, Validator)]
-struct FilePathHelper {
-    #[rustyline(Completer)]
-    completer: FilenameCompleter,
-    #[rustyline(Highlighter)]
-    highlighter: MatchingBracketHighlighter,
-    #[rustyline(Validator)]
-    validator: MatchingBracketValidator,
-    #[rustyline(Hinter)]
-    hinter: HistoryHinter,
-    colored_prompt: String,
+impl HasContext for CertificateOfDepositAccount {
+    fn ctx(&self) -> &AccountContext {
+        &self.ctx
+    }
+    fn ctx_mut(&mut self) -> &mut AccountContext {
+        &mut self.ctx
+    }
 }
+
+impl InterestBearingLedger for CertificateOfDepositAccount {}
+
+impl LedgerOps for CertificateOfDepositAccount {
+    fn modify(&mut self, selected_record: LedgerRecord) -> Option<LedgerRecord> {
+        self.modify_interest_bearing(selected_record)    
+    }
+}
+
+impl FixedAccount for CertificateOfDepositAccount {}
+
+impl InterestBearingFixedAccount for CertificateOfDepositAccount {}
+
+impl Valuable for CertificateOfDepositAccount {
+    fn account_value(&self) -> Option<f32> {
+        self.fixed_value()
+    }
+    fn get_account_value_on_day(&self, day: &NaiveDate) -> Option<f32> {
+        self.fixed_value_on_day(day)
+    }
+}
+
+impl FixedValuable for CertificateOfDepositAccount {}
+
+impl GrowthCalculable for CertificateOfDepositAccount {
+    fn calculate_growth(&self, metric: super::growth::GrowthMetric, start_date : NaiveDate, end_date : NaiveDate) -> f32 {
+        self.fixed_growth(metric, start_date, end_date)
+    }
+}
+
+impl FixedGrowth for CertificateOfDepositAccount {}
+
+impl Budget for CertificateOfDepositAccount {}
+
+impl AccountFileIO for CertificateOfDepositAccount {
+    fn import(&self) {
+        self.import_fixed_account();
+    }
+    fn export(&self) {
+        self.export_fixed_account();
+    }
+}
+
+impl FixedAccountFileIO for  CertificateOfDepositAccount {}
 
 impl CertificateOfDepositAccount {
     pub fn new(uid: u32, id: u32, db: &DbConn) -> Self {
         let mut acct: CertificateOfDepositAccount = Self {
-            uid: uid,
-            id: id,
-            db: db.clone(),
-            fixed: FixedAccount::new(uid, id, db.clone()),
-            open_date: Local::now().date_naive(),
+            ctx : AccountContext { 
+                aid: id, 
+                uid : uid,
+                db: db.clone(), 
+                open_date: Local::now().date_naive() 
+            },
         };
         let mut ledger = acct.get_ledger();
         if !ledger.is_empty() {
             ledger.sort_by(|l1, l2| (&l1.info.date).cmp(&l2.info.date));
-            acct.open_date = NaiveDate::parse_from_str(&ledger[0].info.date, "%Y-%m-%d").unwrap();
+            acct.ctx.open_date = NaiveDate::parse_from_str(&ledger[0].info.date, "%Y-%m-%d").unwrap();
         }
         acct
-    }
-
-    #[cfg(feature = "ratatui_support")]
-    pub fn get_linechart(&self, app: &mut App) -> Option<LineChart> {
-        let (mut start, end) = (app.analysis_start, app.analysis_end);
-        if start < self.open_date {
-            start = self.open_date;
-        }
-        let starting_amount_opt = self
-            .db
-            .get_cumulative_total_of_ledger_before_date(self.uid, self.id, start)
-            .unwrap();
-        let mut entries: Vec<LedgerRecord> = if starting_amount_opt.is_some() {
-            let starting_amount = starting_amount_opt.unwrap();
-            vec![LedgerRecord {
-                id: 0,
-                info: LedgerInfo {
-                    date: start.checked_add_days(Days::new(1)).unwrap().to_string(),
-                    amount: starting_amount,
-                    transfer_type: TransferType::ZeroSumChange,
-                    participant: 0,
-                    category_id: 0,
-                    description: "initial".to_string(),
-                },
-            }]
-        } else {
-            vec![LedgerRecord {
-                id: 0,
-                info: LedgerInfo {
-                    date: start.checked_add_days(Days::new(1)).unwrap().to_string(),
-                    amount: 0.0,
-                    transfer_type: TransferType::ZeroSumChange,
-                    participant: 0,
-                    category_id: 0,
-                    description: "initial".to_string(),
-                },
-            }]
-        };
-        entries.append(&mut self.get_ledger_within_dates(start, end));
-        if !(entries.len() == 1) {
-            entries.reverse();
-            let last = entries.pop().unwrap();
-
-            let mut aggregate: f64 = last.info.amount as f64;
-            let starting_date = NaiveDate::parse_from_str(&last.info.date, "%Y-%m-%d").unwrap();
-            let mut min_total = aggregate;
-            let mut max_total = aggregate;
-            let tstamp_min = starting_date
-                .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
-                .and_utc()
-                .timestamp_millis() as f64;
-            let mut tstamp_max = tstamp_min;
-
-            let data: Vec<(f64, f64)> = entries
-                .iter()
-                .rev()
-                .map(|record| {
-                    let date = NaiveDate::parse_from_str(&record.info.date, "%Y-%m-%d").unwrap();
-                    let dt = date.and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap());
-                    let tstamp = dt.and_utc().timestamp_millis() as f64;
-                    aggregate = match record.info.transfer_type {
-                        TransferType::DepositFromExternalAccount
-                        | TransferType::DepositFromInternalAccount => {
-                            aggregate + record.info.amount as f64
-                        }
-                        TransferType::WithdrawalToExternalAccount
-                        | TransferType::WithdrawalToInternalAccount => {
-                            aggregate - record.info.amount as f64
-                        }
-                        TransferType::ZeroSumChange => aggregate,
-                    };
-                    max_total = if aggregate > max_total {
-                        aggregate
-                    } else {
-                        max_total
-                    };
-                    min_total = if aggregate < min_total {
-                        aggregate
-                    } else {
-                        min_total
-                    };
-                    tstamp_max = if tstamp > tstamp_max {
-                        tstamp
-                    } else {
-                        tstamp_max
-                    };
-                    (tstamp, aggregate)
-                })
-                .collect();
-
-            Some(LineChart {
-                datasets: vec![data],
-                y_max: max_total,
-                y_min: min_total,
-                y_step: (max_total - min_total) / 5.0,
-                x_max: tstamp_max,
-                x_min: tstamp_min,
-                x_labels: vec![last.info.date, entries[0].info.date.clone()],
-                y_labels: float_range(min_total, max_total, (max_total - min_total) / 5.0)
-                    .into_iter()
-                    .map(|x| format!("{:.2}", x))
-                    .collect(),
-            })
-        } else {
-            None
-        }
     }
 }
 
@@ -297,7 +237,7 @@ impl AccountCreation for CertificateOfDepositAccount {
                 .prompt()
                 .unwrap();
             let input = if link {
-                cd.fixed.link_transaction(None)
+                cd.link_transaction(None)
             } else {
                 None
             };
@@ -335,7 +275,7 @@ impl AccountCreation for CertificateOfDepositAccount {
             let lid = _db.add_ledger_entry(uid, aid, initial.clone()).unwrap();
             if peer.0.is_some() {
                 peer.0.unwrap().link(
-                    cd.id,
+                    cd.ctx.aid,
                     LedgerRecord {
                         id: lid,
                         info: initial,
@@ -364,10 +304,10 @@ impl AccountOperations for CertificateOfDepositAccount {
             .to_string();
             match action.as_str() {
                 "Deposit" => {
-                    self.fixed.deposit(None, false);
+                    <CertificateOfDepositAccount as FixedAccount>::deposit(self, None, false);
                 }
                 "Withdrawal" => {
-                    self.fixed.withdrawal(None, false);
+                    <CertificateOfDepositAccount as FixedAccount>::withdrawal(self,None, false);
                 }
                 "None" => {
                     return;
@@ -386,94 +326,7 @@ impl AccountOperations for CertificateOfDepositAccount {
     }
 
     fn import(&mut self) {
-        let g = FilePathHelper {
-            completer: FilenameCompleter::new(),
-            highlighter: MatchingBracketHighlighter::new(),
-            hinter: HistoryHinter::new(),
-            validator: MatchingBracketValidator::new(),
-            colored_prompt: "".to_owned(),
-        };
-        let config = Config::builder()
-            .history_ignore_space(true)
-            .completion_type(CompletionType::List)
-            .edit_mode(EditMode::Vi)
-            .build();
-        let mut rl = Editor::with_config(config).unwrap();
-        rl.set_helper(Some(g));
-
-        let mut fp = Path::new("~");
-        let mut bad_path;
-        let mut csv: String = String::new();
-        loop {
-            csv = rl.readline("Enter path to CSV file: ").unwrap();
-            bad_path = match Path::new(&csv).try_exists() {
-                Ok(true) => false,
-                Ok(false) => {
-                    println!("File {} cannot be found!", Path::new(&csv).display());
-                    true
-                }
-                Err(e) => {
-                    println!("File {} cannot be found: {}!", e, Path::new(&csv).display());
-                    true
-                }
-            };
-            if !bad_path {
-                break;
-            } else {
-                let try_again = Confirm::new("Continue import?").prompt().unwrap();
-                if !try_again {
-                    return;
-                }
-            }
-        }
-        fp = Path::new(&csv);
-
-        let mut rdr = ReaderBuilder::new()
-            .has_headers(false)
-            .from_path(fp)
-            .unwrap();
-
-        let mut ledger_entries = Vec::new();
-        for result in rdr.deserialize::<LedgerEntry>() {
-            ledger_entries.push(result.unwrap());
-        }
-        ledger_entries.sort_by(|x, y| {
-            (NaiveDate::parse_from_str(&x.date, "%Y-%m-%d").unwrap())
-                .cmp(&NaiveDate::parse_from_str(&y.date, "%Y-%m-%d").unwrap())
-        });
-        for rcrd in ledger_entries {
-            let ptype = if rcrd.transfer_type == TransferType::WithdrawalToExternalAccount {
-                ParticipantType::Payee
-            } else if rcrd.transfer_type == TransferType::WithdrawalToInternalAccount {
-                ParticipantType::Payee
-            } else if rcrd.transfer_type == TransferType::DepositFromExternalAccount {
-                ParticipantType::Payer
-            } else {
-                ParticipantType::Payer
-            };
-            let entry: LedgerInfo = LedgerInfo {
-                date: NaiveDate::parse_from_str(rcrd.date.as_str(), "%Y-%m-%d")
-                    .unwrap()
-                    .format("%Y-%m-%d")
-                    .to_string(),
-                amount: rcrd.amount,
-                transfer_type: rcrd.transfer_type as TransferType,
-                participant: self.db.check_and_add_participant(
-                    self.uid,
-                    self.id,
-                    rcrd.participant,
-                    ptype,
-                    false,
-                ),
-                category_id: self.db.check_and_add_category(
-                    self.uid,
-                    self.id,
-                    rcrd.category.to_ascii_uppercase(),
-                ),
-                description: rcrd.description,
-            };
-            let _lid: u32 = self.db.add_ledger_entry(self.uid, self.id, entry).unwrap();
-        }
+        <Self as AccountFileIO>::import(&self);
     }
 
     fn modify(&mut self) {
@@ -493,9 +346,9 @@ impl AccountOperations for CertificateOfDepositAccount {
                     .unwrap();
             match modify_choice {
                 "APY" => {
-                    let cd = self
+                    let cd = self.ctx
                         .db
-                        .get_certificate_of_deposit(self.uid, self.id)
+                        .get_certificate_of_deposit(self.ctx.uid, self.ctx.aid)
                         .unwrap();
                     let updated_apy = CustomType::<f32>::new("Enter annual percentage yield:")
                         .with_placeholder("3.00")
@@ -503,18 +356,18 @@ impl AccountOperations for CertificateOfDepositAccount {
                         .with_error_message("Please type a valid percentage!")
                         .prompt()
                         .unwrap();
-                    self.db
-                        .update_cd_apy(self.uid, self.id, updated_apy)
+                    self.ctx.db
+                        .update_cd_apy(self.ctx.uid, self.ctx.aid, updated_apy)
                         .unwrap();
                 }
                 "Ledger" => {
                     loop {
-                        let record_or_none = self.fixed.select_ledger_entry();
+                        let record_or_none = self.select_ledger_entry();
                         if record_or_none.is_none() {
                             break;
                         }
                         let selected_record = record_or_none.unwrap();
-                        let updated_record_opt = self.fixed.modify(selected_record.clone());
+                        let updated_record_opt = <CertificateOfDepositAccount as LedgerOps>::modify(self, selected_record.clone());
                         if updated_record_opt.is_none() {
                             break;
                         }
@@ -522,9 +375,9 @@ impl AccountOperations for CertificateOfDepositAccount {
                         // record 0 should always be the initial of the account.
                         // if the date of the deposit changed, then so should the maturity date
                         if updated_record.id == 0 {
-                            let cd = self
+                            let cd = self.ctx
                                 .db
-                                .get_certificate_of_deposit(self.uid, self.id)
+                                .get_certificate_of_deposit(self.ctx.uid, self.ctx.aid)
                                 .unwrap();
                             if selected_record.info.date != updated_record.info.date {
                                 let new_date_nv = NaiveDate::parse_from_str(
@@ -537,10 +390,10 @@ impl AccountOperations for CertificateOfDepositAccount {
                                     .unwrap()
                                     .format("%Y-%m-%d")
                                     .to_string();
-                                self.db
+                                self.ctx.db
                                     .update_cd_maturity_date(
-                                        self.uid,
-                                        self.id,
+                                        self.ctx.uid,
+                                        self.ctx.aid,
                                         updated_maturity_date,
                                     )
                                     .unwrap();
@@ -556,9 +409,9 @@ impl AccountOperations for CertificateOfDepositAccount {
                     }
                 }
                 "Length" => {
-                    let cd = self
+                    let cd = self.ctx
                         .db
-                        .get_certificate_of_deposit(self.uid, self.id)
+                        .get_certificate_of_deposit(self.ctx.uid, self.ctx.aid)
                         .unwrap();
                     let updated_length =
                         CustomType::<u32>::new("Enter length (in months) to maturity:")
@@ -583,16 +436,16 @@ impl AccountOperations for CertificateOfDepositAccount {
                             .format("%Y-%m-%d")
                             .to_string()
                     };
-                    self.db
-                        .update_cd_length(self.uid, self.id, updated_length)
+                    self.ctx.db
+                        .update_cd_length(self.ctx.uid, self.ctx.aid, updated_length)
                         .unwrap();
-                    self.db
-                        .update_cd_maturity_date(self.uid, self.id, updated_maturity_date)
+                    self.ctx.db
+                        .update_cd_maturity_date(self.ctx.uid, self.ctx.aid, updated_maturity_date)
                         .unwrap();
                 }
                 "Categories" => {
                     loop {
-                        let records = self.db.get_categories(self.uid, self.id).unwrap();
+                        let records = self.ctx.db.get_categories(self.ctx.uid, self.ctx.aid).unwrap();
                         let mut choices: Vec<String> = records
                             .iter()
                             .map(|x| x.category.name.clone())
@@ -617,10 +470,10 @@ impl AccountOperations for CertificateOfDepositAccount {
                                     .prompt()
                                     .unwrap()
                                     .to_string();
-                                self.db
+                                self.ctx.db
                                     .update_category_name(
-                                        self.uid,
-                                        self.id,
+                                        self.ctx.uid,
+                                        self.ctx.aid,
                                         chosen_category,
                                         new_name,
                                     )
@@ -628,11 +481,11 @@ impl AccountOperations for CertificateOfDepositAccount {
                             }
                             "Remove" => {
                                 // check if category is referenced by any current ledger
-                                let is_referenced = self
+                                let is_referenced = self.ctx
                                     .db
                                     .check_if_ledger_references_category(
-                                        self.uid,
-                                        self.id,
+                                        self.ctx.uid,
+                                        self.ctx.aid,
                                         chosen_category.clone(),
                                     )
                                     .unwrap();
@@ -644,10 +497,10 @@ impl AccountOperations for CertificateOfDepositAccount {
                                             "{} | {} | {} | {} ",
                                             record.info.date,
                                             chosen_category.clone(),
-                                            self.db
+                                            self.ctx.db
                                                 .get_participant(
-                                                    self.uid,
-                                                    self.id,
+                                                    self.ctx.uid,
+                                                    self.ctx.aid,
                                                     record.info.participant
                                                 )
                                                 .unwrap(),
@@ -662,9 +515,9 @@ impl AccountOperations for CertificateOfDepositAccount {
                                 let rm_msg = format!("Are you sure you want to delete the category {} (this will also delete found records)?", chosen_category);
                                 let delete = Confirm::new(&rm_msg).prompt().unwrap();
                                 if delete {
-                                    self.db.remove_category(
-                                        self.uid,
-                                        self.id,
+                                    self.ctx.db.remove_category(
+                                        self.ctx.uid,
+                                        self.ctx.aid,
                                         chosen_category.clone(),
                                     );
                                 }
@@ -700,7 +553,7 @@ impl AccountOperations for CertificateOfDepositAccount {
                             }
                         };
                         let participants =
-                            self.db.get_participants(self.uid, self.id, ptype).unwrap();
+                            self.ctx.db.get_participants(self.ctx.uid, self.ctx.aid, ptype).unwrap();
                         let mut people = participants
                             .iter()
                             .map(|x| x.participant.name.clone())
@@ -730,10 +583,10 @@ impl AccountOperations for CertificateOfDepositAccount {
                                     .prompt()
                                     .unwrap()
                                     .to_string();
-                                self.db
+                                self.ctx.db
                                     .update_participant_name(
-                                        self.uid,
-                                        self.id,
+                                        self.ctx.uid,
+                                        self.ctx.aid,
                                         ptype,
                                         chosen_person.clone(),
                                         new_name,
@@ -742,11 +595,10 @@ impl AccountOperations for CertificateOfDepositAccount {
                             }
                             "Remove" => {
                                 // check if participant is referenced by any current ledger
-                                let is_referenced = self
-                                    .db
+                                let is_referenced = self.ctx.db
                                     .check_if_ledger_references_participant(
-                                        self.uid,
-                                        self.id,
+                                        self.ctx.uid,
+                                        self.ctx.aid,
                                         ptype,
                                         chosen_person.clone(),
                                     )
@@ -758,10 +610,10 @@ impl AccountOperations for CertificateOfDepositAccount {
                                         let v = format!(
                                             "{} | {} | {} | {} ",
                                             record.info.date,
-                                            self.db
+                                            self.ctx.db
                                                 .get_category_name(
-                                                    self.uid,
-                                                    self.id,
+                                                    self.ctx.uid,
+                                                    self.ctx.aid,
                                                     record.info.category_id
                                                 )
                                                 .unwrap(),
@@ -778,38 +630,38 @@ impl AccountOperations for CertificateOfDepositAccount {
                                 if delete {
                                     match ptype {
                                         ParticipantType::Payee => {
-                                            self.db
+                                            self.ctx.db
                                                 .remove_participant(
-                                                    self.uid,
-                                                    self.id,
+                                                    self.ctx.uid,
+                                                    self.ctx.aid,
                                                     ParticipantType::Payee,
                                                     chosen_person.clone(),
                                                 )
                                                 .unwrap();
                                         }
                                         ParticipantType::Payer => {
-                                            self.db
+                                            self.ctx.db
                                                 .remove_participant(
-                                                    self.uid,
-                                                    self.id,
+                                                    self.ctx.uid,
+                                                    self.ctx.aid,
                                                     ParticipantType::Payer,
                                                     chosen_person.clone(),
                                                 )
                                                 .unwrap();
                                         }
                                         _ => {
-                                            self.db
+                                            self.ctx.db
                                                 .remove_participant(
-                                                    self.uid,
-                                                    self.id,
+                                                    self.ctx.uid,
+                                                    self.ctx.aid,
                                                     ParticipantType::Payee,
                                                     chosen_person.clone(),
                                                 )
                                                 .unwrap();
-                                            self.db
+                                            self.ctx.db
                                                 .remove_participant(
-                                                    self.uid,
-                                                    self.id,
+                                                    self.ctx.uid,
+                                                    self.ctx.aid,
                                                     ParticipantType::Payer,
                                                     chosen_person.clone(),
                                                 )
@@ -834,9 +686,8 @@ impl AccountOperations for CertificateOfDepositAccount {
                     }
                 }
                 "Principal" => {
-                    let cd = self
-                        .db
-                        .get_certificate_of_deposit(self.uid, self.id)
+                    let cd = self.ctx.db
+                        .get_certificate_of_deposit(self.ctx.uid, self.ctx.aid)
                         .unwrap();
                     let updated_principal = CustomType::<f32>::new("Enter principal:")
                         .with_placeholder("10000.00")
@@ -844,8 +695,8 @@ impl AccountOperations for CertificateOfDepositAccount {
                         .with_error_message("Please type a valid amount!")
                         .prompt()
                         .unwrap();
-                    self.db
-                        .update_cd_principal(self.uid, self.id, updated_principal)
+                    self.ctx.db
+                        .update_cd_principal(self.ctx.uid, self.ctx.aid, updated_principal)
                         .unwrap();
                 }
                 "None" => {
@@ -865,45 +716,7 @@ impl AccountOperations for CertificateOfDepositAccount {
     }
 
     fn export(&self) {
-        let g = FilePathHelper {
-            completer: FilenameCompleter::new(),
-            highlighter: MatchingBracketHighlighter::new(),
-            hinter: HistoryHinter::new(),
-            validator: MatchingBracketValidator::new(),
-            colored_prompt: "".to_owned(),
-        };
-        let config = Config::builder()
-            .history_ignore_space(true)
-            .completion_type(CompletionType::List)
-            .edit_mode(EditMode::Vi)
-            .build();
-        let mut rl = Editor::with_config(config).unwrap();
-        rl.set_helper(Some(g));
-
-        let mut wtr =
-            csv::Writer::from_path(rl.readline("Enter path to CSV file: ").unwrap()).unwrap();
-        let ledger = self.get_ledger();
-        if !ledger.is_empty() {
-            for record in ledger {
-                let csv_ledger_record: shared_lib::LedgerEntry = LedgerEntry {
-                    date: record.info.date,
-                    amount: record.info.amount,
-                    transfer_type: record.info.transfer_type,
-                    participant: self
-                        .db
-                        .get_participant(self.uid, self.id, record.info.participant)
-                        .unwrap(),
-                    category: self
-                        .db
-                        .get_category_name(self.uid, self.id, record.info.category_id)
-                        .unwrap(),
-                    description: record.info.description,
-                    stock_info: None,
-                };
-                let flattened = FlatLedgerEntry::from(csv_ledger_record);
-                wtr.serialize(flattened).unwrap();
-            }
-        }
+        <Self as AccountFileIO>::export(&self);
     }
 
     fn report(&self) {
@@ -921,7 +734,7 @@ impl AccountOperations for CertificateOfDepositAccount {
             "Simple Growth Rate" => {
                 let (period_start, period_end, _) =
                     query_user_for_analysis_period(self.get_open_date());
-                let rate = self.fixed.simple_rate_of_return(period_start, period_end);
+                let rate = self.calculate_growth(crate::accounts::growth::GrowthMetric::SimpleReturn, period_start, period_end);
                 println!("\tRate of return: {}%", rate);
             }
             "None" => {
@@ -933,162 +746,17 @@ impl AccountOperations for CertificateOfDepositAccount {
         }
     }
 
-    fn link(&self, transacting_account: u32, entry: LedgerRecord) -> Option<u32> {
-        let from_account;
-        let to_account;
-
-        let cid;
-        let pid;
-        let transacting_account_name: String;
-        let (new_ttype, description) = match entry.info.transfer_type {
-            TransferType::DepositFromExternalAccount => {
-                // if the transacting account received a deposit, then self must be the "from" account
-                from_account = self.id;
-                to_account = transacting_account;
-                cid = self.db.check_and_add_category(
-                    self.uid,
-                    self.id,
-                    "Withdrawal".to_ascii_uppercase(),
-                );
-                transacting_account_name = self
-                    .db
-                    .get_account_name(self.uid, transacting_account)
-                    .unwrap();
-                pid = self.db.check_and_add_participant(
-                    self.uid,
-                    self.id,
-                    transacting_account_name.clone(),
-                    ParticipantType::Payee,
-                    true,
-                );
-                (
-                    TransferType::WithdrawalToExternalAccount,
-                    format!(
-                        "[Link]: Withdrawal of ${} to account {} on {}.",
-                        entry.info.amount, transacting_account_name, entry.info.date
-                    ),
-                )
-            }
-            TransferType::WithdrawalToExternalAccount => {
-                // if the transacting account had an amount withdrawn, then self must be the "to" account
-                from_account = transacting_account;
-                to_account = self.id;
-                cid = self.db.check_and_add_category(
-                    self.uid,
-                    self.id,
-                    "Deposit".to_ascii_uppercase(),
-                );
-                transacting_account_name = self
-                    .db
-                    .get_account_name(self.uid, transacting_account)
-                    .unwrap();
-                pid = self.db.check_and_add_participant(
-                    self.uid,
-                    self.id,
-                    transacting_account_name.clone(),
-                    ParticipantType::Payer,
-                    true,
-                );
-                (
-                    TransferType::DepositFromExternalAccount,
-                    format!(
-                        "[Link]: Deposit of ${} from account {} on {}.",
-                        entry.info.amount, transacting_account_name, entry.info.date
-                    ),
-                )
-            }
-            _ => {
-                return None;
-            }
-        };
-
-        let linked_entry = LedgerInfo {
-            date: entry.info.date,
-            amount: entry.info.amount,
-            transfer_type: new_ttype.clone(),
-            participant: pid,
-            category_id: cid,
-            description: description,
-        };
-
-        let (from_ledger_id, to_ledger_id) = match new_ttype {
-            TransferType::WithdrawalToExternalAccount => (
-                self.db
-                    .add_ledger_entry(self.uid, self.id, linked_entry)
-                    .unwrap(),
-                entry.id,
-            ),
-            TransferType::DepositFromExternalAccount => (
-                entry.id,
-                self.db
-                    .add_ledger_entry(self.uid, self.id, linked_entry)
-                    .unwrap(),
-            ),
-            _ => {
-                panic!("Unrecognized input!")
-            }
-        };
-
-        let transaction_record = AccountTransaction {
-            from_account: from_account,
-            to_account: to_account,
-            from_ledger: from_ledger_id,
-            to_ledger: to_ledger_id,
-        };
-
-        return Some(
-            self.db
-                .add_account_transaction(self.uid, transaction_record)
-                .unwrap(),
-        );
-    }
 }
 
-impl AccountData for CertificateOfDepositAccount {
-    fn get_id(&self) -> u32 {
-        return self.id;
-    }
-    fn get_name(&self) -> String {
-        return self.db.get_account_name(self.uid, self.id).unwrap();
-    }
-    fn get_ledger(&self) -> Vec<LedgerRecord> {
-        return self.db.get_ledger(self.uid, self.id).unwrap();
-    }
-    fn get_ledger_within_dates(&self, start: NaiveDate, end: NaiveDate) -> Vec<LedgerRecord> {
-        return self
-            .db
-            .get_ledger_entries_within_timestamps(self.uid, self.id, start, end)
-            .unwrap();
-    }
-    fn get_displayable_ledger(&self) -> Vec<crate::types::ledger::DisplayableLedgerRecord> {
-        return self.db.get_displayable_ledger(self.uid, self.id).unwrap();
-    }
-    fn get_value(&self) -> f32 {
-        let x = self.fixed.get_current_value();
-        if x.is_none() {
-            return f32::NAN;
-        }
-        return x.unwrap();
-    }
-    fn get_value_on_day(&self, day: NaiveDate) -> f32 {
-        let x = self.fixed.get_account_value_on_day(&day);
-        if x.is_none() {
-            return f32::NAN;
-        }
-        return x.unwrap();
-    }
-    fn get_open_date(&self) -> NaiveDate {
-        return self.open_date;
-    }
-}
+impl AccountData for CertificateOfDepositAccount {}
 
 #[cfg(feature = "ratatui_support")]
 impl AccountUI for CertificateOfDepositAccount {
     fn populate_page_cache_f32(&self, app: &mut App) {
         let mut kv: HashMap<String, DisplayValue> = HashMap::new();
 
-        let start = if app.analysis_start < self.open_date {
-            self.open_date
+        let start = if app.analysis_start < self.get_open_date() {
+            self.get_open_date()
         } else {
             app.analysis_start
         };
@@ -1098,8 +766,8 @@ impl AccountUI for CertificateOfDepositAccount {
             DisplayValue::Float(self.get_value()),
         );
         kv.insert(
-            KEY_GROWTH.into(),
-            DisplayValue::Float(self.get_growth(start, app.analysis_end)),
+            KEY_COMPOUNDED_ANNUAL_RATE_OF_RETURN.into(),
+            DisplayValue::Float(self.calculate_growth(GrowthMetric::CAGR, start, app.analysis_end)),
         );
         kv.insert(
             KEY_MATURITY_DATE.into(),
@@ -1112,7 +780,7 @@ impl AccountUI for CertificateOfDepositAccount {
 
         app.page_cache_f32 = Some(kv);
         app.ledger_entries = Some(self.get_displayable_ledger());
-        app.linechart_cache = self.get_linechart(app);
+        app.linechart_cache = get_account_value_linechart(self, app);
         app.barchart_cache = None;
     }
 
@@ -1143,24 +811,19 @@ impl AccountUI for CertificateOfDepositAccount {
         let growth_area = report_chunks[1];
         let maturity_area = report_chunks[2];
 
-        self.render_current_value(frame, value_area, app);
-        self.render_simple_growth(frame, growth_area, app);
-        self.render_days_to_maturity(frame, maturity_area, app);
-        self.render_growth_chart(frame, chart_area, app);
-        self.render_ledger_table(frame, chunk[1], app);
+        render_current_value(frame, value_area, app);
+        render_simple_growth(frame, growth_area, app);
+        render_days_to_maturity(frame, maturity_area, app);
+        render_account_value_linechart(frame, chart_area, app);
+        render_ledger_table(frame, chunk[1], app);
     }
 }
 
 #[cfg(feature = "ratatui_support")]
 impl CertificateOfDepositAccount {
-    fn get_growth(&self, start: NaiveDate, end: NaiveDate) -> f32 {
-        return self.fixed.compound_annual_growth_rate(start, end);
-    }
-
     fn get_maturity_date(&self) -> String {
-        let cd = self
-            .db
-            .get_certificate_of_deposit(self.uid, self.id)
+        let cd = self.ctx.db
+            .get_certificate_of_deposit(self.ctx.uid, self.ctx.aid)
             .unwrap();
         return cd.info.maturity_date;
     }
@@ -1172,176 +835,6 @@ impl CertificateOfDepositAccount {
         let local = Local::now().date_naive();
         return (maturity_date_naive.num_days_from_ce() - local.num_days_from_ce()) as u32;
     }
-
-    fn render_days_to_maturity(&self, frame: &mut Frame, area: Rect, app: &mut App) {
-        let maturity_date = app
-            .page_cache_f32
-            .as_ref()
-            .expect("Account's page has not been cached!")
-            .get(KEY_MATURITY_DATE)
-            .and_then(DisplayValue::as_text)
-            .expect("Could not find maturity date!");
-
-        let days_to = app
-            .page_cache_f32
-            .as_ref()
-            .expect("Account's page has not been cached!")
-            .get(KEY_DAYS_TO_MATURITY)
-            .and_then(DisplayValue::as_uint)
-            .expect("Could not find days to maturity!");
-
-        let days_to_text = vec![
-            Span::styled(
-                format!("{} days", days_to),
-                Style::default().bold().fg(if days_to < 10 {
-                    tailwind::ROSE.c100
-                } else if days_to < 30 {
-                    tailwind::ROSE.c200
-                } else {
-                    tailwind::EMERALD.c400
-                }),
-            ),
-            Span::styled(
-                format!(" to {}", maturity_date),
-                Style::default().bold().fg(tailwind::EMERALD.c400),
-            ),
-        ];
-        let line = Line::from(days_to_text);
-        let text = ratatuiText::from(line);
-        let p = Paragraph::new(text)
-            .centered()
-            .alignment(layout::Alignment::Center)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title("Maturity Date Countdown")
-                    .title_alignment(layout::Alignment::Center)
-                    .padding(Padding::new(
-                        0,
-                        0,
-                        (if area.height > 4 {
-                            area.height / 2 - 2
-                        } else {
-                            0
-                        }),
-                        0,
-                    )),
-            )
-            .bg(tailwind::SLATE.c900);
-        frame.render_widget(p, area);
-    }
-
-    fn render_simple_growth(&self, frame: &mut Frame, area: Rect, app: &mut App) {
-        let value = app
-            .page_cache_f32
-            .as_ref()
-            .expect("Account's page has not been cached!")
-            .get(KEY_GROWTH)
-            .and_then(DisplayValue::as_f32)
-            .expect("Could not find growth!");
-
-        let fg_color = if value < 0.0 {
-            tailwind::ROSE.c200
-        } else {
-            tailwind::EMERALD.c400
-        };
-        let value = ratatuiText::styled(
-            format!("{:.2}%", value).to_string(),
-            Style::default().fg(fg_color).bold(),
-        );
-
-        let display = Paragraph::new("")
-            .centered()
-            .alignment(layout::Alignment::Center)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(format!(" Growth - {} ", app.analysis_period))
-                    .title_alignment(layout::Alignment::Center)
-                    .padding(Padding::new(
-                        0,
-                        0,
-                        (if area.height > 4 {
-                            area.height / 2 - 2
-                        } else {
-                            0
-                        }),
-                        0,
-                    )),
-            )
-            .bg(tailwind::SLATE.c900);
-        let centered_area = centered_rect(10, 10, area);
-        let growth = Paragraph::new(value);
-        frame.render_widget(growth, centered_area);
-        frame.render_widget(display, area);
-    }
-
-    fn render_growth_chart(&self, frame: &mut Frame, area: Rect, app: &mut App) {
-        let linechart = app.linechart_cache.take();
-        if let Some(line_chart) = linechart {
-            app.linechart_cache = Some(line_chart.clone());
-
-            let datasets = vec![Dataset::default()
-                .name("History")
-                .marker(symbols::Marker::Braille)
-                .style(Style::default().fg(tailwind::LIME.c400))
-                .graph_type(GraphType::Line)
-                .data(&line_chart.datasets[0])];
-
-            let chart = Chart::new(datasets)
-                .block(
-                    Block::bordered()
-                        .title(Line::from(" Value Over Time ").cyan().bold().centered())
-                        .style(Style::new().bg(tailwind::SLATE.c900)),
-                )
-                .legend_position(Some(LegendPosition::TopLeft))
-                .x_axis(
-                    Axis::default()
-                        .title("Time")
-                        .style(Style::default().gray())
-                        .bounds([line_chart.x_min, line_chart.x_max])
-                        .labels(line_chart.x_labels),
-                )
-                .y_axis(
-                    Axis::default()
-                        .title("Value (💰)")
-                        .style(Style::default().gray())
-                        .bounds([line_chart.y_min, line_chart.y_max])
-                        .labels(line_chart.y_labels),
-                )
-                .style(Style::new().bg(tailwind::SLATE.c900));
-
-            frame.render_widget(chart, area);
-        } else {
-            let value = ratatuiText::styled(
-                "No data to display!",
-                Style::default().fg(tailwind::ROSE.c400).bold(),
-            );
-
-            let display = Paragraph::new(value)
-                .centered()
-                .alignment(layout::Alignment::Center)
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .title("Value Over Time")
-                        .title_alignment(layout::Alignment::Center)
-                        .padding(Padding::new(
-                            0,
-                            0,
-                            (if area.height > 4 {
-                                area.height / 2 - 2
-                            } else {
-                                0
-                            }),
-                            0,
-                        )),
-                )
-                .bg(tailwind::SLATE.c900);
-
-            frame.render_widget(display, area);
-        }
-    }
 }
 
 impl Account for CertificateOfDepositAccount {
@@ -1351,17 +844,5 @@ impl Account for CertificateOfDepositAccount {
     #[cfg(feature = "ratatui_support")]
     fn as_any(&self) -> &dyn std::any::Any {
         self
-    }
-    fn has_budget(&self) -> bool {
-        let acct = self.db.get_account(self.uid, self.id).unwrap();
-        acct.info.has_budget
-    }
-    fn set_budget(&self) {
-        let mut acct = self.db.get_account(self.uid, self.id).unwrap();
-        acct.info.has_budget = true;
-        let _ = self
-            .db
-            .update_account(self.uid, self.id, &acct.info)
-            .unwrap();
     }
 }

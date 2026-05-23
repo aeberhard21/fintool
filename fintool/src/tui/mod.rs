@@ -23,10 +23,10 @@ use std::vec;
 use strum::IntoEnumIterator;
 
 use crate::accounts::bank_account::BankAccount;
-use crate::accounts::base::Account;
-use crate::accounts::base::AccountCreation;
-use crate::accounts::base::AccountOperations;
-use crate::accounts::base::AnalysisPeriod;
+use crate::accounts::Account;
+use crate::accounts::AccountCreation;
+use crate::accounts::AccountOperations;
+use crate::accounts::AnalysisPeriod;
 use crate::accounts::certificate_of_deposit::CertificateOfDepositAccount;
 use crate::accounts::credit_card_account::CreditCardAccount;
 use crate::accounts::health_savings_account::HealthSavingsAccount;
@@ -258,7 +258,7 @@ fn access_account(uid: u32, db: &mut DbConn) {
                     acct.export();
                 }
                 "Modify" => {
-                    acct.modify();
+                    AccountOperations::modify( acct.as_mut());
                 }
                 "Record" => {
                     acct.record();

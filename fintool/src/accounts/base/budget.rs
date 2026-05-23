@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::{rc, string};
 
-use crate::accounts::base::AnalysisPeriod;
+use crate::accounts::base::HasContext;
 use crate::database::budget::{BudgetItem, BudgetRecord};
 use crate::database::DbConn;
 use crate::types::categories::CategoryAutoCompleter;
@@ -26,26 +26,13 @@ use chrono::{Duration, NaiveDate};
 use inquire::autocompletion::Replacement;
 use inquire::*;
 
-pub struct Budget {
-    uid: u32,
-    aid: u32,
-    db: DbConn,
-}
+pub trait Budget : HasContext {
 
-impl Budget {
-    pub fn new(uid: u32, aid: u32, db: &DbConn) -> Self {
-        let budget = Self {
-            uid: uid,
-            aid: aid,
-            db: db.clone(),
-        };
-        budget
-    }
-
-    pub fn create_budget(&self) {
+    fn create_budget(&self) {
+        let ctx = Self::ctx(&self);
         loop {
             let item = self.prompt_new_budget_item();
-            self.db.add_budget_item(self.uid, self.aid, item);
+            ctx.db.add_budget_item(ctx.uid, ctx.aid, item);
             let another = Confirm::new("Add another budget category?")
                 .with_default(false)
                 .prompt()
@@ -56,26 +43,28 @@ impl Budget {
         }
     }
 
-    pub fn prompt_new_budget_item(&self) -> BudgetItem {
+    fn prompt_new_budget_item(&self) -> BudgetItem {
+        let ctx = Self::ctx(&self);
         let category = Text::new("Enter budget category: ")
             .with_autocomplete(CategoryAutoCompleter {
-                uid: self.uid,
-                aid: self.aid,
-                db: self.db.clone(),
+                uid: ctx.uid,
+                aid: ctx.aid,
+                db: ctx.db.clone(),
                 cats: None,
             })
             .prompt()
             .unwrap()
             .to_string();
         let value = self.set_budget_value(category.clone());
-        let cid = self.db.add_category(self.uid, self.aid, category).unwrap();
+        let cid = ctx.db.add_category(ctx.uid, ctx.aid, category).unwrap();
         return BudgetItem {
             category_id: cid,
             value: value,
         };
     }
 
-    pub fn set_budget_value(&self, category: String) -> f32 {
+    fn set_budget_value(&self, category: String) -> f32 {
+        let ctx = Self::ctx(&self);
         let prompt = format!("Enter budgeted amount [{}]", category);
         let value = CustomType::<f32>::new(prompt.as_str())
             .with_placeholder("00000.00")
@@ -86,10 +75,11 @@ impl Budget {
     }
 
     fn select_budget_element(&self) -> Option<BudgetRecord> {
-        let records = self.db.get_budget(self.uid, self.aid).unwrap();
+        let ctx = Self::ctx(&self);
+        let records = ctx.db.get_budget(ctx.uid, ctx.aid).unwrap();
         if let Some(records) = records {
             if records.is_empty() {
-                println!("Budget not found for account: '{}'!", self.aid);
+                println!("Budget not found for account: '{}'!", ctx.aid);
                 return None;
             }
 
@@ -99,8 +89,8 @@ impl Budget {
             for rcrd in records {
                 let v = format!(
                     "{} | {}",
-                    self.db
-                        .get_category_name(self.uid, self.aid, rcrd.item.category_id)
+                    ctx.db
+                        .get_category_name(ctx.uid, ctx.aid, rcrd.item.category_id)
                         .unwrap(),
                     rcrd.item.value
                 );
@@ -136,14 +126,15 @@ impl Budget {
         }
     }
 
-    pub fn record(&self) {
+    fn record(&self) {
+        let ctx = Self::ctx(&self);
         const OPTIONS: [&'static str; 3] = ["Full Budget", "Budget Item", "None"];
         let record_choice = Select::new("What would you like to do:", OPTIONS.to_vec())
             .prompt()
             .unwrap();
         match record_choice {
             "Full Budget" => {
-                let budget_opt = self.db.get_budget(self.uid, self.aid).unwrap();
+                let budget_opt = ctx.db.get_budget(ctx.uid, ctx.aid).unwrap();
                 if let Some(budget) = budget_opt {
                     if !budget.is_empty() {
                         let go_ahead = Confirm::new("This action will delete current budget data. Do you want to continue (y/n)?")
@@ -156,7 +147,7 @@ impl Budget {
                         }
 
                         for item in budget {
-                            self.db.remove_budget_item(self.uid, self.aid, item.id);
+                            ctx.db.remove_budget_item(ctx.uid, ctx.aid, item.id);
                         }
                     }
                 }
@@ -164,7 +155,7 @@ impl Budget {
             }
             "Budget Item" => {
                 let new = self.prompt_new_budget_item();
-                let _ = self.db.add_budget_item(self.uid, self.aid, new);
+                let _ = ctx.db.add_budget_item(ctx.uid, ctx.aid, new);
             }
             "None" => {}
             _ => {
@@ -173,7 +164,8 @@ impl Budget {
         }
     }
 
-    pub fn modify(&self) {
+    fn modify(&self) {
+        let ctx = Self::ctx(&self);
         const OPTIONS: [&'static str; 3] = ["Update", "Remove", "None"];
         loop {
             let record_opt = self.select_budget_element();
@@ -185,10 +177,10 @@ impl Budget {
                 match modify_choice {
                     "Update" => {
                         let updated_value = self.set_budget_value(
-                            self.db
+                            ctx.db
                                 .get_category_name(
-                                    self.uid,
-                                    self.aid,
+                                    ctx.uid,
+                                    ctx.aid,
                                     selected_record.item.category_id,
                                 )
                                 .unwrap(),
@@ -200,12 +192,12 @@ impl Budget {
                                 value: updated_value,
                             },
                         };
-                        self.db
-                            .update_budget_item(self.uid, self.aid, updated_record);
+                        ctx.db
+                            .update_budget_item(ctx.uid, ctx.aid, updated_record);
                     }
                     "Remove" => {
-                        self.db
-                            .remove_budget_item(self.uid, self.aid, selected_record.id);
+                        ctx.db
+                            .remove_budget_item(ctx.uid, ctx.aid, selected_record.id);
                     }
                     "None" => {}
                     _ => {
@@ -226,8 +218,9 @@ impl Budget {
         }
     }
 
-    pub fn get_budget(&self) -> Vec<BudgetRecord> {
-        let budget = self.db.get_budget(self.uid, self.aid).unwrap();
+    fn get_budget(&self) -> Vec<BudgetRecord> {
+        let ctx = Self::ctx(&self);
+        let budget = ctx.db.get_budget(ctx.uid, ctx.aid).unwrap();
         if let Some(budget) = budget {
             budget
         } else {
@@ -235,8 +228,9 @@ impl Budget {
         }
     }
 
-    pub fn get_budget_categories(&self) -> Vec<String> {
-        let categories = self.db.get_budget_categories(self.uid, self.aid).unwrap();
+    fn get_budget_categories(&self) -> Vec<String> {
+        let ctx = Self::ctx(&self);
+        let categories = ctx.db.get_budget_categories(ctx.uid, ctx.aid).unwrap();
         if let Some(categories) = categories {
             categories
         } else {

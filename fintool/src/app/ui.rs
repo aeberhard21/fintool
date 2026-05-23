@@ -36,7 +36,8 @@ use time::Month;
 use super::app::App;
 use super::screen::{CurrentScreen, TabMenu};
 use crate::{
-    accounts::base::{liquid_account, Account},
+    accounts::{Account, AnalysisPeriod},
+    accounts::base::{liquid_account},
     app::screen::CurrentlySelecting,
     tui::{
         self, get_analysis_period_dates,
@@ -508,7 +509,7 @@ fn render_net_worth(app: &App, frame: &mut Frame, area: Rect) {
                 let (ytd_start_date, ytd_end_date) = get_analysis_period_dates(
                     NaiveDate::from_num_days_from_ce_opt(0)
                         .expect("Unable to convert to NaiveDate!"),
-                    &accounts::base::AnalysisPeriod::YTD,
+                    &AnalysisPeriod::YTD,
                 );
                 get_net_worth_growth(&app.accounts, ytd_start_date, ytd_end_date)
             },
@@ -516,7 +517,7 @@ fn render_net_worth(app: &App, frame: &mut Frame, area: Rect) {
                 let (y2y_start_date, y2yd_end_date) = get_analysis_period_dates(
                     NaiveDate::from_num_days_from_ce_opt(0)
                         .expect("Unable to convert to NaiveDate!"),
-                    &accounts::base::AnalysisPeriod::OneYear,
+                    &AnalysisPeriod::OneYear,
                 );
                 let dollar_change =
                     get_dollar_change_y2y(&app.accounts, y2y_start_date, y2yd_end_date);
@@ -526,7 +527,7 @@ fn render_net_worth(app: &App, frame: &mut Frame, area: Rect) {
                 let (y2y_start_date, y2yd_end_date) = get_analysis_period_dates(
                     NaiveDate::from_num_days_from_ce_opt(0)
                         .expect("Unable to convert to NaiveDate!"),
-                    &accounts::base::AnalysisPeriod::OneYear,
+                    &AnalysisPeriod::OneYear,
                 );
                 let y2y_growth = get_net_worth_growth(&app.accounts, y2y_start_date, y2yd_end_date);
                 y2y_growth
@@ -535,7 +536,7 @@ fn render_net_worth(app: &App, frame: &mut Frame, area: Rect) {
                 let (fiveyr_start_date, fiveyr_end_date) = get_analysis_period_dates(
                     NaiveDate::from_num_days_from_ce_opt(0)
                         .expect("Unable to convert to NaiveDate!"),
-                    &accounts::base::AnalysisPeriod::FiveYears,
+                    &AnalysisPeriod::FiveYears,
                 );
                 get_compound_annual_growth_rate(&app.accounts, fiveyr_start_date, fiveyr_end_date)
             },

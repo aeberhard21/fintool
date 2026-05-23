@@ -18,7 +18,7 @@ use core::panic;
 
 use crate::accounts::base::liquid_account::{self, LiquidAccount};
 #[cfg(feature = "ratatui_support")]
-use crate::accounts::base::AnalysisPeriod;
+use crate::accounts::AnalysisPeriod;
 use crate::database::{self, *};
 // use crate::tui::tui_budgets::create_budget;
 use crate::tui::BankAccount;

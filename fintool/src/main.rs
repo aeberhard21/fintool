@@ -43,7 +43,7 @@ use std::result;
 #[cfg(feature = "timer")]
 use std::time::{Duration, Instant};
 
-use crate::accounts::base::Account;
+use crate::accounts::{Account, AccountOperations};
 #[cfg(feature = "ratatui_support")]
 use crate::{app::app::App};
 #[cfg(feature = "ratatui_support")]
@@ -256,7 +256,7 @@ where
                         app.user_id = None;
                         app.account = None;
                         app.accounts = Vec::new();
-                        app.analysis_period = accounts::base::AnalysisPeriod::YTD;
+                        app.analysis_period = accounts::AnalysisPeriod::YTD;
                         app.analysis_start =
                             NaiveDate::from_ymd_opt(Local::now().year(), 1, 1).unwrap();
                         app.analysis_end = Local::now().date_naive();
@@ -529,7 +529,7 @@ where
                                     suspend_tui(terminal)?;
 
                                     if let Some(acct) = &mut app.account {
-                                        acct.modify();
+                                        AccountOperations::modify(acct.as_mut())
                                     } else {
                                         app.invalid_input = true;
                                     }
@@ -691,8 +691,8 @@ pub fn is_account_type(x: &Box<dyn Account>, atype: AccountType) -> bool {
         AccountType::Wallet => x.as_any().is::<Wallet>(),
         AccountType::CD => x.as_any().is::<CertificateOfDepositAccount>(),
         AccountType::CreditCard => x.as_any().is::<CreditCardAccount>(),
-        AccountType::RetirementRothIra => (x.as_any().is::<RothIraAccount>()),
-        AccountType::HealthSavingsAccount => (x.as_any().is::<HealthSavingsAccount>()),
-        AccountType::Retirement401k => (x.as_any().is::<Retirement401kPlan>()),
+        AccountType::RetirementRothIra => x.as_any().is::<RothIraAccount>(),
+        AccountType::HealthSavingsAccount => x.as_any().is::<HealthSavingsAccount>(),
+        AccountType::Retirement401k => x.as_any().is::<Retirement401kPlan>(),
     }
 }

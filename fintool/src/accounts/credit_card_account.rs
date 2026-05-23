@@ -55,7 +55,22 @@ use std::iter::zip;
 use std::path::Path;
 use std::rc;
 
+use crate::accounts::base::AccountFileIO;
+use crate::accounts::base::fixed_account::FixedAccountFileIO;
+use crate::accounts::{KEY_BARCHART_BUDGET, KEY_BARCHART_EXPENDITURES, KEY_REMAINING_CONTRIBUTION, KEY_CREDIT_LINE, KEY_REMAINING_CREDIT, KEY_DAYS_UNTIL_DUE, KEY_STATEMENT_DUE_DATE};
+use crate::accounts::base::ValueLimited;
+use crate::accounts::base::charge_account::ChargeAccountLedger;
+use crate::accounts::base::charge_account::ChargeAccountValuable;
+use crate::accounts::base::charge_account::ChargedAccountExpiry;
+use crate::accounts::base::fixed_account::{FixedAccount, FixedGrowth, FixedValuable};
+use crate::accounts::base::interest_bearing_fixed_account::InterestBearingLedger;
+use crate::accounts::base::{AccountContext, Valuable};
 use crate::accounts::base::budget::Budget;
+use crate::accounts::base::{HasContext, LedgerOps};
+use crate::accounts::FilePathHelper;
+use crate::accounts::growth::GrowthCalculable;
+#[cfg(feature = "ratatui_support")]
+use crate::accounts::render::*;
 #[cfg(feature = "ratatui_support")]
 use crate::app::app::{App, BarChartData, DisplayValue};
 #[cfg(feature = "ratatui_support")]
@@ -76,211 +91,117 @@ use crate::{tui::get_analysis_period_dates, types::ledger::Expenditure};
 use shared_lib::TransferType;
 
 use super::base::charge_account::ChargeAccount;
-use super::base::Account;
-use super::base::AccountCreation;
-use super::base::AccountData;
-use super::base::AccountOperations;
+use super::Account;
+use super::AccountCreation;
+use super::AccountData;
+use super::AccountOperations;
 #[cfg(feature = "ratatui_support")]
-use super::base::AccountUI;
-use super::base::{KEY_GROWTH, KEY_TOTAL_VALUE};
+use super::AccountUI;
+use super::{KEY_TOTAL_VALUE};
 
 #[cfg(feature = "ratatui_support")]
 use crate::ui::{centered_rect, float_range};
 
-pub const KEY_REMAINING_CREDIT: &str = "Remaining Credit";
-pub const KEY_DAYS_UNTIL_DUE: &str = "Days Until Due";
-pub const KEY_STATEMENT_DUE_DATE: &str = "Statement Due Date";
-pub const KEY_CREDIT_LINE: &str = "Credit Line";
-pub const KEY_BARCHART_BUDGET: &str = "Budget";
-pub const KEY_BARCHART_EXPENDITURES: &str = "Expenditures";
-
 pub struct CreditCardAccount {
-    uid: u32,
-    id: u32,
-    db: DbConn,
-    charge: ChargeAccount,
-    open_date: NaiveDate,
-    budget: Option<Budget>,
+    ctx : AccountContext
 }
 
-#[derive(Helper, Completer, Hinter, Highlighter, Validator)]
-struct FilePathHelper {
-    #[rustyline(Completer)]
-    completer: FilenameCompleter,
-    #[rustyline(Highlighter)]
-    highlighter: MatchingBracketHighlighter,
-    #[rustyline(Validator)]
-    validator: MatchingBracketValidator,
-    #[rustyline(Hinter)]
-    hinter: HistoryHinter,
-    colored_prompt: String,
+impl HasContext for CreditCardAccount {
+    fn ctx(&self) -> &AccountContext {
+        &self.ctx
+    }
+    fn ctx_mut(&mut self) -> &mut AccountContext {
+        &mut self.ctx
+    }
 }
+
+impl ChargeAccountLedger for CreditCardAccount{}
+
+impl LedgerOps for CreditCardAccount {
+    fn modify(&mut self, selected_record: LedgerRecord) -> Option<LedgerRecord> {
+        self.modify_charge_account(selected_record)
+    }
+}
+
+impl ChargeAccount for CreditCardAccount {}
+
+impl Valuable for CreditCardAccount {
+    fn account_value(&self) -> Option<f32> {
+        self.balance()
+    }
+    fn get_account_value_on_day(&self, day: &NaiveDate) -> Option<f32> {
+        self.balance_on_day(day)
+    }
+}
+
+impl ChargeAccountValuable for CreditCardAccount {}
+
+impl Budget for CreditCardAccount {}
+
+impl ValueLimited for CreditCardAccount {
+    fn account_limit(&self) -> f32 {
+        return self.get_credit_line();
+    }
+    fn remaining(&self) -> f32 {
+        return self.get_remaining_in_credit_line();
+    }
+    fn value_reset_date(&self) -> NaiveDate {
+        self.get_statement_due_date()
+    }
+}
+
+impl ChargedAccountExpiry for CreditCardAccount {}
+
+impl AccountFileIO for CreditCardAccount {
+    fn import(&self) {
+        self.import_fixed_account();
+    }
+    fn export(&self) {
+        self.export_fixed_account();
+    }
+}
+
+impl FixedAccountFileIO for CreditCardAccount {}
 
 impl CreditCardAccount {
     pub fn new(uid: u32, id: u32, db: &DbConn) -> Self {
         let mut acct: CreditCardAccount = Self {
-            uid: uid,
-            id: id,
-            db: db.clone(),
-            charge: ChargeAccount::new(uid, id, db.clone()),
-            open_date: Local::now().date_naive(),
-            budget: None,
+            ctx : AccountContext { 
+                aid: id, 
+                uid : uid,
+                db: db.clone(), 
+                open_date: Local::now().date_naive() 
+            },
         };
 
         let mut ledger = acct.get_ledger();
         if !ledger.is_empty() {
             ledger.sort_by(|l1, l2| (&l1.info.date).cmp(&l2.info.date));
-            acct.open_date = NaiveDate::parse_from_str(&ledger[0].info.date, "%Y-%m-%d").unwrap();
-        }
-        if acct.has_budget() {
-            acct.budget = Some(Budget::new(acct.uid, acct.id, &acct.db));
+            acct.ctx.open_date = NaiveDate::parse_from_str(&ledger[0].info.date, "%Y-%m-%d").unwrap();
         }
 
         acct
     }
 
-    #[cfg(feature = "ratatui_support")]
-    pub fn get_barchart_data(&self, app: &mut App) -> Option<BarChartData> {
-        if let Some(mut expenditures) = self
-            .charge
-            .db
-            .get_expenditures_between_dates(self.uid, self.id, app.analysis_start, app.analysis_end)
-            .unwrap()
-        {
-            let bar_groups = if let Some(account_budget) = &self.budget {
-                let mut budget = account_budget.get_budget();
-                if budget.is_empty() {
-                    panic!("No budget found for account '{}'!", self.id);
-                }
-                let categories = account_budget.get_budget_categories();
-                if categories.is_empty() {
-                    panic!("No categories found for account '{}'!", self.id);
-                }
+    fn get_statement_due_date(&self) -> NaiveDate {
+        use chrono::Datelike;
 
-                // sort expenditures alphabetically
-                expenditures.sort_by(|x, y| (x.category).cmp(&y.category));
-                // sort budget alphabetically
-                budget.sort_by(|x, y| {
-                    (self
-                        .db
-                        .get_category_name(self.uid, self.id, x.item.category_id)
-                        .unwrap())
-                    .cmp(
-                        (&self
-                            .db
-                            .get_category_name(self.uid, self.id, y.item.category_id)
-                            .unwrap()),
-                    )
-                });
-
-                // remove any expenditures that don't map to a budget category, place in to misc category
-                let mut misc_expenditures = Expenditure {
-                    category: "Misc".to_string(),
-                    amount: 0.0,
-                };
-                expenditures.retain(|expenditure| {
-                    if budget
-                        .iter()
-                        .map(|element| {
-                            self.db
-                                .get_category_name(self.uid, self.id, element.item.category_id)
-                                .unwrap()
-                        })
-                        .collect::<Vec<String>>()
-                        .binary_search(&expenditure.category)
-                        .is_ok()
-                    {
-                        true
-                    } else {
-                        misc_expenditures.amount = misc_expenditures.amount + expenditure.amount;
-                        false
-                    }
-                });
-
-                let mut labels: Vec<String> = Vec::new();
-                let mut budget_dataset: HashMap<String, (f32, u64)> = HashMap::new();
-                let mut expenditure_dataset: HashMap<String, (f32, u64)> = HashMap::new();
-                for elem in zip(budget, expenditures) {
-                    let budget_value = super::base::budget::scale_budget_value_to_analysis_period(
-                        elem.0.item.value,
-                        app.analysis_start,
-                        app.analysis_end,
-                    );
-                    let expenditure_value = elem.1.amount;
-
-                    labels.push(elem.1.category.clone());
-                    budget_dataset
-                        .insert(elem.1.category.clone(), (budget_value, budget_value as u64));
-                    expenditure_dataset.insert(
-                        elem.1.category.clone(),
-                        (expenditure_value, expenditure_value as u64),
-                    );
-                }
-
-                if misc_expenditures.amount > 0.0 {
-                    let label: String = "Misc".into();
-                    labels.push(label.clone());
-                    budget_dataset.insert(label.clone(), (0.0, 0));
-                    expenditure_dataset.insert(
-                        label,
-                        (misc_expenditures.amount, misc_expenditures.amount as u64),
-                    );
-                }
-
-                let mut bars: HashMap<String, HashMap<String, (f32, u64)>> = HashMap::new();
-                bars.insert(KEY_BARCHART_BUDGET.into(), budget_dataset);
-                bars.insert(KEY_BARCHART_EXPENDITURES.into(), expenditure_dataset);
-
-                return Some(BarChartData {
-                    labels: labels,
-                    groups: bars,
-                });
-            } else {
-                // group anything less than the top 10 categories into a "miscellaneous" category
-                expenditures.sort_by(|x, y| {
-                    (x.amount)
-                        .partial_cmp(&y.amount)
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                });
-
-                let grouped_others: Option<Expenditure> = if expenditures.len() > 10 {
-                    let misc = expenditures
-                        .drain(10..expenditures.len() - 1)
-                        .collect::<Vec<Expenditure>>();
-                    let amount = misc.into_iter().map(|x| x.amount).sum();
-                    Some(Expenditure {
-                        category: "Misc".to_string(),
-                        amount: amount,
-                    })
-                } else {
-                    None
-                };
-
-                if let Some(grouped_others) = grouped_others {
-                    expenditures.push(grouped_others);
-                }
-
-                let mut labels: Vec<String> = Vec::new();
-                let mut expenditure_dataset: HashMap<String, (f32, u64)> = HashMap::new();
-                for elem in expenditures {
-                    let expenditure_value = elem.amount;
-                    labels.push(elem.category.clone());
-                    expenditure_dataset.insert(
-                        elem.category.clone(),
-                        (expenditure_value, expenditure_value as u64),
-                    );
-                }
-
-                let mut bars: HashMap<String, HashMap<String, (f32, u64)>> = HashMap::new();
-                bars.insert("Expenditures".into(), expenditure_dataset);
-
-                return Some(BarChartData {
-                    labels: labels,
-                    groups: bars,
-                });
-            };
+        let credit_card = self.ctx.db.get_credit_card(self.ctx.uid, self.ctx.aid).unwrap();
+        let due_date = credit_card.info.statement_due_date;
+        let local = Local::now().date_naive();
+        let day = local.day();
+        let diff: i32 = due_date as i32 - day as i32;
+        let mut statement_due_date = local;
+        if diff >= 0 {
+            return statement_due_date
+                .checked_add_days(Days::new(diff as u64))
+                .unwrap();
         } else {
-            None
+            statement_due_date = statement_due_date
+                .checked_add_months(Months::new(1))
+                .unwrap();
+            statement_due_date = statement_due_date.with_day(due_date).unwrap();
+            return statement_due_date;
         }
     }
 }
@@ -329,8 +250,7 @@ impl AccountCreation for CreditCardAccount {
             .unwrap();
         if add_budget {
             let x = Self::new(uid, aid, _db);
-            let budget = Budget::new(uid, aid, _db);
-            budget.create_budget();
+            x.create_budget();
             x.set_budget();
         }
 
@@ -354,19 +274,19 @@ impl AccountOperations for CreditCardAccount {
             .to_string();
             match action.as_str() {
                 "Accrual" => { 
-                    self.charge.accrual(None, false);
+                    self.accrual(None, false);
                 }
                 "Fee" => {
-                    self.charge.fee(None, false);
+                    self.fee(None, false);
                 }
                 "Payment" => {
-                    self.charge.pay(None, false);
+                    self.pay(None, false);
                 }
                 "Charge" => {
-                    self.charge.charge(None, false);
+                    self.charge(None, false);
                 }
                 "Budget" => {
-                    if self.budget.is_none() {
+                    if !self.has_budget() {
                         let add_budget = Confirm::new("A budget for this account does not exist, would you like to create one (y/n)?")
                             .with_default(false)
                             .prompt()
@@ -374,12 +294,9 @@ impl AccountOperations for CreditCardAccount {
                         if !add_budget {
                             continue;
                         }
-                        let budget = Budget::new(self.uid, self.id, &self.db);
-                        self.budget = Some(budget);
+                        self.set_budget();
                     }
-                    if let Some(budget) = &self.budget {
-                        budget.record();
-                    }
+                    <CreditCardAccount as Budget>::record(&self);
                 }
                 "None" => {
                     return;
@@ -398,99 +315,7 @@ impl AccountOperations for CreditCardAccount {
     }
 
     fn import(&mut self) {
-        let g = FilePathHelper {
-            completer: FilenameCompleter::new(),
-            highlighter: MatchingBracketHighlighter::new(),
-            hinter: HistoryHinter::new(),
-            validator: MatchingBracketValidator::new(),
-            colored_prompt: "".to_owned(),
-        };
-        let config = Config::builder()
-            .history_ignore_space(true)
-            .completion_type(CompletionType::List)
-            .edit_mode(EditMode::Vi)
-            .build();
-        let mut rl = Editor::with_config(config).unwrap();
-        rl.set_helper(Some(g));
-
-        let mut fp = Path::new("~");
-        let mut bad_path;
-        let mut csv: String = String::new();
-        loop {
-            csv = rl
-                .readline("Enter path to CSV file (or none to quit): ")
-                .unwrap();
-            if csv.to_string() == "none" {
-                return;
-            }
-            bad_path = match Path::new(&csv).try_exists() {
-                Ok(true) => false,
-                Ok(false) => {
-                    println!("File {} cannot be found!", Path::new(&csv).display());
-                    true
-                }
-                Err(e) => {
-                    println!("File {} cannot be found: {}!", e, Path::new(&csv).display());
-                    true
-                }
-            };
-            if !bad_path {
-                break;
-            } else {
-                let try_again = Confirm::new("Continue import?").prompt().unwrap();
-                if !try_again {
-                    return;
-                }
-            }
-        }
-        fp = Path::new(&csv);
-
-        let mut rdr = ReaderBuilder::new()
-            .has_headers(false)
-            .from_path(fp)
-            .unwrap();
-
-        let mut ledger_expenditures = Vec::new();
-        for result in rdr.deserialize::<LedgerEntry>() {
-            ledger_expenditures.push(result.unwrap());
-        }
-        ledger_expenditures.sort_by(|x, y| {
-            (NaiveDate::parse_from_str(&x.date, "%Y-%m-%d").unwrap())
-                .cmp(&NaiveDate::parse_from_str(&y.date, "%Y-%m-%d").unwrap())
-        });
-        for rcrd in ledger_expenditures {
-            let ptype = if rcrd.transfer_type == TransferType::WithdrawalToExternalAccount {
-                ParticipantType::Payee
-            } else if rcrd.transfer_type == TransferType::WithdrawalToInternalAccount {
-                ParticipantType::Payee
-            } else if rcrd.transfer_type == TransferType::DepositFromExternalAccount {
-                ParticipantType::Payer
-            } else {
-                ParticipantType::Payer
-            };
-            let entry: LedgerInfo = LedgerInfo {
-                date: NaiveDate::parse_from_str(rcrd.date.as_str(), "%Y-%m-%d")
-                    .unwrap()
-                    .format("%Y-%m-%d")
-                    .to_string(),
-                amount: rcrd.amount,
-                transfer_type: rcrd.transfer_type as TransferType,
-                participant: self.db.check_and_add_participant(
-                    self.uid,
-                    self.id,
-                    rcrd.participant,
-                    ptype,
-                    false,
-                ),
-                category_id: self.db.check_and_add_category(
-                    self.uid,
-                    self.id,
-                    rcrd.category.to_ascii_uppercase(),
-                ),
-                description: rcrd.description,
-            };
-            let _lid: u32 = self.db.add_ledger_entry(self.uid, self.id, entry).unwrap();
-        }
+        <Self as AccountFileIO>::import(&self);
     }
 
     fn modify(&mut self) {
@@ -518,28 +343,26 @@ impl AccountOperations for CreditCardAccount {
                 .unwrap();
             match modify_choice {
                 "Budget" => {
-                    if let Some(budget) = &self.budget {
-                        budget.modify();
+                    if self.has_budget() {
+                        <CreditCardAccount as Budget>::modify(&self);
                     } else {
                         let add_budget = Confirm::new("A budget for this account does not exist, would you like to create one (y/n)?")
                             .with_default(false)
                             .prompt()
                             .unwrap();
                         if add_budget {
-                            let budget = Budget::new(self.uid, self.id, &self.db);
-                            budget.create_budget();
-                            self.budget = Some(budget);
+                            self.create_budget();
                             self.set_budget();
                         }
                     }
                 }
                 "Ledger" => loop {
-                    let record_or_none = self.charge.select_ledger_entry();
+                    let record_or_none = self.select_ledger_entry();
                     if record_or_none.is_none() {
                         break;
                     }
                     let selected_record = record_or_none.unwrap();
-                    self.charge.modify(selected_record);
+                    <CreditCardAccount as LedgerOps>::modify(self, selected_record);
                     let go_again = Confirm::new("Modify additional records? (y/n)")
                         .prompt()
                         .unwrap();
@@ -548,19 +371,19 @@ impl AccountOperations for CreditCardAccount {
                     }
                 },
                 "Credit Line" => {
-                    let credit_card = self.db.get_credit_card(self.uid, self.id).unwrap();
+                    let credit_card = self.ctx.db.get_credit_card(self.ctx.uid, self.ctx.aid).unwrap();
                     let updated_credit_line = CustomType::<f32>::new("Enter updated credit line:")
                         .with_default(credit_card.info.credit_line)
                         .with_placeholder("1000.00")
                         .with_error_message("Enter a valid credit line!")
                         .prompt()
                         .unwrap();
-                    self.db
-                        .update_credit_line(self.uid, self.id, updated_credit_line)
+                    self.ctx.db
+                        .update_credit_line(self.ctx.uid, self.ctx.aid, updated_credit_line)
                         .unwrap();
                 }
                 "Statement Due Date" => {
-                    let credit_card = self.db.get_credit_card(self.uid, self.id).unwrap();
+                    let credit_card = self.ctx.db.get_credit_card(self.ctx.uid, self.ctx.aid).unwrap();
                     let updated_statement_due_date =
                         CustomType::<u32>::new("Enter updated statement due date:")
                             .with_default(credit_card.info.statement_due_date)
@@ -568,13 +391,13 @@ impl AccountOperations for CreditCardAccount {
                             .with_error_message("Enter a statement due date!")
                             .prompt()
                             .unwrap();
-                    self.db
-                        .update_statement_due_date(self.uid, self.id, updated_statement_due_date)
+                    self.ctx.db
+                        .update_statement_due_date(self.ctx.uid, self.ctx.aid, updated_statement_due_date)
                         .unwrap();
                 }
                 "Categories" => {
                     loop {
-                        let records = self.db.get_categories(self.uid, self.id).unwrap();
+                        let records = self.ctx.db.get_categories(self.ctx.uid, self.ctx.aid).unwrap();
                         let mut choices: Vec<String> = records
                             .iter()
                             .map(|x| x.category.name.clone())
@@ -599,20 +422,19 @@ impl AccountOperations for CreditCardAccount {
                                     .prompt()
                                     .unwrap()
                                     .to_string();
-                                self.db.update_category_name(
-                                    self.uid,
-                                    self.id,
+                                self.ctx.db.update_category_name(
+                                    self.ctx.uid,
+                                    self.ctx.aid,
                                     chosen_category,
                                     new_name,
                                 );
                             }
                             "Remove" => {
                                 // check if category is referenced by any current ledger
-                                let is_referenced = self
-                                    .db
+                                let is_referenced = self.ctx.db
                                     .check_if_ledger_references_category(
-                                        self.uid,
-                                        self.id,
+                                        self.ctx.uid,
+                                        self.ctx.aid,
                                         chosen_category.clone(),
                                     )
                                     .unwrap();
@@ -624,10 +446,10 @@ impl AccountOperations for CreditCardAccount {
                                             "{} | {} | {} | {} ",
                                             record.info.date,
                                             chosen_category.clone(),
-                                            self.db
+                                            self.ctx.db
                                                 .get_participant(
-                                                    self.uid,
-                                                    self.id,
+                                                    self.ctx.uid,
+                                                    self.ctx.aid,
                                                     record.info.participant
                                                 )
                                                 .unwrap(),
@@ -642,9 +464,9 @@ impl AccountOperations for CreditCardAccount {
                                 let rm_msg = format!("Are you sure you want to delete the category {} (this will also delete found records)?", chosen_category);
                                 let delete = Confirm::new(&rm_msg).prompt().unwrap();
                                 if delete {
-                                    self.db.remove_category(
-                                        self.uid,
-                                        self.id,
+                                    self.ctx.db.remove_category(
+                                        self.ctx.uid,
+                                        self.ctx.aid,
                                         chosen_category.clone(),
                                     );
                                 }
@@ -680,7 +502,7 @@ impl AccountOperations for CreditCardAccount {
                             }
                         };
                         let participants =
-                            self.db.get_participants(self.uid, self.id, ptype).unwrap();
+                            self.ctx.db.get_participants(self.ctx.uid, self.ctx.aid, ptype).unwrap();
                         let mut people = participants
                             .iter()
                             .map(|x| x.participant.name.clone())
@@ -710,10 +532,10 @@ impl AccountOperations for CreditCardAccount {
                                     .prompt()
                                     .unwrap()
                                     .to_string();
-                                self.db
+                                self.ctx.db
                                     .update_participant_name(
-                                        self.uid,
-                                        self.id,
+                                        self.ctx.uid,
+                                        self.ctx.aid,
                                         ptype,
                                         chosen_person.clone(),
                                         new_name,
@@ -722,11 +544,10 @@ impl AccountOperations for CreditCardAccount {
                             }
                             "Remove" => {
                                 // check if participant is referenced by any current ledger
-                                let is_referenced = self
-                                    .db
+                                let is_referenced = self.ctx.db
                                     .check_if_ledger_references_participant(
-                                        self.uid,
-                                        self.id,
+                                        self.ctx.uid,
+                                        self.ctx.aid,
                                         ptype,
                                         chosen_person.clone(),
                                     )
@@ -738,10 +559,10 @@ impl AccountOperations for CreditCardAccount {
                                         let v = format!(
                                             "{} | {} | {} | {} ",
                                             record.info.date,
-                                            self.db
+                                            self.ctx.db
                                                 .get_category_name(
-                                                    self.uid,
-                                                    self.id,
+                                                    self.ctx.uid,
+                                                    self.ctx.aid,
                                                     record.info.category_id
                                                 )
                                                 .unwrap(),
@@ -758,38 +579,38 @@ impl AccountOperations for CreditCardAccount {
                                 if delete {
                                     match ptype {
                                         ParticipantType::Payee => {
-                                            self.db
+                                            self.ctx.db
                                                 .remove_participant(
-                                                    self.uid,
-                                                    self.id,
+                                                    self.ctx.uid,
+                                                    self.ctx.aid,
                                                     ParticipantType::Payee,
                                                     chosen_person.clone(),
                                                 )
                                                 .unwrap();
                                         }
                                         ParticipantType::Payer => {
-                                            self.db
+                                            self.ctx.db
                                                 .remove_participant(
-                                                    self.uid,
-                                                    self.id,
+                                                    self.ctx.uid,
+                                                    self.ctx.aid,
                                                     ParticipantType::Payer,
                                                     chosen_person.clone(),
                                                 )
                                                 .unwrap();
                                         }
                                         _ => {
-                                            self.db
+                                            self.ctx.db
                                                 .remove_participant(
-                                                    self.uid,
-                                                    self.id,
+                                                    self.ctx.uid,
+                                                    self.ctx.aid,
                                                     ParticipantType::Payee,
                                                     chosen_person.clone(),
                                                 )
                                                 .unwrap();
-                                            self.db
+                                            self.ctx.db
                                                 .remove_participant(
-                                                    self.uid,
-                                                    self.id,
+                                                    self.ctx.uid,
+                                                    self.ctx.aid,
                                                     ParticipantType::Payer,
                                                     chosen_person.clone(),
                                                 )
@@ -830,45 +651,7 @@ impl AccountOperations for CreditCardAccount {
     }
 
     fn export(&self) {
-        let g = FilePathHelper {
-            completer: FilenameCompleter::new(),
-            highlighter: MatchingBracketHighlighter::new(),
-            hinter: HistoryHinter::new(),
-            validator: MatchingBracketValidator::new(),
-            colored_prompt: "".to_owned(),
-        };
-        let config = Config::builder()
-            .history_ignore_space(true)
-            .completion_type(CompletionType::List)
-            .edit_mode(EditMode::Vi)
-            .build();
-        let mut rl = Editor::with_config(config).unwrap();
-        rl.set_helper(Some(g));
-
-        let mut wtr =
-            csv::Writer::from_path(rl.readline("Enter path to CSV file: ").unwrap()).unwrap();
-        let ledger = self.get_ledger();
-        if !ledger.is_empty() {
-            for record in ledger {
-                let csv_ledger_record: shared_lib::LedgerEntry = LedgerEntry {
-                    date: record.info.date,
-                    amount: record.info.amount,
-                    transfer_type: record.info.transfer_type,
-                    participant: self
-                        .db
-                        .get_participant(self.uid, self.id, record.info.participant)
-                        .unwrap(),
-                    category: self
-                        .db
-                        .get_category_name(self.uid, self.id, record.info.category_id)
-                        .unwrap(),
-                    description: record.info.description,
-                    stock_info: None,
-                };
-                let flattened = FlatLedgerEntry::from(csv_ledger_record);
-                wtr.serialize(flattened).unwrap();
-            }
-        }
+        <Self as AccountFileIO>::export(&self);
     }
 
     fn report(&self) {
@@ -886,24 +669,24 @@ impl AccountOperations for CreditCardAccount {
                 .to_string();
         match choice.as_str() {
             "Current Balance" => {
-                let value = self.charge.get_current_balance();
-                println!("\tCurrent Balance: {}", value);
+                let value = self.account_value();
+                println!("\tCurrent Balance: {}", value.unwrap());
             }
             "Credit Line" => {
-                println!("\tCredit Line: {}", self.charge.get_credit_line());
+                println!("\tCredit Line: {}", self.account_limit());
             }
             "Remaining Credit" => {
                 println!(
                     "\tRemaining credit: {}",
-                    self.charge.get_remaining_in_credit_line()
+                    self.remaining()
                 );
             }
             "Spend Analyzer" => {
                 let (start, end, _) = query_user_for_analysis_period(self.get_open_date());
                 let expenses_wrapped = self
-                    .charge
+                    .ctx
                     .db
-                    .get_expenditures_between_dates(self.uid, self.id, start, end)
+                    .get_expenditures_between_dates(self.ctx.uid, self.ctx.aid, start, end)
                     .unwrap();
                 if expenses_wrapped.is_some() {
                     let mut expenses = expenses_wrapped.unwrap();
@@ -928,147 +711,9 @@ impl AccountOperations for CreditCardAccount {
             }
         }
     }
-
-    fn link(&self, transacting_account: u32, entry: LedgerRecord) -> Option<u32> {
-        let from_account;
-        let to_account;
-
-        let cid;
-        let pid;
-        let transacting_account_name: String;
-        let (new_ttype, description) = match entry.info.transfer_type {
-            TransferType::DepositFromExternalAccount => {
-                // if the transacting account received a deposit, then self must be the "from" account
-                from_account = self.id;
-                to_account = transacting_account;
-                cid = self.db.check_and_add_category(
-                    self.uid,
-                    self.id,
-                    "Withdrawal".to_ascii_uppercase(),
-                );
-                transacting_account_name = self
-                    .db
-                    .get_account_name(self.uid, transacting_account)
-                    .unwrap();
-                pid = self.db.check_and_add_participant(
-                    self.uid,
-                    self.id,
-                    transacting_account_name.clone(),
-                    ParticipantType::Payee,
-                    true,
-                );
-                (
-                    TransferType::WithdrawalToExternalAccount,
-                    format!(
-                        "[Link]: Withdrawal of ${} to account {} on {}.",
-                        entry.info.amount, transacting_account_name, entry.info.date
-                    ),
-                )
-            }
-            TransferType::WithdrawalToExternalAccount => {
-                // if the transacting account had an amount withdrawn, then self must be the "to" account
-                from_account = transacting_account;
-                to_account = self.id;
-                cid = self.db.check_and_add_category(
-                    self.uid,
-                    self.id,
-                    "Deposit".to_ascii_uppercase(),
-                );
-                transacting_account_name = self
-                    .db
-                    .get_account_name(self.uid, transacting_account)
-                    .unwrap();
-                pid = self.db.check_and_add_participant(
-                    self.uid,
-                    self.id,
-                    transacting_account_name.clone(),
-                    ParticipantType::Payer,
-                    true,
-                );
-                (
-                    TransferType::DepositFromExternalAccount,
-                    format!(
-                        "[Link]: Deposit of ${} from account {} on {}.",
-                        entry.info.amount, transacting_account_name, entry.info.date
-                    ),
-                )
-            }
-            _ => {
-                return None;
-            }
-        };
-
-        let linked_entry = LedgerInfo {
-            date: entry.info.date,
-            amount: entry.info.amount,
-            transfer_type: new_ttype.clone(),
-            participant: pid,
-            category_id: cid,
-            description: description,
-        };
-
-        let (from_ledger_id, to_ledger_id) = match new_ttype {
-            TransferType::WithdrawalToExternalAccount => (
-                self.db
-                    .add_ledger_entry(self.uid, self.id, linked_entry)
-                    .unwrap(),
-                entry.id,
-            ),
-            TransferType::DepositFromExternalAccount => (
-                entry.id,
-                self.db
-                    .add_ledger_entry(self.uid, self.id, linked_entry)
-                    .unwrap(),
-            ),
-            _ => {
-                panic!("Unrecognized input!")
-            }
-        };
-
-        let transaction_record = AccountTransaction {
-            from_account: from_account,
-            to_account: to_account,
-            from_ledger: from_ledger_id,
-            to_ledger: to_ledger_id,
-        };
-
-        return Some(
-            self.db
-                .add_account_transaction(self.uid, transaction_record)
-                .unwrap(),
-        );
-    }
 }
 
-impl AccountData for CreditCardAccount {
-    fn get_id(&self) -> u32 {
-        return self.id;
-    }
-    fn get_name(&self) -> String {
-        return self.db.get_account_name(self.uid, self.id).unwrap();
-    }
-    fn get_ledger(&self) -> Vec<LedgerRecord> {
-        return self.db.get_ledger(self.uid, self.id).unwrap();
-    }
-    fn get_ledger_within_dates(&self, start: NaiveDate, end: NaiveDate) -> Vec<LedgerRecord> {
-        return self
-            .db
-            .get_ledger_entries_within_timestamps(self.uid, self.id, start, end)
-            .unwrap();
-    }
-    fn get_displayable_ledger(&self) -> Vec<crate::types::ledger::DisplayableLedgerRecord> {
-        return self.db.get_displayable_ledger(self.uid, self.id).unwrap();
-    }
-    fn get_value(&self) -> f32 {
-        return self.charge.get_current_balance();
-    }
-    fn get_value_on_day(&self, day: NaiveDate) -> f32 {
-        return self.charge.get_balance_on_day(day);
-    }
-    fn get_open_date(&self) -> NaiveDate {
-        return self.open_date;
-    }
-}
+impl AccountData for CreditCardAccount {}
 
 #[cfg(feature = "ratatui_support")]
 impl AccountUI for CreditCardAccount {
@@ -1081,26 +726,27 @@ impl AccountUI for CreditCardAccount {
         );
         kv.insert(
             KEY_REMAINING_CREDIT.into(),
-            DisplayValue::Float(self.charge.get_remaining_in_credit_line()),
+            DisplayValue::Float(self.remaining()),
         );
         kv.insert(
             KEY_CREDIT_LINE.into(),
-            DisplayValue::Float(self.charge.get_credit_line()),
+            DisplayValue::Float(self.account_limit()),
         );
         kv.insert(
             KEY_DAYS_UNTIL_DUE.into(),
-            DisplayValue::UInt(self.get_days_until_due_date()),
+            DisplayValue::UInt(self.days_until_limit_reset()),
         );
         kv.insert(
             KEY_STATEMENT_DUE_DATE.into(),
-            DisplayValue::Text(self.get_statement_due_date().to_string()),
+            DisplayValue::Text(self.value_reset_date().to_string()),
         );
 
         app.page_cache_f32 = Some(kv);
         app.ledger_entries = Some(self.get_displayable_ledger());
         app.linechart_cache = None;
-        app.barchart_cache = self.get_barchart_data(app);
+        app.barchart_cache = get_budget_barchart_data(self, app);
     }
+
     fn render(&self, frame: &mut Frame, area: Rect, app: &mut App) {
         let chunk = Layout::default()
             .direction(Direction::Vertical)
@@ -1124,279 +770,11 @@ impl AccountUI for CreditCardAccount {
         let value_area = report_chunks[0];
         let due_date = report_chunks[1];
 
-        self.render_ledger_table(frame, chunk[1], app);
-        self.render_current_value(frame, report_chunks[0], app);
-        self.render_remaining_credit(frame, report_chunks[1], app);
-        self.render_days_until_due_date(frame, report_chunks[2], app);
-        self.render_spend_chart(frame, graphs_reports[1], app);
-    }
-
-    fn render_current_value(&self, frame: &mut Frame, area: Rect, app: &mut App) {
-        let current_value = app
-            .page_cache_f32
-            .as_ref()
-            .expect("Account's page has not been cached!")
-            .get(KEY_TOTAL_VALUE)
-            .and_then(DisplayValue::as_f32)
-            .expect("Could not find total value!");
-
-        let value = ratatuiText::styled(
-            current_value.to_string(),
-            Style::default().fg(tailwind::EMERALD.c400).bold(),
-        );
-
-        let display = Paragraph::new(value)
-            .centered()
-            .alignment(layout::Alignment::Center)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title("Current Balance")
-                    .title_alignment(layout::Alignment::Center)
-                    .padding(Padding::new(
-                        0,
-                        0,
-                        (if area.height > 4 {
-                            area.height / 2 - 2
-                        } else {
-                            0
-                        }),
-                        0,
-                    )),
-            )
-            .bg(tailwind::SLATE.c900);
-
-        frame.render_widget(display, area);
-    }
-}
-
-#[cfg(feature = "ratatui_support")]
-impl CreditCardAccount {
-    fn get_statement_due_date(&self) -> NaiveDate {
-        use chrono::Datelike;
-
-        let credit_card = self.db.get_credit_card(self.uid, self.id).unwrap();
-        let due_date = credit_card.info.statement_due_date;
-        let local = Local::now().date_naive();
-        let day = local.day();
-        let diff: i32 = due_date as i32 - day as i32;
-        let mut statement_due_date = local;
-        if diff >= 0 {
-            return statement_due_date
-                .checked_add_days(Days::new(diff as u64))
-                .unwrap();
-        } else {
-            statement_due_date = statement_due_date
-                .checked_add_months(Months::new(1))
-                .unwrap();
-            statement_due_date = statement_due_date.with_day(due_date).unwrap();
-            return statement_due_date;
-        }
-    }
-
-    fn get_days_until_due_date(&self) -> u32 {
-        use chrono::Datelike;
-        let due_date = self.get_statement_due_date();
-        let today = Local::now().date_naive();
-        return due_date.num_days_from_ce() as u32 - today.num_days_from_ce() as u32;
-    }
-
-    fn render_days_until_due_date(&self, frame: &mut Frame, area: Rect, app: &App) {
-        let days_to = app
-            .page_cache_f32
-            .as_ref()
-            .expect("Account's page has not been cached!")
-            .get(KEY_DAYS_UNTIL_DUE)
-            .and_then(DisplayValue::as_uint)
-            .expect("Could not find days until due date!");
-        let statement_date = app
-            .page_cache_f32
-            .as_ref()
-            .expect("Account's page has not been cached!")
-            .get(KEY_STATEMENT_DUE_DATE)
-            .and_then(DisplayValue::as_text)
-            .expect("Could not find statement due date!");
-
-        let days_to_text = vec![
-            Span::styled(
-                format!("{} {}", days_to, if days_to > 1 { "days" } else { "day" }),
-                Style::default().bold().fg(if days_to < 5 {
-                    tailwind::ROSE.c100
-                } else if days_to < 15 {
-                    tailwind::ROSE.c200
-                } else {
-                    tailwind::EMERALD.c400
-                }),
-            ),
-            Span::styled(
-                format!(" until {}", statement_date),
-                Style::default().bold().fg(tailwind::EMERALD.c400),
-            ),
-        ];
-        let line = Line::from(days_to_text);
-        let text = ratatuiText::from(line);
-        let p = Paragraph::new(text)
-            .centered()
-            .alignment(layout::Alignment::Center)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title("Statement Due Date Countdown")
-                    .title_alignment(layout::Alignment::Center)
-                    .padding(Padding::new(
-                        0,
-                        0,
-                        (if area.height > 4 {
-                            area.height / 2 - 2
-                        } else {
-                            0
-                        }),
-                        0,
-                    )),
-            )
-            .bg(tailwind::SLATE.c900);
-        frame.render_widget(p, area);
-    }
-
-    fn render_remaining_credit(&self, frame: &mut Frame, area: Rect, app: &App) {
-        let credit_remaining = app
-            .page_cache_f32
-            .as_ref()
-            .expect("Account's page has not been cached!")
-            .get(KEY_REMAINING_CREDIT)
-            .and_then(DisplayValue::as_f32)
-            .expect("Could not find remaining credit!");
-        let credit_line = app
-            .page_cache_f32
-            .as_ref()
-            .expect("Account's page has not been cached!")
-            .get(KEY_CREDIT_LINE)
-            .and_then(DisplayValue::as_f32)
-            .expect("Could not find credit line!");
-
-        let credit_remaining_text = vec![
-            Span::styled(
-                format!("${:.2}", credit_remaining),
-                Style::default().bold().fg(if credit_remaining < 500. {
-                    tailwind::ROSE.c100
-                } else if credit_remaining < 100. {
-                    tailwind::ROSE.c200
-                } else {
-                    tailwind::EMERALD.c400
-                }),
-            ),
-            Span::styled(
-                format!(" of ${:.2} remaining.", credit_line),
-                Style::default().bold().fg(tailwind::EMERALD.c400),
-            ),
-        ];
-        let line = Line::from(credit_remaining_text);
-        let text = ratatuiText::from(line);
-        let p = Paragraph::new(text)
-            .centered()
-            .alignment(layout::Alignment::Center)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title("Remaining Credit")
-                    .title_alignment(layout::Alignment::Center)
-                    .padding(Padding::new(
-                        0,
-                        0,
-                        (if area.height > 4 {
-                            area.height / 2 - 2
-                        } else {
-                            0
-                        }),
-                        0,
-                    )),
-            )
-            .bg(tailwind::SLATE.c900);
-        frame.render_widget(p, area);
-    }
-
-    fn render_spend_chart(&self, frame: &mut Frame, area: Rect, app: &mut App) {
-        let bar_chart = app.barchart_cache.take();
-        if let Some(bar_chart) = bar_chart {
-            app.barchart_cache = Some(bar_chart.clone());
-
-            let labels = bar_chart.labels.clone();
-            // let datasets = bar_chart.groups.keys().collect::<Vec<String>>();
-            let mut bar_groups: Vec<BarGroup<'_>> = Vec::new();
-            for label in labels {
-                let mut bars: Vec<Bar<'_>> = Vec::new();
-                if let Some(budget_dataset) = bar_chart.groups.get(KEY_BARCHART_BUDGET) {
-                    // budget found
-                    let budget_value = budget_dataset
-                        .get(&label)
-                        .expect(format!("Budget group for {} not found!", label).as_str())
-                        .clone();
-                    let budget_bar = Bar::default()
-                        .value(budget_value.1)
-                        .text_value(format!("${:.2}", budget_value.0))
-                        .style(Style::new().fg(tailwind::WHITE))
-                        .value_style(Style::new().fg(tailwind::WHITE).reversed());
-                    bars.push(budget_bar);
-                }
-                if let Some(expenditure_dataset) = bar_chart.groups.get(KEY_BARCHART_EXPENDITURES) {
-                    let expenditure_value = expenditure_dataset
-                        .get(&label)
-                        .expect(format!("Expenditure group for {} not found!", label).as_str())
-                        .clone();
-                    let expenditure_bar = Bar::default()
-                        .value(expenditure_value.1)
-                        .text_value(format!("${:.2}", expenditure_value.0))
-                        .style(Style::new().fg(tailwind::AMBER.c500))
-                        .value_style(Style::new().fg(tailwind::AMBER.c500).reversed());
-                    bars.push(expenditure_bar);
-                }
-                let group = BarGroup::default()
-                    .bars(&bars)
-                    .label(Line::from(label).centered());
-                bar_groups.push(group);
-            }
-
-            let mut chart = BarChart::default()
-                .style(Style::new().bg(tailwind::SLATE.c900))
-                .block(Block::bordered().title_top(Line::from("Spend Analyzer").centered()))
-                .bar_width(10)
-                .group_gap(area.width / (bar_groups.len() as u16 + 10));
-            for group in bar_groups {
-                chart = chart.data(group);
-            }
-
-            frame.render_widget(chart, area);
-
-            // app.barchart_cache = Some(bar_chart);
-        } else {
-            let value = ratatuiText::styled(
-                "No data to display!",
-                Style::default().fg(tailwind::ROSE.c400).bold(),
-            );
-
-            let display = Paragraph::new(value)
-                .centered()
-                .alignment(layout::Alignment::Center)
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .title("Spend Analyzer")
-                        .title_alignment(layout::Alignment::Center)
-                        .padding(Padding::new(
-                            0,
-                            0,
-                            (if area.height > 4 {
-                                area.height / 2 - 2
-                            } else {
-                                0
-                            }),
-                            0,
-                        )),
-                )
-                .bg(tailwind::SLATE.c900);
-
-            frame.render_widget(display, area);
-        }
+        render_ledger_table(frame, chunk[1], app);
+        render_current_value(frame, report_chunks[0], app);
+        render_remaining_credit(frame, report_chunks[1], app);
+        render_days_until_due_date(frame, report_chunks[2], app);
+        render_spend_chart(frame, graphs_reports[1], app);
     }
 }
 
@@ -1407,17 +785,5 @@ impl Account for CreditCardAccount {
     #[cfg(feature = "ratatui_support")]
     fn as_any(&self) -> &dyn std::any::Any {
         self
-    }
-    fn has_budget(&self) -> bool {
-        let acct = self.db.get_account(self.uid, self.id).unwrap();
-        acct.info.has_budget
-    }
-    fn set_budget(&self) {
-        let mut acct = self.db.get_account(self.uid, self.id).unwrap();
-        acct.info.has_budget = true;
-        let _ = self
-            .db
-            .update_account(self.uid, self.id, &acct.info)
-            .unwrap();
     }
 }

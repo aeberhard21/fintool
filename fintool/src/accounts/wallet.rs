@@ -17,6 +17,7 @@
 use chrono::Date;
 use chrono::Local;
 use chrono::NaiveDate;
+use chrono::format::Fixed;
 use csv::ReaderBuilder;
 use inquire::Confirm;
 use inquire::Select;
@@ -55,9 +56,20 @@ use std::iter::zip;
 use std::path::Path;
 use std::rc;
 
-use crate::accounts::base::{BaseActions, BaseGrowth};
+use crate::accounts::base::AccountFileIO;
+use crate::accounts::base::fixed_account::FixedAccountFileIO;
+use crate::accounts::growth::report_growth;
+use crate::accounts::{KEY_BARCHART_BUDGET, KEY_BARCHART_EXPENDITURES};
+use crate::accounts::base::fixed_account::FixedLedger;
+use crate::accounts::base::fixed_account::{FixedGrowth, FixedValuable};
+use crate::accounts::base::{AccountContext, Valuable};
+use crate::accounts::FilePathHelper;
 use crate::accounts::base::budget::Budget;
-use crate::accounts::base::KEY_TOTAL_VALUE;
+use crate::accounts::base::{HasContext, LedgerOps};
+use crate::accounts::growth::GrowthCalculable;
+use crate::accounts::KEY_TOTAL_VALUE;
+#[cfg(feature = "ratatui_support")]
+use crate::accounts::render::*;
 #[cfg(feature = "ratatui_support")]
 use crate::app::app::{App, BarChartData, DisplayValue};
 #[cfg(feature = "ratatui_support")]
@@ -77,205 +89,89 @@ use shared_lib::TransferType;
 
 use super::base::fixed_account::FixedAccount;
 use super::base::liquid_account::LiquidAccount;
-use super::base::Account;
-use super::base::AccountCreation;
-use super::base::AccountData;
-use super::base::AccountOperations;
+use super::Account;
+use super::AccountCreation;
+use super::AccountData;
+use super::AccountOperations;
 #[cfg(feature = "ratatui_support")]
-use super::base::AccountUI;
+use super::AccountUI;
 use crate::types::ledger::Expenditure;
 #[cfg(feature = "ratatui_support")]
 use crate::ui::{centered_rect, float_range};
 
-pub const KEY_BARCHART_BUDGET: &str = "Budget";
-pub const KEY_BARCHART_EXPENDITURES: &str = "Expenditures";
-
 pub struct Wallet {
-    uid: u32,
-    id: u32,
-    db: DbConn,
-    fixed: FixedAccount,
-    open_date: NaiveDate,
-    budget: Option<Budget>,
+    ctx : AccountContext
 }
 
-#[derive(Helper, Completer, Hinter, Highlighter, Validator)]
-struct FilePathHelper {
-    #[rustyline(Completer)]
-    completer: FilenameCompleter,
-    #[rustyline(Highlighter)]
-    highlighter: MatchingBracketHighlighter,
-    #[rustyline(Validator)]
-    validator: MatchingBracketValidator,
-    #[rustyline(Hinter)]
-    hinter: HistoryHinter,
-    colored_prompt: String,
+impl HasContext for Wallet {
+    fn ctx(&self) -> &AccountContext {
+        &self.ctx
+    }
+    fn ctx_mut(&mut self) -> &mut AccountContext {
+        &mut self.ctx
+    }
 }
+
+impl FixedLedger for Wallet {}
+
+impl LedgerOps for Wallet {
+    fn modify(&mut self, selected_record: LedgerRecord) -> Option<LedgerRecord> {
+        return self.modify_fixed(selected_record);
+    }
+}
+
+impl FixedAccount for Wallet {}
+
+impl Valuable for Wallet {
+    fn account_value(&self) -> Option<f32> {
+        self.fixed_value()
+    }
+    fn get_account_value_on_day(&self, day: &NaiveDate) -> Option<f32> {
+        self.fixed_value_on_day(day)
+    }
+}
+
+impl FixedValuable for Wallet {}
+
+impl GrowthCalculable for Wallet {
+    fn calculate_growth(&self, metric: super::growth::GrowthMetric, start_date : NaiveDate, end_date : NaiveDate) -> f32 {
+        self.fixed_growth(metric, start_date, end_date)
+    }
+}
+
+impl FixedGrowth for Wallet {}
+
+impl Budget for Wallet {}
+
+impl AccountFileIO for Wallet {
+    fn import(&self) {
+        self.import_fixed_account();
+    }
+    fn export(&self) {
+        self.export_fixed_account();
+    }
+}
+
+impl FixedAccountFileIO for Wallet {}
 
 impl Wallet {
     pub fn new(uid: u32, id: u32, db: &DbConn) -> Self {
         let mut acct: Wallet = Self {
-            uid: uid,
-            id: id,
-            db: db.clone(),
-            fixed: FixedAccount::new(uid, id, db.clone()),
-            open_date: Local::now().date_naive(),
-            budget: None,
+            ctx : AccountContext { 
+                aid: id, 
+                uid : uid,
+                db: db.clone(), 
+                open_date: Local::now().date_naive() 
+            },
         };
 
         let mut ledger = acct.get_ledger();
         if !ledger.is_empty() {
             ledger.sort_by(|l1, l2| (&l1.info.date).cmp(&l2.info.date));
-            acct.open_date = NaiveDate::parse_from_str(&ledger[0].info.date, "%Y-%m-%d").unwrap();
+            acct.ctx.open_date = NaiveDate::parse_from_str(&ledger[0].info.date, "%Y-%m-%d").unwrap();
         }
-        if acct.has_budget() {
-            acct.budget = Some(Budget::new(uid, id, db));
-        }
+
         acct
-    }
-
-    #[cfg(feature = "ratatui_support")]
-    pub fn get_barchart_data(&self, app: &mut App) -> Option<BarChartData> {
-        if let Some(mut expenditures) = self
-            .db
-            .get_expenditures_between_dates(self.uid, self.id, app.analysis_start, app.analysis_end)
-            .unwrap()
-        {
-            let bar_groups = if let Some(account_budget) = &self.budget {
-                let mut budget = account_budget.get_budget();
-                if budget.is_empty() {
-                    panic!("No budget found for account '{}'!", self.id);
-                }
-                let categories = account_budget.get_budget_categories();
-                if categories.is_empty() {
-                    panic!("No categories found for account '{}'!", self.id);
-                }
-
-                // sort expenditures alphabetically
-                expenditures.sort_by(|x, y| (x.category).cmp(&y.category));
-                // sort budget alphabetically
-                budget.sort_by(|x, y| {
-                    (self
-                        .db
-                        .get_category_name(self.uid, self.id, x.item.category_id)
-                        .unwrap())
-                    .cmp(
-                        (&self
-                            .db
-                            .get_category_name(self.uid, self.id, y.item.category_id)
-                            .unwrap()),
-                    )
-                });
-
-                // remove any expenditures that don't map to a budget category, place in to misc category
-                let mut misc_expenditures = Expenditure {
-                    category: "Misc".to_string(),
-                    amount: 0.0,
-                };
-                expenditures.retain(|expenditure| {
-                    if budget
-                        .iter()
-                        .map(|element| {
-                            self.db
-                                .get_category_name(self.uid, self.id, element.item.category_id)
-                                .unwrap()
-                        })
-                        .collect::<Vec<String>>()
-                        .binary_search(&expenditure.category)
-                        .is_ok()
-                    {
-                        true
-                    } else {
-                        misc_expenditures.amount = misc_expenditures.amount + expenditure.amount;
-                        false
-                    }
-                });
-
-                let mut labels: Vec<String> = Vec::new();
-                let mut budget_dataset: HashMap<String, (f32, u64)> = HashMap::new();
-                let mut expenditure_dataset: HashMap<String, (f32, u64)> = HashMap::new();
-                for elem in zip(budget, expenditures) {
-                    let budget_value = super::base::budget::scale_budget_value_to_analysis_period(
-                        elem.0.item.value,
-                        app.analysis_start,
-                        app.analysis_end,
-                    );
-                    let expenditure_value = elem.1.amount;
-
-                    labels.push(elem.1.category.clone());
-                    budget_dataset
-                        .insert(elem.1.category.clone(), (budget_value, budget_value as u64));
-                    expenditure_dataset.insert(
-                        elem.1.category.clone(),
-                        (expenditure_value, expenditure_value as u64),
-                    );
-                }
-
-                if misc_expenditures.amount > 0.0 {
-                    let label: String = "Misc".into();
-                    labels.push(label.clone());
-                    budget_dataset.insert(label.clone(), (0.0, 0));
-                    expenditure_dataset.insert(
-                        label,
-                        (misc_expenditures.amount, misc_expenditures.amount as u64),
-                    );
-                }
-
-                let mut bars: HashMap<String, HashMap<String, (f32, u64)>> = HashMap::new();
-                bars.insert(KEY_BARCHART_BUDGET.into(), budget_dataset);
-                bars.insert(KEY_BARCHART_EXPENDITURES.into(), expenditure_dataset);
-
-                return Some(BarChartData {
-                    labels: labels,
-                    groups: bars,
-                });
-            } else {
-                // group anything less than the top 10 categories into a "miscellaneous" category
-                expenditures.sort_by(|x, y| {
-                    (x.amount)
-                        .partial_cmp(&y.amount)
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                });
-
-                let grouped_others: Option<Expenditure> = if expenditures.len() > 10 {
-                    let misc = expenditures
-                        .drain(10..expenditures.len() - 1)
-                        .collect::<Vec<Expenditure>>();
-                    let amount = misc.into_iter().map(|x| x.amount).sum();
-                    Some(Expenditure {
-                        category: "Misc".to_string(),
-                        amount: amount,
-                    })
-                } else {
-                    None
-                };
-
-                if let Some(grouped_others) = grouped_others {
-                    expenditures.push(grouped_others);
-                }
-
-                let mut labels: Vec<String> = Vec::new();
-                let mut expenditure_dataset: HashMap<String, (f32, u64)> = HashMap::new();
-                for elem in expenditures {
-                    let expenditure_value = elem.amount;
-                    labels.push(elem.category.clone());
-                    expenditure_dataset.insert(
-                        elem.category.clone(),
-                        (expenditure_value, expenditure_value as u64),
-                    );
-                }
-
-                let mut bars: HashMap<String, HashMap<String, (f32, u64)>> = HashMap::new();
-                bars.insert("Expenditures".into(), expenditure_dataset);
-
-                return Some(BarChartData {
-                    labels: labels,
-                    groups: bars,
-                });
-            };
-        } else {
-            None
-        }
     }
 }
 
@@ -304,7 +200,7 @@ impl AccountCreation for Wallet {
                 .unwrap();
 
         if initialize_account {
-            acct.fixed.deposit(None, false);
+            acct.deposit(None, false);
         }
 
         let add_budget = Confirm::new("Would you like to associate a budget to this account?")
@@ -313,8 +209,7 @@ impl AccountCreation for Wallet {
             .unwrap();
         if add_budget {
             let x = Self::new(uid, aid, _db);
-            let budget = Budget::new(uid, aid, _db);
-            budget.create_budget();
+            x.create_budget();
             x.set_budget();
         }
 
@@ -337,17 +232,11 @@ impl AccountOperations for Wallet {
             .unwrap()
             .to_string();
             match action.as_str() {
-                "Accrual" => { 
-                    self.fixed.accrual(None, false);
-                }
-                "Fee" => {
-                    self.fixed.fee(None, false);
-                }
                 "Deposit" => {
-                    self.fixed.deposit(None, false);
+                    self.deposit(None, false);
                 }
                 "Withdrawal" => {
-                    self.fixed.withdrawal(None, false);
+                    self.withdrawal(None, false);
                 }
                 "None" => {
                     return;
@@ -366,97 +255,7 @@ impl AccountOperations for Wallet {
     }
 
     fn import(&mut self) {
-        let g = FilePathHelper {
-            completer: FilenameCompleter::new(),
-            highlighter: MatchingBracketHighlighter::new(),
-            hinter: HistoryHinter::new(),
-            validator: MatchingBracketValidator::new(),
-            colored_prompt: "".to_owned(),
-        };
-        let config = Config::builder()
-            .history_ignore_space(true)
-            .completion_type(CompletionType::List)
-            .edit_mode(EditMode::Vi)
-            .build();
-        let mut rl = Editor::with_config(config).unwrap();
-        rl.set_helper(Some(g));
-
-        let mut fp = Path::new("~");
-        let mut bad_path;
-        let mut csv: String = String::new();
-        loop {
-            csv = rl.readline("Enter path to CSV file: ").unwrap();
-            if csv.to_string() == "none" {
-                return;
-            }
-            bad_path = match Path::new(&csv).try_exists() {
-                Ok(true) => false,
-                Ok(false) => {
-                    println!("File {} cannot be found!", Path::new(&csv).display());
-                    true
-                }
-                Err(e) => {
-                    println!("File {} cannot be found: {}!", e, Path::new(&csv).display());
-                    true
-                }
-            };
-            if !bad_path {
-                break;
-            } else {
-                let try_again = Confirm::new("Continue import?").prompt().unwrap();
-                if !try_again {
-                    return;
-                }
-            }
-        }
-        fp = Path::new(&csv);
-
-        let mut rdr = ReaderBuilder::new()
-            .has_headers(false)
-            .from_path(fp)
-            .unwrap();
-
-        let mut ledger_entries = Vec::new();
-        for result in rdr.deserialize::<LedgerEntry>() {
-            ledger_entries.push(result.unwrap());
-        }
-        ledger_entries.sort_by(|x, y| {
-            (NaiveDate::parse_from_str(&x.date, "%Y-%m-%d").unwrap())
-                .cmp(&NaiveDate::parse_from_str(&y.date, "%Y-%m-%d").unwrap())
-        });
-        for rcrd in ledger_entries {
-            let ptype = if rcrd.transfer_type == TransferType::WithdrawalToExternalAccount {
-                ParticipantType::Payee
-            } else if rcrd.transfer_type == TransferType::WithdrawalToInternalAccount {
-                ParticipantType::Payee
-            } else if rcrd.transfer_type == TransferType::DepositFromExternalAccount {
-                ParticipantType::Payer
-            } else {
-                ParticipantType::Payer
-            };
-            let entry: LedgerInfo = LedgerInfo {
-                date: NaiveDate::parse_from_str(rcrd.date.as_str(), "%Y-%m-%d")
-                    .unwrap()
-                    .format("%Y-%m-%d")
-                    .to_string(),
-                amount: rcrd.amount,
-                transfer_type: rcrd.transfer_type as TransferType,
-                participant: self.db.check_and_add_participant(
-                    self.uid,
-                    self.id,
-                    rcrd.participant,
-                    ptype,
-                    false,
-                ),
-                category_id: self.db.check_and_add_category(
-                    self.uid,
-                    self.id,
-                    rcrd.category.to_ascii_uppercase(),
-                ),
-                description: rcrd.description,
-            };
-            let _lid: u32 = self.db.add_ledger_entry(self.uid, self.id, entry).unwrap();
-        }
+        <Self as AccountFileIO>::import(&self);
     }
 
     fn modify(&mut self) {
@@ -473,12 +272,12 @@ impl AccountOperations for Wallet {
                 .unwrap();
             match modify_choice {
                 "Ledger" => loop {
-                    let record_or_none = self.fixed.select_ledger_entry();
+                    let record_or_none = self.select_ledger_entry();
                     if record_or_none.is_none() {
                         break;
                     }
                     let selected_record = record_or_none.unwrap();
-                    self.fixed.modify(selected_record);
+                    <Wallet as LedgerOps>::modify(self, selected_record);
                     let go_again = Confirm::new("Modify additional records? (y/n)")
                         .prompt()
                         .unwrap();
@@ -488,7 +287,7 @@ impl AccountOperations for Wallet {
                 },
                 "Categories" => {
                     loop {
-                        let records = self.db.get_categories(self.uid, self.id).unwrap();
+                        let records = self.ctx.db.get_categories(self.ctx.uid, self.ctx.aid).unwrap();
                         let mut choices: Vec<String> = records
                             .iter()
                             .map(|x| x.category.name.clone())
@@ -513,20 +312,19 @@ impl AccountOperations for Wallet {
                                     .prompt()
                                     .unwrap()
                                     .to_string();
-                                self.db.update_category_name(
-                                    self.uid,
-                                    self.id,
+                                let _ = self.ctx.db.update_category_name(
+                                    self.ctx.uid,
+                                    self.ctx.aid,
                                     chosen_category,
                                     new_name,
                                 );
                             }
                             "Remove" => {
                                 // check if category is referenced by any current ledger
-                                let is_referenced = self
-                                    .db
+                                let is_referenced = self.ctx.db
                                     .check_if_ledger_references_category(
-                                        self.uid,
-                                        self.id,
+                                        self.ctx.uid,
+                                        self.ctx.aid,
                                         chosen_category.clone(),
                                     )
                                     .unwrap();
@@ -538,10 +336,10 @@ impl AccountOperations for Wallet {
                                             "{} | {} | {} | {} ",
                                             record.info.date,
                                             chosen_category.clone(),
-                                            self.db
+                                            self.ctx.db
                                                 .get_participant(
-                                                    self.uid,
-                                                    self.id,
+                                                    self.ctx.uid,
+                                                    self.ctx.aid,
                                                     record.info.participant
                                                 )
                                                 .unwrap(),
@@ -556,9 +354,9 @@ impl AccountOperations for Wallet {
                                 let rm_msg = format!("Are you sure you want to delete the category {} (this will also delete found records)?", chosen_category);
                                 let delete = Confirm::new(&rm_msg).prompt().unwrap();
                                 if delete {
-                                    self.db.remove_category(
-                                        self.uid,
-                                        self.id,
+                                    self.ctx.db.remove_category(
+                                        self.ctx.uid,
+                                        self.ctx.aid,
                                         chosen_category.clone(),
                                     );
                                 }
@@ -594,7 +392,7 @@ impl AccountOperations for Wallet {
                             }
                         };
                         let participants =
-                            self.db.get_participants(self.uid, self.id, ptype).unwrap();
+                            self.ctx.db.get_participants(self.ctx.uid, self.ctx.aid, ptype).unwrap();
                         let mut people = participants
                             .iter()
                             .map(|x| x.participant.name.clone())
@@ -624,10 +422,10 @@ impl AccountOperations for Wallet {
                                     .prompt()
                                     .unwrap()
                                     .to_string();
-                                self.db
+                                self.ctx.db
                                     .update_participant_name(
-                                        self.uid,
-                                        self.id,
+                                        self.ctx.uid,
+                                        self.ctx.aid,
                                         ptype,
                                         chosen_person.clone(),
                                         new_name,
@@ -636,11 +434,10 @@ impl AccountOperations for Wallet {
                             }
                             "Remove" => {
                                 // check if participant is referenced by any current ledger
-                                let is_referenced = self
-                                    .db
+                                let is_referenced = self.ctx.db
                                     .check_if_ledger_references_participant(
-                                        self.uid,
-                                        self.id,
+                                        self.ctx.uid,
+                                        self.ctx.aid,
                                         ptype,
                                         chosen_person.clone(),
                                     )
@@ -652,10 +449,10 @@ impl AccountOperations for Wallet {
                                         let v = format!(
                                             "{} | {} | {} | {} ",
                                             record.info.date,
-                                            self.db
+                                            self.ctx.db
                                                 .get_category_name(
-                                                    self.uid,
-                                                    self.id,
+                                                    self.ctx.uid,
+                                                    self.ctx.aid,
                                                     record.info.category_id
                                                 )
                                                 .unwrap(),
@@ -672,38 +469,38 @@ impl AccountOperations for Wallet {
                                 if delete {
                                     match ptype {
                                         ParticipantType::Payee => {
-                                            self.db
+                                            self.ctx.db
                                                 .remove_participant(
-                                                    self.uid,
-                                                    self.id,
+                                                    self.ctx.uid,
+                                                    self.ctx.aid,
                                                     ParticipantType::Payee,
                                                     chosen_person.clone(),
                                                 )
                                                 .unwrap();
                                         }
                                         ParticipantType::Payer => {
-                                            self.db
+                                            self.ctx.db
                                                 .remove_participant(
-                                                    self.uid,
-                                                    self.id,
+                                                    self.ctx.uid,
+                                                    self.ctx.aid,
                                                     ParticipantType::Payer,
                                                     chosen_person.clone(),
                                                 )
                                                 .unwrap();
                                         }
                                         _ => {
-                                            self.db
+                                            self.ctx.db
                                                 .remove_participant(
-                                                    self.uid,
-                                                    self.id,
+                                                    self.ctx.uid,
+                                                    self.ctx.aid,
                                                     ParticipantType::Payee,
                                                     chosen_person.clone(),
                                                 )
                                                 .unwrap();
-                                            self.db
+                                            self.ctx.db
                                                 .remove_participant(
-                                                    self.uid,
-                                                    self.id,
+                                                    self.ctx.uid,
+                                                    self.ctx.aid,
                                                     ParticipantType::Payer,
                                                     chosen_person.clone(),
                                                 )
@@ -728,17 +525,16 @@ impl AccountOperations for Wallet {
                     }
                 }
                 "Budget" => {
-                    if let Some(budget) = &self.budget {
-                        budget.modify();
+                    if self.has_budget() {
+                        <Wallet as Budget>::modify(&self);
                     } else {
                         let add_budget = Confirm::new("A budget for this account does not exist, would you like to create one (y/n)?")
                             .with_default(false)
                             .prompt()
                             .unwrap();
                         if add_budget {
-                            let budget = Budget::new(self.uid, self.id, &self.db);
-                            budget.create_budget();
-                            self.budget = Some(budget);
+                            self.create_budget();
+                            self.set_budget();
                         }
                     }
                 }
@@ -760,49 +556,11 @@ impl AccountOperations for Wallet {
     }
 
     fn export(&self) {
-        let g = FilePathHelper {
-            completer: FilenameCompleter::new(),
-            highlighter: MatchingBracketHighlighter::new(),
-            hinter: HistoryHinter::new(),
-            validator: MatchingBracketValidator::new(),
-            colored_prompt: "".to_owned(),
-        };
-        let config = Config::builder()
-            .history_ignore_space(true)
-            .completion_type(CompletionType::List)
-            .edit_mode(EditMode::Vi)
-            .build();
-        let mut rl = Editor::with_config(config).unwrap();
-        rl.set_helper(Some(g));
-
-        let mut wtr =
-            csv::Writer::from_path(rl.readline("Enter path to CSV file: ").unwrap()).unwrap();
-        let ledger = self.get_ledger();
-        if !ledger.is_empty() {
-            for record in ledger {
-                let csv_ledger_record: shared_lib::LedgerEntry = LedgerEntry {
-                    date: record.info.date,
-                    amount: record.info.amount,
-                    transfer_type: record.info.transfer_type,
-                    participant: self
-                        .db
-                        .get_participant(self.uid, self.id, record.info.participant)
-                        .unwrap(),
-                    category: self
-                        .db
-                        .get_category_name(self.uid, self.id, record.info.category_id)
-                        .unwrap(),
-                    description: record.info.description,
-                    stock_info: None,
-                };
-                let flattened = FlatLedgerEntry::from(csv_ledger_record);
-                wtr.serialize(flattened).unwrap();
-            }
-        }
+        <Self as AccountFileIO>::export(&self);
     }
 
     fn report(&self) {
-        const REPORT_OPTIONS: [&'static str; 3] = ["Total Value", "Simple Growth Rate", "None"];
+        const REPORT_OPTIONS: [&'static str; 3] = ["Total Value", "Growth", "None"];
         let choice: String =
             Select::new("What would you like to report: ", REPORT_OPTIONS.to_vec())
                 .prompt()
@@ -813,10 +571,8 @@ impl AccountOperations for Wallet {
                 let value = self.get_value();
                 println!("\tTotal Account Value: {}", value);
             }
-            "Simple Growth Rate" => {
-                let (period_start, period_end, _) =
-                    query_user_for_analysis_period(self.get_open_date());
-                let rate = self.fixed.simple_rate_of_return(period_start, period_end);
+            "Growth" => {
+                let rate = report_growth(self).unwrap_or(f32::NAN);
                 println!("\tRate of return: {}%", rate);
             }
             "None" => {
@@ -827,235 +583,9 @@ impl AccountOperations for Wallet {
             }
         }
     }
-
-    fn link(&self, transacting_account: u32, entry: LedgerRecord) -> Option<u32> {
-        let from_account;
-        let to_account;
-
-        let cid;
-        let pid;
-        let transacting_account_name: String;
-        let (new_ttype, description) = match entry.info.transfer_type {
-            TransferType::DepositFromExternalAccount => {
-                // if the transacting account received a deposit, then self must be the "from" account
-                from_account = self.id;
-                to_account = transacting_account;
-                cid = self.db.check_and_add_category(
-                    self.uid,
-                    self.id,
-                    "Withdrawal".to_ascii_uppercase(),
-                );
-                transacting_account_name = self
-                    .db
-                    .get_account_name(self.uid, transacting_account)
-                    .unwrap();
-                pid = self.db.check_and_add_participant(
-                    self.uid,
-                    self.id,
-                    transacting_account_name.clone(),
-                    ParticipantType::Payee,
-                    true,
-                );
-                (
-                    TransferType::WithdrawalToExternalAccount,
-                    format!(
-                        "[Link]: Withdrawal of ${} to account {} on {}.",
-                        entry.info.amount, transacting_account_name, entry.info.date
-                    ),
-                )
-            }
-            TransferType::WithdrawalToExternalAccount => {
-                // if the transacting account had an amount withdrawn, then self must be the "to" account
-                from_account = transacting_account;
-                to_account = self.id;
-                cid = self.db.check_and_add_category(
-                    self.uid,
-                    self.id,
-                    "Deposit".to_ascii_uppercase(),
-                );
-                transacting_account_name = self
-                    .db
-                    .get_account_name(self.uid, transacting_account)
-                    .unwrap();
-                pid = self.db.check_and_add_participant(
-                    self.uid,
-                    self.id,
-                    transacting_account_name.clone(),
-                    ParticipantType::Payer,
-                    true,
-                );
-                (
-                    TransferType::DepositFromExternalAccount,
-                    format!(
-                        "[Link]: Deposit of ${} from account {} on {}.",
-                        entry.info.amount, transacting_account_name, entry.info.date
-                    ),
-                )
-            }
-            _ => {
-                return None;
-            }
-        };
-
-        let linked_entry = LedgerInfo {
-            date: entry.info.date,
-            amount: entry.info.amount,
-            transfer_type: new_ttype.clone(),
-            participant: pid,
-            category_id: cid,
-            description: description,
-        };
-
-        let (from_ledger_id, to_ledger_id) = match new_ttype {
-            TransferType::WithdrawalToExternalAccount => (
-                self.db
-                    .add_ledger_entry(self.uid, self.id, linked_entry)
-                    .unwrap(),
-                entry.id,
-            ),
-            TransferType::DepositFromExternalAccount => (
-                entry.id,
-                self.db
-                    .add_ledger_entry(self.uid, self.id, linked_entry)
-                    .unwrap(),
-            ),
-            _ => {
-                panic!("Unrecognized input!")
-            }
-        };
-
-        let transaction_record = AccountTransaction {
-            from_account: from_account,
-            to_account: to_account,
-            from_ledger: from_ledger_id,
-            to_ledger: to_ledger_id,
-        };
-
-        return Some(
-            self.db
-                .add_account_transaction(self.uid, transaction_record)
-                .unwrap(),
-        );
-    }
 }
 
-impl AccountData for Wallet {
-    fn get_id(&self) -> u32 {
-        return self.id;
-    }
-    fn get_name(&self) -> String {
-        return self.db.get_account_name(self.uid, self.id).unwrap();
-    }
-    fn get_ledger(&self) -> Vec<LedgerRecord> {
-        return self.db.get_ledger(self.uid, self.id).unwrap();
-    }
-    fn get_ledger_within_dates(&self, start: NaiveDate, end: NaiveDate) -> Vec<LedgerRecord> {
-        return self
-            .db
-            .get_ledger_entries_within_timestamps(self.uid, self.id, start, end)
-            .unwrap();
-    }
-    fn get_displayable_ledger(&self) -> Vec<crate::types::ledger::DisplayableLedgerRecord> {
-        return self.db.get_displayable_ledger(self.uid, self.id).unwrap();
-    }
-
-    fn get_value(&self) -> f32 {
-        return self.fixed.get_current_value().unwrap_or(f32::NAN);
-    }
-    fn get_value_on_day(&self, day: NaiveDate) -> f32 {
-        return self.fixed.get_account_value_on_day(&day).unwrap_or(f32::NAN);
-    }
-    fn get_open_date(&self) -> NaiveDate {
-        return self.open_date;
-    }
-}
-
-#[cfg(feature = "ratatui_support")]
-impl Wallet {
-    fn render_spend_chart(&self, frame: &mut Frame, area: Rect, app: &mut App) {
-        let bar_chart = app.barchart_cache.take();
-        if let Some(bar_chart) = bar_chart {
-            app.barchart_cache = Some(bar_chart.clone());
-
-            let labels = bar_chart.labels.clone();
-            // let datasets = bar_chart.groups.keys().collect::<Vec<String>>();
-            let mut bar_groups: Vec<BarGroup<'_>> = Vec::new();
-            for label in labels {
-                let mut bars: Vec<Bar<'_>> = Vec::new();
-                if let Some(budget_dataset) = bar_chart.groups.get(KEY_BARCHART_BUDGET) {
-                    // budget found
-                    let budget_value = budget_dataset
-                        .get(&label)
-                        .expect(format!("Budget group for {} not found!", label).as_str())
-                        .clone();
-                    let budget_bar = Bar::default()
-                        .value(budget_value.1)
-                        .text_value(format!("${:.2}", budget_value.0))
-                        .style(Style::new().fg(tailwind::WHITE))
-                        .value_style(Style::new().fg(tailwind::WHITE).reversed());
-                    bars.push(budget_bar);
-                }
-                if let Some(expenditure_dataset) = bar_chart.groups.get(KEY_BARCHART_EXPENDITURES) {
-                    let expenditure_value = expenditure_dataset
-                        .get(&label)
-                        .expect(format!("Expenditure group for {} not found!", label).as_str())
-                        .clone();
-                    let expenditure_bar = Bar::default()
-                        .value(expenditure_value.1)
-                        .text_value(format!("${:.2}", expenditure_value.0))
-                        .style(Style::new().fg(tailwind::AMBER.c500))
-                        .value_style(Style::new().fg(tailwind::AMBER.c500).reversed());
-                    bars.push(expenditure_bar);
-                }
-                let group = BarGroup::default()
-                    .bars(&bars)
-                    .label(Line::from(label).centered());
-                bar_groups.push(group);
-            }
-
-            let mut chart = BarChart::default()
-                .style(Style::new().bg(tailwind::SLATE.c900))
-                .block(Block::bordered().title_top(Line::from("Spend Analyzer").centered()))
-                .bar_width(10)
-                .group_gap(area.width / (bar_groups.len() as u16 + 10));
-            for group in bar_groups {
-                chart = chart.data(group);
-            }
-
-            frame.render_widget(chart, area);
-
-            // app.barchart_cache = Some(bar_chart);
-        } else {
-            let value = ratatuiText::styled(
-                "No data to display!",
-                Style::default().fg(tailwind::ROSE.c400).bold(),
-            );
-
-            let display = Paragraph::new(value)
-                .centered()
-                .alignment(layout::Alignment::Center)
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .title("Spend Analyzer")
-                        .title_alignment(layout::Alignment::Center)
-                        .padding(Padding::new(
-                            0,
-                            0,
-                            (if area.height > 4 {
-                                area.height / 2 - 2
-                            } else {
-                                0
-                            }),
-                            0,
-                        )),
-                )
-                .bg(tailwind::SLATE.c900);
-
-            frame.render_widget(display, area);
-        }
-    }
-}
+impl AccountData for Wallet {}
 
 #[cfg(feature = "ratatui_support")]
 impl AccountUI for Wallet {
@@ -1069,7 +599,7 @@ impl AccountUI for Wallet {
         app.page_cache_f32 = Some(kv);
         app.ledger_entries = Some(self.get_displayable_ledger());
         app.linechart_cache = None;
-        app.barchart_cache = self.get_barchart_data(app);
+        app.barchart_cache = get_budget_barchart_data(self,app);
     }
 
     fn render(&self, frame: &mut Frame, area: Rect, app: &mut App) {
@@ -1085,9 +615,9 @@ impl AccountUI for Wallet {
         let report_area = graphs_reports[0];
         let chart_area = graphs_reports[1];
 
-        self.render_current_value(frame, report_area, app);
-        self.render_ledger_table(frame, chunk[1], app);
-        self.render_spend_chart(frame, chart_area, app);
+        render_current_value(frame, report_area, app);
+        render_ledger_table(frame, chunk[1], app);
+        render_spend_chart(frame, chart_area, app);
     }
 }
 
@@ -1099,94 +629,10 @@ impl Account for Wallet {
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
-    fn has_budget(&self) -> bool {
-        let acct = self.db.get_account(self.uid, self.id).unwrap();
-        acct.info.has_budget
-    }
-    fn set_budget(&self) {
-        let mut acct = self.db.get_account(self.uid, self.id).unwrap();
-        acct.info.has_budget = true;
-        let _ = self
-            .db
-            .update_account(self.uid, self.id, &acct.info)
-            .unwrap();
-    }
     #[cfg(feature = "ratatui_support")]
     fn as_liquid_account(&self) -> Option<&dyn LiquidAccount> {
         return Some(self);
     }
 }
 
-impl LiquidAccount for Wallet {
-    fn get_positive_cash_flow(&self, start: NaiveDate, end: NaiveDate) -> f32 {
-        let ledger = self.get_ledger_within_dates(start, end);
-        if ledger.is_empty() {
-            return 0.0;
-        }
-
-        let mut amt = 0.0;
-        for txn in ledger {
-            if !txn.info.transfer_type.is_deposit() {
-                continue;
-            }
-
-            if let Some(link) = self
-                .db
-                .check_and_get_account_transaction_record_matching_to_ledger_id(
-                    self.uid, self.id, txn.id,
-                )
-                .unwrap()
-            {
-                // if linked, checked to see that the account is not another liquid account (if liquid, then skip because cash is still available)
-                let peer_account = self
-                    .db
-                    .get_account(self.uid, link.info.from_account)
-                    .unwrap();
-                if !peer_account.is_liquid_account() {
-                    continue;
-                }
-            }
-            amt = amt + txn.info.amount;
-        }
-
-        amt
-    }
-
-    fn get_negative_cash_flow(&self, start: NaiveDate, end: NaiveDate) -> f32 {
-        let ledger = self.get_ledger_within_dates(start, end);
-        if ledger.is_empty() {
-            return 0.0;
-        }
-
-        let mut amt = 0.0;
-        for txn in ledger {
-            if !txn.info.transfer_type.is_withdrawal() {
-                continue;
-            }
-
-            if let Some(link) = self
-                .db
-                .check_and_get_account_transaction_record_matching_to_ledger_id(
-                    self.uid, self.id, txn.id,
-                )
-                .unwrap()
-            {
-                // if linked, checked to see that the account is not another liquid account (if liquid, then skip because cash is still available)
-                let peer_account = self
-                    .db
-                    .get_account(self.uid, link.info.from_account)
-                    .unwrap();
-                if !peer_account.is_liquid_account() {
-                    continue;
-                }
-            }
-            amt = amt + txn.info.amount;
-        }
-
-        amt
-    }
-
-    fn get_cash_flow(&self, start: NaiveDate, end: NaiveDate) -> f32 {
-        return self.get_positive_cash_flow(start, end) - self.get_negative_cash_flow(start, end);
-    }
-}
+impl LiquidAccount for Wallet {}

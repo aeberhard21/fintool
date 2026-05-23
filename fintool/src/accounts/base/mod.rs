@@ -1,5 +1,3 @@
-#[cfg(feature = "ratatui_support")]
-use crate::accounts::base::liquid_account::LiquidAccount;
 /* ------------------------------------------------------------------------
   Copyright (C) 2025  Andrew J. Eberhard
 
@@ -21,437 +19,246 @@ use crate::app::app::{App, DisplayValue};
 #[cfg(feature = "ratatui_support")]
 use crate::app::screen::{ledger_table_constraint_len_calculator, positions_table_constraint_len_calculator};
 use crate::database::DbConn;
+use crate::types::participants::{ParticipantAutoCompleter, ParticipantType};
 use crate::types::accounts::AccountRecord;
 use crate::types::accounts::AccountType;
-use crate::types::ledger::{DisplayableLedgerRecord, LedgerRecord};
+use crate::types::ledger::{DisplayableLedgerRecord, LedgerInfo, LedgerRecord};
+use crate::tui::{decode_and_init_account_type, prompt_and_create_new_account};
 #[cfg(feature = "ratatui_support")]
 use crate::ui::centered_rect;
-use chrono::{Datelike, NaiveDate, NaiveDateTime, naive};
-#[cfg(feature = "ratatui_support")]
-use ratatui::symbols::block;
-#[cfg(feature = "ratatui_support")]
-use ratatui::{
-    buffer::Buffer,
-    layout::{self, Constraint, Direction, Layout, Rect},
-    style::{palette, palette::tailwind, Color, Modifier, Style, Stylize},
-    symbols::{self, Marker},
-    text::{Line, Span, Text as ratatuiText},
-    widgets::{
-        Axis, Bar, BarChart, BarGroup, Block, Borders, Cell, Chart, Clear, Dataset, GraphType,
-        HighlightSpacing, List, ListItem, Padding, Paragraph, Row, Table, Tabs, Widget, Wrap,
-    },
-    Frame,
-};
+use chrono::{Datelike, Local, Month, NaiveDate, NaiveDateTime, naive};
+use inquire::*;
 use rusqlite::config::DbConfig;
+use shared_lib::{LedgerEntry, TransferType};
 use core::f32;
 use std::any::Any;
-use strum::{Display, EnumIter, EnumString, FromRepr};
+use std::collections::HashMap;
 use yahoo_finance_api::Quote;
+use crate::accounts::Account;
 
 pub mod budget;
 pub mod charge_account;
 pub mod fixed_account;
+pub mod interest_bearing_fixed_account;
 pub mod liquid_account;
 pub mod variable_account;
 
-#[derive(Clone, Display, Debug, FromRepr, EnumIter, EnumString)]
-pub enum AnalysisPeriod {
-    #[strum(to_string = "1 Day")]
-    OneDay,
-    #[strum(to_string = "1 Week")]
-    OneWeek,
-    #[strum(to_string = "1 Month")]
-    OneMonth,
-    #[strum(to_string = "3 Months")]
-    ThreeMonths,
-    #[strum(to_string = "6 Months")]
-    SixMonths,
-    #[strum(to_string = "1 Year")]
-    OneYear,
-    #[strum(to_string = "2 Years")]
-    TwoYears,
-    #[strum(to_string = "5 Years")]
-    FiveYears,
-    #[strum(to_string = "10 Years")]
-    TenYears,
-    #[strum(to_string = "YTD")]
-    YTD,
-    #[strum(to_string = "All Time")]
-    AllTime,
-    #[strum(to_string = "Custom")]
-    Custom,
+pub struct AccountContext {
+    pub aid: u32,
+    pub uid: u32,
+    pub db: DbConn,
+    pub open_date : NaiveDate,
 }
 
-impl AnalysisPeriod {
-    pub fn to_menu_selection(value: Self) -> String {
-        format!("{value}")
+pub trait HasContext { 
+    fn ctx(&self) -> &AccountContext;
+    fn ctx_mut(&mut self) -> &mut AccountContext;
+}
+
+pub trait LedgerOps : HasContext {
+    fn modify(&mut self, selected_record: LedgerRecord) -> Option<LedgerRecord>;
+
+    fn link_transaction(
+        &self,
+        initial_opt: Option<String>,
+    ) -> Option<(Box<dyn Account>, String)> {
+
+        let ctx = Self::ctx(&self);
+
+        let default_to_use;
+        let mut initial_account = String::new();
+        if initial_opt.is_some() {
+            default_to_use = true;
+            initial_account = initial_opt.unwrap();
+        } else {
+            default_to_use = false;
+        }
+
+        let accounts = ctx.db.get_user_accounts(ctx.uid).unwrap();
+        let mut account_map: HashMap<String, AccountRecord> = HashMap::new();
+        let mut account_names: Vec<String> = Vec::new();
+        for account in accounts.iter() {
+            account_names.push(account.info.name.clone());
+            account_map.insert(account.info.name.clone(), account.clone());
+        }
+
+        let select_account_prompt = "Select account:";
+        let mut selected_account = if default_to_use {
+            Text::new(select_account_prompt)
+                .with_autocomplete(ParticipantAutoCompleter {
+                    uid: ctx.uid,
+                    aid: ctx.aid,
+                    db: ctx.db.clone(),
+                    ptype: ParticipantType::Both,
+                    with_accounts: true,
+                    stock_tickers_only: false,
+                    manually_recorded_only: false,
+                })
+                .with_default(initial_account.as_str())
+                .prompt()
+                .unwrap()
+        } else {
+            Text::new(select_account_prompt)
+                .with_autocomplete(ParticipantAutoCompleter {
+                    uid: ctx.uid,
+                    aid: ctx.aid,
+                    db: ctx.db.clone(),
+                    ptype: ParticipantType::Both,
+                    with_accounts: true,
+                    stock_tickers_only: false,
+                    manually_recorded_only: false,
+                })
+                .prompt()
+                .unwrap()
+        };
+
+        if selected_account.clone() == "None" {
+            return None;
+        }
+
+        let acct: Box<dyn Account>;
+        let record: AccountRecord;
+        if selected_account.clone() == "New Account".to_ascii_uppercase().to_string() {
+            let user_input = prompt_and_create_new_account(ctx.uid, &ctx.db);
+            if user_input.is_none() {
+                return None;
+            }
+            (acct, record) = user_input.unwrap();
+            selected_account = record.info.name;
+        } else {
+            let acctx = account_map
+                .get(&selected_account)
+                .expect("Account not found!");
+            acct = decode_and_init_account_type(ctx.uid, &ctx.db, acctx);
+        }
+
+        return Some((acct, selected_account.clone()));
+    }
+
+    fn get_ledger(&self) -> Vec<LedgerRecord> {
+        let ctx = self.ctx();
+        return ctx.db.get_ledger(ctx.uid, ctx.aid).unwrap();
+    }
+    fn get_ledger_within_dates(&self, start: NaiveDate, end: NaiveDate) -> Vec<LedgerRecord> {
+        self.get_ledger_entries_between_timestamps(start, end)
+    }
+    fn get_displayable_ledger(&self) -> Vec<crate::types::ledger::DisplayableLedgerRecord> {
+        let ctx = self.ctx();
+        return ctx.db.get_displayable_ledger(ctx.uid, ctx.aid).unwrap();
+    }
+    
+    fn get_external_transactions_between_timestamps(
+        &self,
+        start_date: NaiveDate,
+        end_date: NaiveDate,
+    ) -> Option<Vec<LedgerRecord>> {
+        let ctx: &AccountContext = Self::ctx(&self);
+        let ledger = ctx.db.get_external_transactions_between_timestamps(ctx.uid, ctx.aid, start_date, end_date).unwrap();
+        ledger
+    }
+
+    fn get_ledger_entries_between_timestamps(
+        &self,
+        start_date: NaiveDate,
+        end_date: NaiveDate,
+    ) -> Vec<LedgerRecord> {
+        let ctx: &AccountContext = Self::ctx(&self);    
+        let ledger = ctx.db.get_ledger_entries_within_timestamps(ctx.uid, ctx.aid,start_date, end_date).unwrap();
+        ledger
+    }
+
+    // returns uid of selected ledger entry
+    fn select_ledger_entry(&self) -> Option<LedgerRecord> {
+        let ctx: &AccountContext = Self::ctx(&self);
+        let records = ctx.db.get_ledger(ctx.uid, ctx.aid).unwrap();
+        let mut entries: HashMap<String, u32> = HashMap::new();
+        let mut strings: Vec<String> = Vec::new();
+        let mut mapped_records: HashMap<u32, LedgerInfo> = HashMap::new();
+        for rcrd in records {
+            let v: String = format!(
+                "{} | {} | {} | {} | ",
+                rcrd.info.date,
+                ctx.db
+                    .get_category_name(ctx.uid, ctx.aid, rcrd.info.category_id)
+                    .unwrap(),
+                ctx.db
+                    .get_participant(ctx.uid, ctx.aid, rcrd.info.participant)
+                    .unwrap(),
+                rcrd.info.amount
+            );
+            strings.push(v.clone());
+            entries.insert(v.clone(), rcrd.id);
+            mapped_records.insert(rcrd.id, rcrd.info);
+        }
+        strings.push("None".to_string());
+        let errant_record: String = Select::new("What item would you like to modify: ", strings)
+            .prompt()
+            .unwrap()
+            .to_string();
+
+        if errant_record == "None".to_string() {
+            return None;
+        }
+
+        let id = *entries
+            .get(&errant_record)
+            .expect("Unable to find matching ID!");
+
+        let selected_record = LedgerRecord {
+            id: id.clone(),
+            info: mapped_records
+                .get(&id)
+                .expect("Record not found!")
+                .to_owned(),
+        };
+        Some(selected_record)
     }
 }
 
+pub struct VariableAccountContext { 
+    pub buffer: Option<Vec<StockData>>,
+}
+
+pub trait HasVariableAccountContext { 
+    fn variable_ctx(&self) -> &VariableAccountContext;
+    fn variable_ctx_mut(&mut self) -> &mut VariableAccountContext;
+}
+
+pub trait Valuable : HasContext {
+    fn account_value(&self) -> Option<f32>;
+    fn get_account_value_on_day(&self, day: &NaiveDate) -> Option<f32>;
+}
+
+pub trait ValueLimited: HasContext {
+    fn account_limit(&self) -> f32;
+    fn remaining(&self) -> f32;
+    fn value_reset_date(&self) -> NaiveDate {
+        let today = Local::now().date_naive();
+        let reset = NaiveDate::from_ymd_opt(today.year(), Month::December.number_from_month(), 31).expect("Unable to formulate date!");
+        reset
+    }
+    fn days_until_limit_reset(&self) -> u32 {
+        let local = Local::now().date_naive();
+        return (local-self.value_reset_date()).num_days() as u32;
+    }
+}
+
+pub trait AccountFileIO : HasContext + LedgerOps {
+    fn import(&self);
+    fn export(&self);
+}
+
 #[derive(Debug, Clone)]
-struct StockData {
+pub struct StockData {
     ticker: String,
     quotes: Vec<Quote>,
     history: Vec<SharesOwned>,
 }
 
 #[derive(Debug, Clone)]
-struct SharesOwned {
+pub struct SharesOwned {
     date: NaiveDate,
     shares: f32,
-}
-
-pub const KEY_TOTAL_VALUE: &str = "Current Value";
-pub const KEY_GROWTH: &str = "Growth";
-
-pub trait AccountCreation {
-    fn create(uid: u32, name: String, _db: &DbConn) -> AccountRecord;
-}
-
-pub trait AccountOperations {
-    fn import(&mut self);
-    fn record(&mut self);
-    fn modify(&mut self);
-    fn export(&self);
-    fn report(&self);
-    fn link(&self, transacting_account: u32, ledger: LedgerRecord) -> Option<u32>;
-}
-
-pub trait AccountData {
-    fn get_id(&self) -> u32;
-    fn get_name(&self) -> String;
-    fn get_ledger(&self) -> Vec<LedgerRecord>;
-    fn get_ledger_within_dates(&self, start: NaiveDate, end: NaiveDate) -> Vec<LedgerRecord>;
-    fn get_displayable_ledger(&self) -> Vec<DisplayableLedgerRecord>;
-    fn get_value(&self) -> f32;
-    fn get_value_on_day(&self, day: NaiveDate) -> f32;
-    fn get_open_date(&self) -> NaiveDate;
-}
-
-#[cfg(feature = "ratatui_support")]
-pub trait AccountUI: AccountData {
-    fn populate_page_cache_f32(&self, app: &mut App);
-
-    fn render(&self, frame: &mut Frame, area: Rect, app: &mut App);
-
-    fn render_ledger_table(&self, frame: &mut Frame, area: Rect, app: &mut App) {
-        let header_style = Style::default()
-            .fg(app.ledger_table_colors.header_fg)
-            .bg(app.ledger_table_colors.header_bg);
-
-        let selected_row_style = Style::new()
-            .add_modifier(Modifier::REVERSED)
-            .fg(app.ledger_table_colors.selected_row_style_fg);
-
-        let header = [
-            "ID",
-            "Date",
-            "Type",
-            "Amount",
-            "Category",
-            "Peer",
-            "Description",
-            "Labels",
-        ]
-        .into_iter()
-        .map(Cell::from)
-        .collect::<Row>()
-        .style(header_style)
-        .height(1);
-
-        if let Some(ledger) = app.ledger_entries.clone() {
-            let data = ledger;
-
-            let rows = data.iter().enumerate().map(|(i, record)| {
-                let color = match i % 2 {
-                    0 => app.ledger_table_colors.normal_row_color,
-                    _ => app.ledger_table_colors.alt_row_color,
-                };
-                let item = [
-                    &record.id.to_string(),
-                    &record.info.date,
-                    &record.info.transfer_type,
-                    &record.info.amount.to_string(),
-                    &record.info.category,
-                    &record.info.participant.to_string(),
-                    &record.info.description,
-                    &record.info.labels,
-                ];
-                item.into_iter()
-                    .map(|content| Cell::from(ratatuiText::from(format!("\n{content}\n"))))
-                    .collect::<Row>()
-                    .style(Style::new().fg(app.ledger_table_colors.row_fg).bg(color))
-                    .height(4)
-            });
-
-            let bar: &'static str = " █ ";
-            let constraint_lens = ledger_table_constraint_len_calculator(&data);
-            let t = Table::new(
-                rows,
-                [
-                    Constraint::Length(constraint_lens.0 + 1),
-                    Constraint::Min(constraint_lens.1 + 1),
-                    Constraint::Min(constraint_lens.2 + 1),
-                    Constraint::Min(constraint_lens.3 + 1),
-                    Constraint::Min(constraint_lens.4 + 1),
-                    Constraint::Min(constraint_lens.5 + 1),
-                    // don't take more than 25% of screen when display descriptions
-                    Constraint::Min(area.width / 4),
-                    Constraint::Min(constraint_lens.7 + 1),
-                ],
-            )
-            .header(header)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title("Transactions")
-                    .title_alignment(layout::Alignment::Center),
-            )
-            .row_highlight_style(selected_row_style)
-            .highlight_symbol(ratatuiText::from(vec![
-                "".into(),
-                bar.into(),
-                bar.into(),
-                "".into(),
-            ]))
-            .bg(app.ledger_table_colors.buffer_bg)
-            .highlight_spacing(HighlightSpacing::Always);
-
-            app.ledger_entries = Some(data);
-
-            frame.render_stateful_widget(t, area, &mut app.ledger_table_state);
-        } else {
-            let value = ratatuiText::styled(
-                "No data to display!",
-                Style::default().fg(tailwind::ROSE.c400).bold(),
-            );
-
-            let display = Paragraph::new(value)
-                .centered()
-                .alignment(layout::Alignment::Center)
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .title("Value Over Time")
-                        .title_alignment(layout::Alignment::Center)
-                        .padding(Padding::new(
-                            0,
-                            0,
-                            (if area.height > 4 {
-                                area.height / 2 - 2
-                            } else {
-                                0
-                            }),
-                            0,
-                        )),
-                )
-                .bg(tailwind::SLATE.c900);
-
-            frame.render_widget(display, area);
-        }
-    }
-
-    fn render_current_value(&self, frame: &mut Frame, area: Rect, app: &mut App) {
-        let current_value = app
-            .page_cache_f32
-            .as_ref()
-            .expect("Account's page has not been cached!")
-            .get(KEY_TOTAL_VALUE)
-            .and_then(DisplayValue::as_f32)
-            .expect("Could not find current value!");
-
-        let value = ratatuiText::styled(
-            current_value.to_string(),
-            Style::default().fg(tailwind::EMERALD.c400).bold(),
-        );
-
-        let display = Paragraph::new(value)
-            .centered()
-            .alignment(layout::Alignment::Center)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title("Current Value")
-                    .title_alignment(layout::Alignment::Center)
-                    .padding(Padding::new(
-                        0,
-                        0,
-                        (if area.height > 4 {
-                            area.height / 2 - 2
-                        } else {
-                            0
-                        }),
-                        0,
-                    )),
-            )
-            .bg(tailwind::SLATE.c900);
-
-        frame.render_widget(display, area);
-    }
-}
-
-#[cfg(feature = "ratatui_support")]
-pub trait VariableAccountUI : AccountData {
-    fn render_positions_table(&self, frame: &mut Frame, area: Rect, app: &mut App) {
-
-        let block_title = "Positions";
-
-        let header_style = Style::default()
-            .fg(app.ledger_table_colors.header_fg)
-            .bg(app.ledger_table_colors.header_bg);
-
-        let selected_row_style = Style::new()
-            .add_modifier(Modifier::REVERSED)
-            .fg(app.ledger_table_colors.selected_row_style_fg);
-
-        let header = [
-            DisplayablePositionStatistics::get_ticker_str(),
-            DisplayablePositionStatistics::get_quantity_str(),
-            DisplayablePositionStatistics::get_value_str(),
-            DisplayablePositionStatistics::get_price_str(),
-            DisplayablePositionStatistics::get_total_cost_basis_str(),
-            DisplayablePositionStatistics::get_unit_cost_str(),
-            DisplayablePositionStatistics::get_unrealized_gl_str(),
-            DisplayablePositionStatistics::get_unrealized_gl_per_str()
-        ]        
-        .into_iter()
-        .map(Cell::from)
-        .collect::<Row>()
-        .style(header_style)
-        .height(1);
-
-        let position_entries = app.positions_entries.take();
-        if let Some(ledger) = position_entries.as_ref() {
-            let data = ledger;
-
-            let rows = data.iter().enumerate().map(|(i, record)| {
-                let color = match i % 2 {
-                    0 => app.ledger_table_colors.normal_row_color,
-                    _ => app.ledger_table_colors.alt_row_color,
-                };
-                let item = [
-                    &record.ticker,
-                    &record.quantity,
-                    &record.value,
-                    &record.price,
-                    &record.total_cost_basis,
-                    &record.unit_cost,
-                    &record.unrealized_gl,
-                    &record.unrealized_gl_per,
-                ];
-                item.into_iter()
-                    .enumerate()
-                    .map(|content| {
-                        let index = content.0;
-                        let value = content.1;
-                        match index {
-                            0|1|3|5 => {
-                                Cell::from(ratatuiText::from(format!("\n{value}\n")).style(tailwind::WHITE))
-                            }
-                            _ => {
-                                if value.parse::<f32>().unwrap() < 0.0 { 
-                                    Cell::from(ratatuiText::from(format!("\n{value}\n")).style(tailwind::ROSE.c500))
-                                } else { 
-                                    Cell::from(ratatuiText::from(format!("\n{value}\n")).style(tailwind::EMERALD.c500))
-                                }
-                            }
-                        }
-                    })
-                    .collect::<Row>()
-                    .style(Style::new().fg(app.ledger_table_colors.row_fg).bg(color))
-                    .height(4)
-            });
-
-            let bar: &'static str = " █ ";
-            let constraint_lens = positions_table_constraint_len_calculator(&data);
-            let t = Table::new(
-                rows,
-                [
-                    Constraint::Length(constraint_lens.0 + 1),
-                    Constraint::Min(constraint_lens.1 + 1),
-                    Constraint::Min(constraint_lens.2 + 1),
-                    Constraint::Min(constraint_lens.3 + 1),
-                    Constraint::Min(constraint_lens.4 + 1),
-                    Constraint::Min(constraint_lens.5 + 1),
-                    // don't take more than 25% of screen when display descriptions
-                    Constraint::Min(area.width / 4),
-                    Constraint::Min(constraint_lens.7 + 1),
-                ],
-            )
-            .header(header)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(block_title)
-                    .title_alignment(layout::Alignment::Center),
-            )
-            .row_highlight_style(selected_row_style)
-            .highlight_symbol(ratatuiText::from(vec![
-                "".into(),
-                bar.into(),
-                bar.into(),
-                "".into(),
-            ]))
-            .bg(app.ledger_table_colors.buffer_bg)
-            .highlight_spacing(HighlightSpacing::Always);
-
-            frame.render_stateful_widget(t, area, &mut app.ledger_table_state);
-        } else {
-            let value = ratatuiText::styled(
-                "No data to display!",
-                Style::default().fg(tailwind::ROSE.c400).bold(),
-            );
-
-            let display = Paragraph::new(value)
-                .centered()
-                .alignment(layout::Alignment::Center)
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .title(block_title)
-                        .title_alignment(layout::Alignment::Center)
-                        .padding(Padding::new(
-                            0,
-                            0,
-                            (if area.height > 4 {
-                                area.height / 2 - 2
-                            } else {
-                                0
-                            }),
-                            0,
-                        )),
-                )
-                .bg(tailwind::SLATE.c900);
-
-            frame.render_widget(display, area);
-        }
-
-        app.positions_entries = position_entries;
-    }
-}
-
-#[cfg(not(feature = "ratatui_support"))]
-pub trait Account: AccountData + AccountOperations + Any {
-    fn kind(&self) -> AccountType;
-    fn has_budget(&self) -> bool;
-    fn set_budget(&self);
-}
-
-#[cfg(feature = "ratatui_support")]
-pub trait Account: AccountData + AccountOperations + AccountUI + Any {
-    fn kind(&self) -> AccountType;
-    fn as_any(&self) -> &dyn Any;
-    fn has_budget(&self) -> bool;
-    fn set_budget(&self);
-    fn as_liquid_account(&self) -> Option<&dyn LiquidAccount> { 
-        return None;
-    }
-    fn as_variable_account(&self) -> Option<&dyn VariableAccountUI> { 
-        return None;
-    }
-    fn renders_tables(&self) -> Vec<String> { 
-        return vec!["Transactions".to_string()];
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -492,55 +299,3 @@ impl DisplayablePositionStatistics {
         "Unrealized G/L (%)".to_string()
     }   
 }
-
-#[cfg(feature = "ratatui_support")]
-pub fn render_table_tabs(
-    frame: &mut Frame,
-    area: Rect,
-    tab_names: Vec<String>,
-    selected_tab: usize,
-    highlight_color: Color,
-) {
-    let atype_tabs = Tabs::new(tab_names.into_iter())
-        .highlight_style(highlight_color)
-        .select(selected_tab)
-        .block(
-            Block::bordered()
-                .title(" Tables ")
-                .style(Style::new().bg(tailwind::SLATE.c900)),
-        )
-        .padding("", "")
-        .divider(" | ");
-    frame.render_widget(atype_tabs, area);
-}
-
-pub trait BaseActions { 
-    fn get_account_value_on_day(&self, date: &NaiveDate) -> Option<f32>;
-    fn get_current_value(&self) -> Option<f32>;
-    fn modify(&mut self, selected_record: LedgerRecord) -> Option<LedgerRecord>;
-}
-
-pub trait BaseGrowth : BaseActions {
-    fn simple_rate_of_return(&self, start_date : NaiveDate, end_date : NaiveDate) -> f32 {
-        let ev_opt = Self::get_account_value_on_day(&self, &end_date);
-        if ev_opt.is_none() {
-            return f32::NAN;
-        }
-        let ev = ev_opt.unwrap();
-        let sv_opt = Self::get_account_value_on_day(&self, &start_date);
-        if sv_opt.is_none() {
-            return f32::NAN;
-        }
-        let sv = sv_opt.unwrap();
-        return (ev-sv)/(sv)*100.;
-    }
-    fn compound_annual_growth_rate(&self, start_date : NaiveDate, end_date : NaiveDate) -> f32 {
-        let cr = (Self::simple_rate_of_return(&self, start_date, end_date))/100.;
-        let days = end_date.num_days_from_ce() - start_date.num_days_from_ce();
-        let n = (days as f32) / 365.25;
-        return ((1. + cr).powf(1. / n) - 1.) * 100.;
-    }
-    fn money_weighted_return(&self, start_date : NaiveDate, end_date : NaiveDate) -> f32;
-    fn time_weighted_return(&self, start_date : NaiveDate, end_date : NaiveDate) -> f32;
-}
-
