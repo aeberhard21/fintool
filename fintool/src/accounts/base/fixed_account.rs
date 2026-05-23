@@ -14,10 +14,13 @@
   You should have received a copy of the GNU General Public License
   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 -----------------------------------------------------------------------*/
+use crate::accounts::base::{AccountFileIO, LedgerOps, Valuable};
+use crate::accounts::growth::{
+    compound_annual_growth_rate, money_weighted_return, simple_rate_of_return, GrowthCalculable,
+    GrowthMetric,
+};
 use crate::database::DbConn;
 use crate::types::accounts::AccountRecord;
-use crate::accounts::base::{AccountFileIO, LedgerOps, Valuable};
-use crate::accounts::growth::{GrowthCalculable, GrowthMetric, compound_annual_growth_rate, money_weighted_return, simple_rate_of_return};
 use crate::types::categories::CategoryAutoCompleter;
 use crate::types::labels::LabelAutoCompleter;
 use crate::types::ledger::{LedgerInfo, LedgerRecord};
@@ -61,10 +64,8 @@ pub struct FilePathHelper {
     pub colored_prompt: String,
 }
 
-
-pub trait FixedAccount : HasContext + LedgerOps {
+pub trait FixedAccount: HasContext + LedgerOps {
     fn withdrawal(&self, initial_opt: Option<LedgerRecord>, overwrite: bool) -> LedgerRecord {
-
         let ctx = Self::ctx(&self);
 
         let default_to_use: bool;
@@ -152,7 +153,8 @@ pub trait FixedAccount : HasContext + LedgerOps {
                 .to_ascii_uppercase()
         };
 
-        cid = ctx.db
+        cid = ctx
+            .db
             .check_and_add_category(ctx.uid, ctx.aid, selected_category);
 
         let description_prompt = "Enter description:";
@@ -248,7 +250,8 @@ pub trait FixedAccount : HasContext + LedgerOps {
                         .prompt()
                         .unwrap();
                 if !maintain_labels {
-                    let mapped_labels = ctx.db
+                    let mapped_labels = ctx
+                        .db
                         .check_and_get_label_mapping_matching_ledger_id(ctx.uid, ctx.aid, id)
                         .unwrap();
                     if !mapped_labels.is_empty() {
@@ -349,7 +352,8 @@ pub trait FixedAccount : HasContext + LedgerOps {
                         .prompt()
                         .unwrap();
                 if !maintain_labels {
-                    let mapped_labels = ctx.db
+                    let mapped_labels = ctx
+                        .db
                         .check_and_get_label_mapping_matching_ledger_id(ctx.uid, ctx.aid, id)
                         .unwrap();
                     if !mapped_labels.is_empty() {
@@ -492,7 +496,8 @@ pub trait FixedAccount : HasContext + LedgerOps {
                 .to_string()
         };
 
-        cid = ctx.db
+        cid = ctx
+            .db
             .check_and_add_category(ctx.uid, ctx.aid, selected_category);
 
         let description_prompt = "Enter description:";
@@ -602,7 +607,8 @@ pub trait FixedAccount : HasContext + LedgerOps {
                         .prompt()
                         .unwrap();
                 if !maintain_labels {
-                    let mapped_labels = ctx.db
+                    let mapped_labels = ctx
+                        .db
                         .check_and_get_label_mapping_matching_ledger_id(ctx.uid, ctx.aid, id)
                         .unwrap();
                     if !mapped_labels.is_empty() {
@@ -703,7 +709,8 @@ pub trait FixedAccount : HasContext + LedgerOps {
                         .prompt()
                         .unwrap();
                 if !maintain_labels {
-                    let mapped_labels = ctx.db
+                    let mapped_labels = ctx
+                        .db
                         .check_and_get_label_mapping_matching_ledger_id(ctx.uid, ctx.aid, id)
                         .unwrap();
                     if !mapped_labels.is_empty() {
@@ -751,13 +758,14 @@ pub trait FixedAccount : HasContext + LedgerOps {
     }
 }
 
-pub fn fixed_account_value(ctx : &AccountContext) -> Option<f32> {
-    let value= ctx.db.get_current_value(ctx.uid, ctx.aid).unwrap();
+pub fn fixed_account_value(ctx: &AccountContext) -> Option<f32> {
+    let value = ctx.db.get_current_value(ctx.uid, ctx.aid).unwrap();
     Some(value)
 }
 
-pub fn fixed_account_value_on_day(ctx : &AccountContext, day: &NaiveDate) -> Option<f32> {
-    let value_opt = ctx.db
+pub fn fixed_account_value_on_day(ctx: &AccountContext, day: &NaiveDate) -> Option<f32> {
+    let value_opt = ctx
+        .db
         .get_cumulative_total_of_ledger_before_date(ctx.uid, ctx.aid, *day)
         .unwrap();
     return value_opt;
@@ -767,33 +775,29 @@ pub trait FixedValuable: Valuable {
     fn fixed_value(&self) -> Option<f32> {
         fixed_account_value(self.ctx())
     }
-    fn fixed_value_on_day(&self, day: &NaiveDate  ) -> Option<f32> {
+    fn fixed_value_on_day(&self, day: &NaiveDate) -> Option<f32> {
         fixed_account_value_on_day(self.ctx(), day)
     }
 }
 
 pub trait FixedGrowth: GrowthCalculable {
-    fn fixed_growth(&self, metric: GrowthMetric, start_date: NaiveDate, end_date : NaiveDate) -> f32 {
+    fn fixed_growth(
+        &self,
+        metric: GrowthMetric,
+        start_date: NaiveDate,
+        end_date: NaiveDate,
+    ) -> f32 {
         match metric {
-            GrowthMetric::CAGR => {
-                compound_annual_growth_rate(self, start_date, end_date)
-            }
-            GrowthMetric::MWRR => {
-                money_weighted_return(self, start_date, end_date)
-            }
-            GrowthMetric::SimpleReturn => {
-                simple_rate_of_return(self, start_date, end_date)
-            }
-            GrowthMetric::TWRR => {
-                f32::NAN
-            }
+            GrowthMetric::CAGR => compound_annual_growth_rate(self, start_date, end_date),
+            GrowthMetric::MWRR => money_weighted_return(self, start_date, end_date),
+            GrowthMetric::SimpleReturn => simple_rate_of_return(self, start_date, end_date),
+            GrowthMetric::TWRR => f32::NAN,
         }
     }
 }
 
-pub trait FixedLedger: LedgerOps + HasContext + FixedAccount { 
+pub trait FixedLedger: LedgerOps + HasContext + FixedAccount {
     fn modify_fixed(&mut self, selected_record: LedgerRecord) -> Option<LedgerRecord> {
-
         let ctx = self.ctx();
 
         if selected_record.info.transfer_type == TransferType::ZeroSumChange {
@@ -812,7 +816,8 @@ pub trait FixedLedger: LedgerOps + HasContext + FixedAccount {
                 >;
                 let updated_record = match selected_record.info.transfer_type {
                     TransferType::DepositFromExternalAccount => {
-                        account_transaction_opt = ctx.db
+                        account_transaction_opt = ctx
+                            .db
                             .check_and_get_account_transaction_record_matching_to_ledger_id(
                                 ctx.uid,
                                 ctx.aid,
@@ -835,7 +840,8 @@ pub trait FixedLedger: LedgerOps + HasContext + FixedAccount {
                         self.deposit(Some(selected_record.clone()), true)
                     }
                     TransferType::WithdrawalToExternalAccount => {
-                        account_transaction_opt = ctx.db
+                        account_transaction_opt = ctx
+                            .db
                             .check_and_get_account_transaction_record_matching_from_ledger_id(
                                 ctx.uid,
                                 ctx.aid,
@@ -854,9 +860,7 @@ pub trait FixedLedger: LedgerOps + HasContext + FixedAccount {
                         }
                         self.withdrawal(Some(selected_record.clone()), true)
                     }
-                    _ => {
-                        selected_record
-                    }
+                    _ => selected_record,
                 };
                 return Some(updated_record);
             }
@@ -866,7 +870,8 @@ pub trait FixedLedger: LedgerOps + HasContext + FixedAccount {
                 >;
                 match selected_record.info.transfer_type {
                     TransferType::DepositFromExternalAccount => {
-                        account_transaction_opt = ctx.db
+                        account_transaction_opt = ctx
+                            .db
                             .check_and_get_account_transaction_record_matching_to_ledger_id(
                                 ctx.uid,
                                 ctx.aid,
@@ -888,7 +893,8 @@ pub trait FixedLedger: LedgerOps + HasContext + FixedAccount {
                         }
                     }
                     TransferType::WithdrawalToExternalAccount => {
-                        account_transaction_opt = ctx.db
+                        account_transaction_opt = ctx
+                            .db
                             .check_and_get_account_transaction_record_matching_from_ledger_id(
                                 ctx.uid,
                                 ctx.aid,
@@ -909,7 +915,7 @@ pub trait FixedLedger: LedgerOps + HasContext + FixedAccount {
                                 .unwrap();
                         }
                     }
-                    _ => {},
+                    _ => {}
                 }
                 ctx.db
                     .remove_ledger_item(ctx.uid, ctx.aid, selected_record.id.clone())
@@ -927,8 +933,7 @@ pub trait FixedLedger: LedgerOps + HasContext + FixedAccount {
     }
 }
 
-pub trait FixedAccountFileIO : AccountFileIO {
-
+pub trait FixedAccountFileIO: AccountFileIO {
     fn import_fixed_account(&self) {
         let ctx = self.ctx();
         let g = FilePathHelper {
@@ -1052,10 +1057,12 @@ pub trait FixedAccountFileIO : AccountFileIO {
                     date: record.info.date,
                     amount: record.info.amount,
                     transfer_type: record.info.transfer_type,
-                    participant: ctx.db
+                    participant: ctx
+                        .db
                         .get_participant(ctx.uid, ctx.aid, record.info.participant)
                         .unwrap(),
-                    category: ctx.db
+                    category: ctx
+                        .db
                         .get_category_name(ctx.uid, ctx.aid, record.info.category_id)
                         .unwrap(),
                     description: record.info.description,
@@ -1067,4 +1074,3 @@ pub trait FixedAccountFileIO : AccountFileIO {
         }
     }
 }
-

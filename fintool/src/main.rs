@@ -45,7 +45,7 @@ use std::time::{Duration, Instant};
 
 use crate::accounts::{Account, AccountOperations};
 #[cfg(feature = "ratatui_support")]
-use crate::{app::app::App};
+use crate::app::app::App;
 #[cfg(feature = "ratatui_support")]
 use crate::app::screen::{CurrentScreen, CurrentlySelecting, Pages, UserLoadedState};
 #[cfg(feature = "ratatui_support")]
@@ -268,7 +268,7 @@ where
                     }
                     (_, KeyCode::Right | KeyCode::Char('l')) => {
                         match app.currently_selected {
-                            Some(CurrentlySelecting::Account) => { 
+                            Some(CurrentlySelecting::Account) => {
                                 if app.account.as_ref().unwrap().renders_tables().len() > 1 {
                                     app.go_to_first_ledger_table_row();
                                     app.advance_table_view();
@@ -324,7 +324,7 @@ where
                         }
                     }
                     (_, KeyCode::Left | KeyCode::Char('h')) => match app.currently_selected {
-                        Some(CurrentlySelecting::Account) => { 
+                        Some(CurrentlySelecting::Account) => {
                             if app.account.as_ref().unwrap().renders_tables().len() > 1 {
                                 app.go_to_first_ledger_table_row();
                                 app.retreat_table_view();
@@ -413,7 +413,7 @@ where
                                 CurrentlySelecting::AccountTabs => {
                                     app.advance_currently_selecting()
                                 }
-                                CurrentlySelecting::Account => { 
+                                CurrentlySelecting::Account => {
                                     if app.account.as_ref().unwrap().renders_tables().len() > 1 {
                                         app.advance_currently_selecting();
                                     }
@@ -469,16 +469,13 @@ where
                         // edit account
                         if let Some(select_mode) = &app.currently_selected {
                             match select_mode {
-                                CurrentlySelecting::Account|CurrentlySelecting::Table => {
+                                CurrentlySelecting::Account | CurrentlySelecting::Table => {
                                     suspend_tui(terminal)?;
 
                                     if let Some(acct) = &app.account {
                                         let id = acct.get_id();
-                                        let retval = edit_account(
-                                            app.user_id.unwrap(),
-                                            &app.db, 
-                                            id
-                                        );
+                                        let retval =
+                                            edit_account(app.user_id.unwrap(), &app.db, id);
 
                                         // update accounts for type
                                         app.accounts_for_type = app
@@ -496,10 +493,8 @@ where
                                                 app.get_account();
                                                 app.retreat_currently_selecting();
                                             }
-                                            _ => {
-                                            }
+                                            _ => {}
                                         }
-
                                     }
 
                                     resume_tui(terminal)?;
@@ -525,7 +520,7 @@ where
                                         resume_tui(terminal)?;
                                     }
                                 }
-                                CurrentlySelecting::Account|CurrentlySelecting::Table => {
+                                CurrentlySelecting::Account | CurrentlySelecting::Table => {
                                     suspend_tui(terminal)?;
 
                                     if let Some(acct) = &mut app.account {
@@ -544,7 +539,7 @@ where
                         // record transaction
                         if let Some(select_mode) = &app.currently_selected {
                             match select_mode {
-                                CurrentlySelecting::Account|CurrentlySelecting::Table => {
+                                CurrentlySelecting::Account | CurrentlySelecting::Table => {
                                     suspend_tui(terminal)?;
 
                                     if let Some(acct) = &mut app.account {
@@ -564,7 +559,7 @@ where
                         // import transactions
                         if let Some(select_mode) = &app.currently_selected {
                             match select_mode {
-                                CurrentlySelecting::Account|CurrentlySelecting::Table => {
+                                CurrentlySelecting::Account | CurrentlySelecting::Table => {
                                     suspend_tui(terminal)?;
 
                                     if let Some(acct) = &mut app.account {
@@ -597,7 +592,7 @@ where
                         // decrement table row
                         if let Some(select_mode) = &app.currently_selected {
                             match select_mode {
-                                CurrentlySelecting::Account|CurrentlySelecting::Table => {
+                                CurrentlySelecting::Account | CurrentlySelecting::Table => {
                                     app.advance_ledger_table_row();
                                 }
                                 _ => {}
@@ -608,7 +603,7 @@ where
                         // decrement table row
                         if let Some(select_mode) = &app.currently_selected {
                             match select_mode {
-                                CurrentlySelecting::Account|CurrentlySelecting::Table => {
+                                CurrentlySelecting::Account | CurrentlySelecting::Table => {
                                     app.retreat_ledger_table_row();
                                 }
                                 _ => {}
@@ -619,7 +614,7 @@ where
                         // decrement table row
                         if let Some(select_mode) = &app.currently_selected {
                             match select_mode {
-                                CurrentlySelecting::Account|CurrentlySelecting::Table => {
+                                CurrentlySelecting::Account | CurrentlySelecting::Table => {
                                     app.go_to_last_ledger_table_row();
                                 }
                                 _ => {}
@@ -630,7 +625,7 @@ where
                         // decrement table row
                         if let Some(select_mode) = &app.currently_selected {
                             match select_mode {
-                                CurrentlySelecting::Account|CurrentlySelecting::Table => {
+                                CurrentlySelecting::Account | CurrentlySelecting::Table => {
                                     app.go_to_first_ledger_table_row();
                                 }
                                 _ => {}
@@ -669,7 +664,12 @@ where
     B: Backend + Write,
 {
     enable_raw_mode()?;
-    execute!(terminal.backend_mut(), EnableMouseCapture, EnterAlternateScreen).unwrap();
+    execute!(
+        terminal.backend_mut(),
+        EnableMouseCapture,
+        EnterAlternateScreen
+    )
+    .unwrap();
     terminal.clear().unwrap();
     Ok(())
 }

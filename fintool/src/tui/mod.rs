@@ -23,10 +23,6 @@ use std::vec;
 use strum::IntoEnumIterator;
 
 use crate::accounts::bank_account::BankAccount;
-use crate::accounts::Account;
-use crate::accounts::AccountCreation;
-use crate::accounts::AccountOperations;
-use crate::accounts::AnalysisPeriod;
 use crate::accounts::certificate_of_deposit::CertificateOfDepositAccount;
 use crate::accounts::credit_card_account::CreditCardAccount;
 use crate::accounts::health_savings_account::HealthSavingsAccount;
@@ -34,6 +30,10 @@ use crate::accounts::investment_account_manager::InvestmentAccountManager;
 use crate::accounts::retirement_401k_plan::Retirement401kPlan;
 use crate::accounts::roth_ira::RothIraAccount;
 use crate::accounts::wallet::Wallet;
+use crate::accounts::Account;
+use crate::accounts::AccountCreation;
+use crate::accounts::AccountOperations;
+use crate::accounts::AnalysisPeriod;
 use crate::database::DbConn;
 use crate::tui::tui_license::get_gnu_gpl_conditions;
 use crate::tui::tui_license::get_gnu_gpl_warranty;
@@ -49,9 +49,9 @@ pub mod tui_license;
 pub mod tui_user;
 
 pub enum EditAccount {
-    NoAction, 
+    NoAction,
     RemoveAccount,
-    RenameAccount
+    RenameAccount,
 }
 
 pub fn menu(_db: &mut DbConn) {
@@ -137,7 +137,7 @@ fn access_account(uid: u32, db: &mut DbConn) {
     loop {
         accounts = db.get_user_accounts(uid).unwrap();
         accounts_is_empty = accounts.is_empty();
-        
+
         if accounts_is_empty {
             choice = ACCOUNT_OPTIONS[0].to_string();
         } else {
@@ -258,7 +258,7 @@ fn access_account(uid: u32, db: &mut DbConn) {
                     acct.export();
                 }
                 "Modify" => {
-                    AccountOperations::modify( acct.as_mut());
+                    AccountOperations::modify(acct.as_mut());
                 }
                 "Record" => {
                     acct.record();
@@ -492,12 +492,11 @@ pub fn rename_account(db: &DbConn, uid: u32, id: u32) {
 }
 
 // returns 0 -> None, 1 -> removed, 2 -> renamed.
-pub fn edit_account(uid : u32, db : &DbConn, aid : u32,) -> EditAccount {
+pub fn edit_account(uid: u32, db: &DbConn, aid: u32) -> EditAccount {
     const MODIFY_ACCT_ACTIONS: [&'static str; 3] = ["Rename", "Remove", "None"];
-    let selected_action =
-        Select::new("What would you like to do:", MODIFY_ACCT_ACTIONS.to_vec())
-            .prompt()
-            .unwrap();
+    let selected_action = Select::new("What would you like to do:", MODIFY_ACCT_ACTIONS.to_vec())
+        .prompt()
+        .unwrap();
 
     match selected_action {
         "Rename" => {

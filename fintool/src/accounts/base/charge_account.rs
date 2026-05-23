@@ -15,10 +15,10 @@ use crate::accounts::base::{AccountContext, HasContext, LedgerOps, ValueLimited}
   You should have received a copy of the GNU General Public License
   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 -----------------------------------------------------------------------*/
+use crate::accounts::base::Valuable;
 use crate::database::DbConn;
 use crate::tui::{decode_and_init_account_type, prompt_and_create_new_account};
 use crate::types::accounts::AccountRecord;
-use crate::accounts::base::Valuable;
 use crate::types::categories::CategoryAutoCompleter;
 use crate::types::labels::LabelAutoCompleter;
 use crate::types::ledger::{LedgerInfo, LedgerRecord};
@@ -31,9 +31,9 @@ use shared_lib::{LedgerEntry, TransferType};
 use std::collections::HashMap;
 use std::hash::Hash;
 
-use super::{Account};
+use super::Account;
 
-pub trait ChargeAccount : HasContext + LedgerOps {
+pub trait ChargeAccount: HasContext + LedgerOps {
     fn charge(&self, initial_opt: Option<LedgerRecord>, overwrite: bool) -> LedgerRecord {
         let ctx = Self::ctx(&self);
         let default_to_use: bool;
@@ -121,7 +121,8 @@ pub trait ChargeAccount : HasContext + LedgerOps {
                 .to_ascii_uppercase()
         };
 
-        cid = ctx.db
+        cid = ctx
+            .db
             .check_and_add_category(ctx.uid, ctx.aid, selected_category);
 
         let description_prompt = "Enter description:";
@@ -213,7 +214,8 @@ pub trait ChargeAccount : HasContext + LedgerOps {
                     .prompt()
                     .unwrap();
             if !maintain_labels {
-                let mapped_labels = ctx.db
+                let mapped_labels = ctx
+                    .db
                     .check_and_get_label_mapping_matching_ledger_id(ctx.uid, ctx.aid, id)
                     .unwrap();
                 if !mapped_labels.is_empty() {
@@ -252,13 +254,13 @@ pub trait ChargeAccount : HasContext + LedgerOps {
             }
         }
 
-        return LedgerRecord { 
-            id : id, 
-            info : withdrawal
+        return LedgerRecord {
+            id: id,
+            info: withdrawal,
         };
     }
 
-    fn fee(&self, initial_opt: Option<LedgerRecord>, overwrite: bool) -> LedgerRecord { 
+    fn fee(&self, initial_opt: Option<LedgerRecord>, overwrite: bool) -> LedgerRecord {
         let ctx = self.ctx();
         let default_to_use: bool;
         let mut initial = LedgerRecord {
@@ -353,7 +355,8 @@ pub trait ChargeAccount : HasContext + LedgerOps {
                 .to_string()
         };
 
-        cid = ctx.db
+        cid = ctx
+            .db
             .check_and_add_category(ctx.uid, ctx.aid, selected_category);
 
         let description_prompt = "Enter description:";
@@ -458,7 +461,8 @@ pub trait ChargeAccount : HasContext + LedgerOps {
                     .prompt()
                     .unwrap();
             if !maintain_labels {
-                let mapped_labels = ctx.db
+                let mapped_labels = ctx
+                    .db
                     .check_and_get_label_mapping_matching_ledger_id(ctx.uid, ctx.aid, id)
                     .unwrap();
                 if !mapped_labels.is_empty() {
@@ -598,7 +602,8 @@ pub trait ChargeAccount : HasContext + LedgerOps {
                 .to_string()
         };
 
-        cid = ctx.db
+        cid = ctx
+            .db
             .check_and_add_category(ctx.uid, ctx.aid, selected_category);
 
         let description_prompt = "Enter description:";
@@ -708,7 +713,8 @@ pub trait ChargeAccount : HasContext + LedgerOps {
                         .prompt()
                         .unwrap();
                 if !maintain_labels {
-                    let mapped_labels = ctx.db
+                    let mapped_labels = ctx
+                        .db
                         .check_and_get_label_mapping_matching_ledger_id(ctx.uid, ctx.aid, id)
                         .unwrap();
                     if !mapped_labels.is_empty() {
@@ -808,7 +814,8 @@ pub trait ChargeAccount : HasContext + LedgerOps {
                         .prompt()
                         .unwrap();
                 if !maintain_labels {
-                    let mapped_labels = ctx.db
+                    let mapped_labels = ctx
+                        .db
                         .check_and_get_label_mapping_matching_ledger_id(ctx.uid, ctx.aid, id)
                         .unwrap();
                     if !mapped_labels.is_empty() {
@@ -854,7 +861,7 @@ pub trait ChargeAccount : HasContext + LedgerOps {
         }
     }
 
-    fn accrual(&self, initial_opt: Option<LedgerRecord>, overwrite: bool) -> LedgerRecord { 
+    fn accrual(&self, initial_opt: Option<LedgerRecord>, overwrite: bool) -> LedgerRecord {
         let ctx = self.ctx();
         let default_to_use: bool;
         let mut initial = LedgerRecord {
@@ -949,7 +956,8 @@ pub trait ChargeAccount : HasContext + LedgerOps {
                 .to_string()
         };
 
-        cid = ctx.db
+        cid = ctx
+            .db
             .check_and_add_category(ctx.uid, ctx.aid, selected_category);
 
         let description_prompt = "Enter description:";
@@ -1054,7 +1062,8 @@ pub trait ChargeAccount : HasContext + LedgerOps {
                     .prompt()
                     .unwrap();
             if !maintain_labels {
-                let mapped_labels = ctx.db
+                let mapped_labels = ctx
+                    .db
                     .check_and_get_label_mapping_matching_ledger_id(ctx.uid, ctx.aid, id)
                     .unwrap();
                 if !mapped_labels.is_empty() {
@@ -1098,7 +1107,6 @@ pub trait ChargeAccount : HasContext + LedgerOps {
             info: deposit,
         };
     }
-
 }
 
 pub fn get_current_balance(ctx: &AccountContext) -> f32 {
@@ -1107,7 +1115,8 @@ pub fn get_current_balance(ctx: &AccountContext) -> f32 {
 }
 
 pub fn get_balance_on_day(ctx: &AccountContext, day: &NaiveDate) -> f32 {
-    if let Some(value) = ctx.db
+    if let Some(value) = ctx
+        .db
         .get_cumulative_total_of_ledger_on_date(ctx.uid, ctx.aid, *day)
         .unwrap()
     {
@@ -1128,7 +1137,7 @@ pub trait ChargeAccountValuable: Valuable + ChargeAccount {
     }
 }
 
-pub trait ChargedAccountExpiry: ValueLimited + ChargeAccount + ChargeAccountValuable { 
+pub trait ChargedAccountExpiry: ValueLimited + ChargeAccount + ChargeAccountValuable {
     fn get_credit_line(&self) -> f32 {
         let ctx = self.ctx();
         let credit_card = ctx.db.get_credit_card(ctx.uid, ctx.aid).unwrap();
@@ -1140,7 +1149,7 @@ pub trait ChargedAccountExpiry: ValueLimited + ChargeAccount + ChargeAccountValu
     }
 }
 
-pub trait ChargeAccountLedger : LedgerOps + HasContext + ChargeAccount { 
+pub trait ChargeAccountLedger: LedgerOps + HasContext + ChargeAccount {
     fn modify_charge_account(&mut self, selected_record: LedgerRecord) -> Option<LedgerRecord> {
         let ctx = self.ctx();
         match selected_record.info.transfer_type.clone() {
@@ -1160,9 +1169,10 @@ pub trait ChargeAccountLedger : LedgerOps + HasContext + ChargeAccount {
                 let account_transaction_opt: Option<
                     crate::types::accounts::AccountTransactionRecord,
                 >;
-                let updated_record : LedgerRecord = match selected_record.info.transfer_type {
+                let updated_record: LedgerRecord = match selected_record.info.transfer_type {
                     TransferType::DepositFromExternalAccount => {
-                        account_transaction_opt = ctx.db
+                        account_transaction_opt = ctx
+                            .db
                             .check_and_get_account_transaction_record_matching_to_ledger_id(
                                 ctx.uid,
                                 ctx.aid,
@@ -1184,11 +1194,12 @@ pub trait ChargeAccountLedger : LedgerOps + HasContext + ChargeAccount {
                         }
                         self.pay(Some(selected_record.clone()), true)
                     }
-                    TransferType::DepositFromInternalAccount => { 
+                    TransferType::DepositFromInternalAccount => {
                         self.accrual(Some(selected_record.clone()), true)
                     }
                     TransferType::WithdrawalToExternalAccount => {
-                        account_transaction_opt = ctx.db
+                        account_transaction_opt = ctx
+                            .db
                             .check_and_get_account_transaction_record_matching_from_ledger_id(
                                 ctx.uid,
                                 ctx.aid,
@@ -1210,7 +1221,7 @@ pub trait ChargeAccountLedger : LedgerOps + HasContext + ChargeAccount {
                     TransferType::WithdrawalToInternalAccount => {
                         self.fee(Some(selected_record.clone()), true)
                     }
-                    _ => {selected_record}
+                    _ => selected_record,
                 };
                 return Some(updated_record);
             }
@@ -1218,9 +1229,10 @@ pub trait ChargeAccountLedger : LedgerOps + HasContext + ChargeAccount {
                 let account_transaction_opt: Option<
                     crate::types::accounts::AccountTransactionRecord,
                 >;
-                match selected_record.info.transfer_type { 
+                match selected_record.info.transfer_type {
                     TransferType::DepositFromExternalAccount => {
-                        account_transaction_opt = ctx.db
+                        account_transaction_opt = ctx
+                            .db
                             .check_and_get_account_transaction_record_matching_to_ledger_id(
                                 ctx.uid,
                                 ctx.aid,
@@ -1242,7 +1254,8 @@ pub trait ChargeAccountLedger : LedgerOps + HasContext + ChargeAccount {
                         }
                     }
                     TransferType::WithdrawalToExternalAccount => {
-                        account_transaction_opt = ctx.db
+                        account_transaction_opt = ctx
+                            .db
                             .check_and_get_account_transaction_record_matching_from_ledger_id(
                                 ctx.uid,
                                 ctx.aid,
@@ -1280,6 +1293,3 @@ pub trait ChargeAccountLedger : LedgerOps + HasContext + ChargeAccount {
         return Some(selected_record);
     }
 }
-
-
-

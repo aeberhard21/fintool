@@ -26,8 +26,7 @@ use chrono::{Duration, NaiveDate};
 use inquire::autocompletion::Replacement;
 use inquire::*;
 
-pub trait Budget : HasContext {
-
+pub trait Budget: HasContext {
     fn create_budget(&self) {
         let ctx = Self::ctx(&self);
         loop {
@@ -192,8 +191,7 @@ pub trait Budget : HasContext {
                                 value: updated_value,
                             },
                         };
-                        ctx.db
-                            .update_budget_item(ctx.uid, ctx.aid, updated_record);
+                        ctx.db.update_budget_item(ctx.uid, ctx.aid, updated_record);
                     }
                     "Remove" => {
                         ctx.db

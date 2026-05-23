@@ -16,6 +16,7 @@ use chrono::format::Fixed;
   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 -----------------------------------------------------------------------*/
 use chrono::{Days, Local, Months, NaiveDate, NaiveTime};
+use core::f32;
 use csv::ReaderBuilder;
 use inquire::Confirm;
 use inquire::CustomType;
@@ -50,23 +51,27 @@ use rustyline::Highlighter;
 use rustyline::Hinter;
 use rustyline::Validator;
 use shared_lib::LedgerEntry;
-use core::f32;
 use std::collections::HashMap;
 use std::path::Path;
 
-#[cfg(feature = "ratatui_support")]
-use crate::accounts::{KEY_COMPOUNDED_ANNUAL_RATE_OF_RETURN, KEY_SIMPLE_RATE_OF_RETURN, KEY_DAYS_TO_MATURITY, KEY_MATURITY_DATE};
-use crate::accounts::base::fixed_account::{FixedAccountFileIO, FixedGrowth, FixedValuable};
-use crate::accounts::base::{AccountContext, AccountFileIO, Valuable};
 use crate::accounts::base::budget::Budget;
-use crate::accounts::base::{HasContext, LedgerOps};
-use crate::accounts::base::interest_bearing_fixed_account::{InterestBearingFixedAccount, InterestBearingLedger};
+use crate::accounts::base::fixed_account::{FixedAccountFileIO, FixedGrowth, FixedValuable};
+use crate::accounts::base::interest_bearing_fixed_account::{
+    InterestBearingFixedAccount, InterestBearingLedger,
+};
 use crate::accounts::base::liquid_account::LiquidAccount;
-use crate::accounts::FilePathHelper;
+use crate::accounts::base::{AccountContext, AccountFileIO, Valuable};
+use crate::accounts::base::{HasContext, LedgerOps};
 use crate::accounts::growth::GrowthCalculable;
 use crate::accounts::growth::GrowthMetric;
 #[cfg(feature = "ratatui_support")]
 use crate::accounts::render::*;
+use crate::accounts::FilePathHelper;
+#[cfg(feature = "ratatui_support")]
+use crate::accounts::{
+    KEY_COMPOUNDED_ANNUAL_RATE_OF_RETURN, KEY_DAYS_TO_MATURITY, KEY_MATURITY_DATE,
+    KEY_SIMPLE_RATE_OF_RETURN,
+};
 #[cfg(feature = "ratatui_support")]
 use crate::app::app::{App, DisplayValue, LineChart};
 #[cfg(feature = "ratatui_support")]
@@ -95,10 +100,10 @@ use super::AccountOperations;
 #[cfg(feature = "ratatui_support")]
 use super::AccountUI;
 use super::AnalysisPeriod;
-use super::{KEY_TOTAL_VALUE};
+use super::KEY_TOTAL_VALUE;
 
 pub struct CertificateOfDepositAccount {
-    ctx : AccountContext
+    ctx: AccountContext,
 }
 
 impl HasContext for CertificateOfDepositAccount {
@@ -114,7 +119,7 @@ impl InterestBearingLedger for CertificateOfDepositAccount {}
 
 impl LedgerOps for CertificateOfDepositAccount {
     fn modify(&mut self, selected_record: LedgerRecord) -> Option<LedgerRecord> {
-        self.modify_interest_bearing(selected_record)    
+        self.modify_interest_bearing(selected_record)
     }
 }
 
@@ -134,7 +139,12 @@ impl Valuable for CertificateOfDepositAccount {
 impl FixedValuable for CertificateOfDepositAccount {}
 
 impl GrowthCalculable for CertificateOfDepositAccount {
-    fn calculate_growth(&self, metric: super::growth::GrowthMetric, start_date : NaiveDate, end_date : NaiveDate) -> f32 {
+    fn calculate_growth(
+        &self,
+        metric: super::growth::GrowthMetric,
+        start_date: NaiveDate,
+        end_date: NaiveDate,
+    ) -> f32 {
         self.fixed_growth(metric, start_date, end_date)
     }
 }
@@ -152,22 +162,23 @@ impl AccountFileIO for CertificateOfDepositAccount {
     }
 }
 
-impl FixedAccountFileIO for  CertificateOfDepositAccount {}
+impl FixedAccountFileIO for CertificateOfDepositAccount {}
 
 impl CertificateOfDepositAccount {
     pub fn new(uid: u32, id: u32, db: &DbConn) -> Self {
         let mut acct: CertificateOfDepositAccount = Self {
-            ctx : AccountContext { 
-                aid: id, 
-                uid : uid,
-                db: db.clone(), 
-                open_date: Local::now().date_naive() 
+            ctx: AccountContext {
+                aid: id,
+                uid: uid,
+                db: db.clone(),
+                open_date: Local::now().date_naive(),
             },
         };
         let mut ledger = acct.get_ledger();
         if !ledger.is_empty() {
             ledger.sort_by(|l1, l2| (&l1.info.date).cmp(&l2.info.date));
-            acct.ctx.open_date = NaiveDate::parse_from_str(&ledger[0].info.date, "%Y-%m-%d").unwrap();
+            acct.ctx.open_date =
+                NaiveDate::parse_from_str(&ledger[0].info.date, "%Y-%m-%d").unwrap();
         }
         acct
     }
@@ -307,7 +318,7 @@ impl AccountOperations for CertificateOfDepositAccount {
                     <CertificateOfDepositAccount as FixedAccount>::deposit(self, None, false);
                 }
                 "Withdrawal" => {
-                    <CertificateOfDepositAccount as FixedAccount>::withdrawal(self,None, false);
+                    <CertificateOfDepositAccount as FixedAccount>::withdrawal(self, None, false);
                 }
                 "None" => {
                     return;
@@ -346,7 +357,8 @@ impl AccountOperations for CertificateOfDepositAccount {
                     .unwrap();
             match modify_choice {
                 "APY" => {
-                    let cd = self.ctx
+                    let cd = self
+                        .ctx
                         .db
                         .get_certificate_of_deposit(self.ctx.uid, self.ctx.aid)
                         .unwrap();
@@ -356,7 +368,8 @@ impl AccountOperations for CertificateOfDepositAccount {
                         .with_error_message("Please type a valid percentage!")
                         .prompt()
                         .unwrap();
-                    self.ctx.db
+                    self.ctx
+                        .db
                         .update_cd_apy(self.ctx.uid, self.ctx.aid, updated_apy)
                         .unwrap();
                 }
@@ -367,7 +380,10 @@ impl AccountOperations for CertificateOfDepositAccount {
                             break;
                         }
                         let selected_record = record_or_none.unwrap();
-                        let updated_record_opt = <CertificateOfDepositAccount as LedgerOps>::modify(self, selected_record.clone());
+                        let updated_record_opt = <CertificateOfDepositAccount as LedgerOps>::modify(
+                            self,
+                            selected_record.clone(),
+                        );
                         if updated_record_opt.is_none() {
                             break;
                         }
@@ -375,7 +391,8 @@ impl AccountOperations for CertificateOfDepositAccount {
                         // record 0 should always be the initial of the account.
                         // if the date of the deposit changed, then so should the maturity date
                         if updated_record.id == 0 {
-                            let cd = self.ctx
+                            let cd = self
+                                .ctx
                                 .db
                                 .get_certificate_of_deposit(self.ctx.uid, self.ctx.aid)
                                 .unwrap();
@@ -390,7 +407,8 @@ impl AccountOperations for CertificateOfDepositAccount {
                                     .unwrap()
                                     .format("%Y-%m-%d")
                                     .to_string();
-                                self.ctx.db
+                                self.ctx
+                                    .db
                                     .update_cd_maturity_date(
                                         self.ctx.uid,
                                         self.ctx.aid,
@@ -409,7 +427,8 @@ impl AccountOperations for CertificateOfDepositAccount {
                     }
                 }
                 "Length" => {
-                    let cd = self.ctx
+                    let cd = self
+                        .ctx
                         .db
                         .get_certificate_of_deposit(self.ctx.uid, self.ctx.aid)
                         .unwrap();
@@ -436,16 +455,22 @@ impl AccountOperations for CertificateOfDepositAccount {
                             .format("%Y-%m-%d")
                             .to_string()
                     };
-                    self.ctx.db
+                    self.ctx
+                        .db
                         .update_cd_length(self.ctx.uid, self.ctx.aid, updated_length)
                         .unwrap();
-                    self.ctx.db
+                    self.ctx
+                        .db
                         .update_cd_maturity_date(self.ctx.uid, self.ctx.aid, updated_maturity_date)
                         .unwrap();
                 }
                 "Categories" => {
                     loop {
-                        let records = self.ctx.db.get_categories(self.ctx.uid, self.ctx.aid).unwrap();
+                        let records = self
+                            .ctx
+                            .db
+                            .get_categories(self.ctx.uid, self.ctx.aid)
+                            .unwrap();
                         let mut choices: Vec<String> = records
                             .iter()
                             .map(|x| x.category.name.clone())
@@ -470,7 +495,8 @@ impl AccountOperations for CertificateOfDepositAccount {
                                     .prompt()
                                     .unwrap()
                                     .to_string();
-                                self.ctx.db
+                                self.ctx
+                                    .db
                                     .update_category_name(
                                         self.ctx.uid,
                                         self.ctx.aid,
@@ -481,7 +507,8 @@ impl AccountOperations for CertificateOfDepositAccount {
                             }
                             "Remove" => {
                                 // check if category is referenced by any current ledger
-                                let is_referenced = self.ctx
+                                let is_referenced = self
+                                    .ctx
                                     .db
                                     .check_if_ledger_references_category(
                                         self.ctx.uid,
@@ -497,7 +524,8 @@ impl AccountOperations for CertificateOfDepositAccount {
                                             "{} | {} | {} | {} ",
                                             record.info.date,
                                             chosen_category.clone(),
-                                            self.ctx.db
+                                            self.ctx
+                                                .db
                                                 .get_participant(
                                                     self.ctx.uid,
                                                     self.ctx.aid,
@@ -552,8 +580,11 @@ impl AccountOperations for CertificateOfDepositAccount {
                                 panic!("Unrecognized input: {}", selected_ptype);
                             }
                         };
-                        let participants =
-                            self.ctx.db.get_participants(self.ctx.uid, self.ctx.aid, ptype).unwrap();
+                        let participants = self
+                            .ctx
+                            .db
+                            .get_participants(self.ctx.uid, self.ctx.aid, ptype)
+                            .unwrap();
                         let mut people = participants
                             .iter()
                             .map(|x| x.participant.name.clone())
@@ -583,7 +614,8 @@ impl AccountOperations for CertificateOfDepositAccount {
                                     .prompt()
                                     .unwrap()
                                     .to_string();
-                                self.ctx.db
+                                self.ctx
+                                    .db
                                     .update_participant_name(
                                         self.ctx.uid,
                                         self.ctx.aid,
@@ -595,7 +627,9 @@ impl AccountOperations for CertificateOfDepositAccount {
                             }
                             "Remove" => {
                                 // check if participant is referenced by any current ledger
-                                let is_referenced = self.ctx.db
+                                let is_referenced = self
+                                    .ctx
+                                    .db
                                     .check_if_ledger_references_participant(
                                         self.ctx.uid,
                                         self.ctx.aid,
@@ -610,7 +644,8 @@ impl AccountOperations for CertificateOfDepositAccount {
                                         let v = format!(
                                             "{} | {} | {} | {} ",
                                             record.info.date,
-                                            self.ctx.db
+                                            self.ctx
+                                                .db
                                                 .get_category_name(
                                                     self.ctx.uid,
                                                     self.ctx.aid,
@@ -630,7 +665,8 @@ impl AccountOperations for CertificateOfDepositAccount {
                                 if delete {
                                     match ptype {
                                         ParticipantType::Payee => {
-                                            self.ctx.db
+                                            self.ctx
+                                                .db
                                                 .remove_participant(
                                                     self.ctx.uid,
                                                     self.ctx.aid,
@@ -640,7 +676,8 @@ impl AccountOperations for CertificateOfDepositAccount {
                                                 .unwrap();
                                         }
                                         ParticipantType::Payer => {
-                                            self.ctx.db
+                                            self.ctx
+                                                .db
                                                 .remove_participant(
                                                     self.ctx.uid,
                                                     self.ctx.aid,
@@ -650,7 +687,8 @@ impl AccountOperations for CertificateOfDepositAccount {
                                                 .unwrap();
                                         }
                                         _ => {
-                                            self.ctx.db
+                                            self.ctx
+                                                .db
                                                 .remove_participant(
                                                     self.ctx.uid,
                                                     self.ctx.aid,
@@ -658,7 +696,8 @@ impl AccountOperations for CertificateOfDepositAccount {
                                                     chosen_person.clone(),
                                                 )
                                                 .unwrap();
-                                            self.ctx.db
+                                            self.ctx
+                                                .db
                                                 .remove_participant(
                                                     self.ctx.uid,
                                                     self.ctx.aid,
@@ -686,7 +725,9 @@ impl AccountOperations for CertificateOfDepositAccount {
                     }
                 }
                 "Principal" => {
-                    let cd = self.ctx.db
+                    let cd = self
+                        .ctx
+                        .db
                         .get_certificate_of_deposit(self.ctx.uid, self.ctx.aid)
                         .unwrap();
                     let updated_principal = CustomType::<f32>::new("Enter principal:")
@@ -695,7 +736,8 @@ impl AccountOperations for CertificateOfDepositAccount {
                         .with_error_message("Please type a valid amount!")
                         .prompt()
                         .unwrap();
-                    self.ctx.db
+                    self.ctx
+                        .db
                         .update_cd_principal(self.ctx.uid, self.ctx.aid, updated_principal)
                         .unwrap();
                 }
@@ -734,7 +776,11 @@ impl AccountOperations for CertificateOfDepositAccount {
             "Simple Growth Rate" => {
                 let (period_start, period_end, _) =
                     query_user_for_analysis_period(self.get_open_date());
-                let rate = self.calculate_growth(crate::accounts::growth::GrowthMetric::SimpleReturn, period_start, period_end);
+                let rate = self.calculate_growth(
+                    crate::accounts::growth::GrowthMetric::SimpleReturn,
+                    period_start,
+                    period_end,
+                );
                 println!("\tRate of return: {}%", rate);
             }
             "None" => {
@@ -745,7 +791,6 @@ impl AccountOperations for CertificateOfDepositAccount {
             }
         }
     }
-
 }
 
 impl AccountData for CertificateOfDepositAccount {}
@@ -822,7 +867,9 @@ impl AccountUI for CertificateOfDepositAccount {
 #[cfg(feature = "ratatui_support")]
 impl CertificateOfDepositAccount {
     fn get_maturity_date(&self) -> String {
-        let cd = self.ctx.db
+        let cd = self
+            .ctx
+            .db
             .get_certificate_of_deposit(self.ctx.uid, self.ctx.aid)
             .unwrap();
         return cd.info.maturity_date;

@@ -1,22 +1,33 @@
+use crate::accounts::base::{
+    variable_account::VariableValuable, HasContext, HasVariableAccountContext, Valuable,
+};
 use crate::accounts::AccountData;
-use crate::accounts::base::{HasContext, HasVariableAccountContext, variable_account::VariableValuable, Valuable};
 use crate::tui::query_user_for_analysis_period;
-use chrono::{Days,Datelike,NaiveDate};
+use chrono::{Datelike, Days, NaiveDate};
 use inquire::Select;
 use shared_lib::TransferType;
 
-pub enum GrowthMetric { 
+pub enum GrowthMetric {
     SimpleReturn,
-    CAGR, 
-    MWRR, 
+    CAGR,
+    MWRR,
     TWRR,
 }
 
-pub trait GrowthCalculable: HasContext + Valuable { 
-    fn calculate_growth(&self, metric: GrowthMetric, start_date : NaiveDate, end_date : NaiveDate) -> f32;
+pub trait GrowthCalculable: HasContext + Valuable {
+    fn calculate_growth(
+        &self,
+        metric: GrowthMetric,
+        start_date: NaiveDate,
+        end_date: NaiveDate,
+    ) -> f32;
 }
 
-pub fn simple_rate_of_return<T: HasContext + Valuable + ?Sized>(acct: &T, start_date : NaiveDate, end_date : NaiveDate) -> f32 {
+pub fn simple_rate_of_return<T: HasContext + Valuable + ?Sized>(
+    acct: &T,
+    start_date: NaiveDate,
+    end_date: NaiveDate,
+) -> f32 {
     let ev_opt = acct.get_account_value_on_day(&end_date);
     if ev_opt.is_none() {
         return f32::NAN;
@@ -27,17 +38,25 @@ pub fn simple_rate_of_return<T: HasContext + Valuable + ?Sized>(acct: &T, start_
         return f32::NAN;
     }
     let sv = sv_opt.unwrap();
-    return (ev-sv)/(sv)*100.;
+    return (ev - sv) / (sv) * 100.;
 }
 
-pub fn compound_annual_growth_rate<T: HasContext + Valuable + ?Sized>(acct: &T, start_date : NaiveDate, end_date : NaiveDate) -> f32 {
-    let cr = (simple_rate_of_return(acct, start_date, end_date))/100.;
+pub fn compound_annual_growth_rate<T: HasContext + Valuable + ?Sized>(
+    acct: &T,
+    start_date: NaiveDate,
+    end_date: NaiveDate,
+) -> f32 {
+    let cr = (simple_rate_of_return(acct, start_date, end_date)) / 100.;
     let days = end_date.num_days_from_ce() - start_date.num_days_from_ce();
     let n = (days as f32) / 365.25;
     return ((1. + cr).powf(1. / n) - 1.) * 100.;
 }
 
-pub fn money_weighted_return<T: HasContext + Valuable + ?Sized>(acct: &T, start_date : NaiveDate, end_date : NaiveDate) -> f32 {
+pub fn money_weighted_return<T: HasContext + Valuable + ?Sized>(
+    acct: &T,
+    start_date: NaiveDate,
+    end_date: NaiveDate,
+) -> f32 {
     #[derive(Debug)]
     struct CashFlow {
         amount: f32,
@@ -85,7 +104,8 @@ pub fn money_weighted_return<T: HasContext + Valuable + ?Sized>(acct: &T, start_
         t: 0.0,
     });
 
-    let txns = ctx.db
+    let txns = ctx
+        .db
         .get_ledger_entries_within_timestamps(ctx.uid, ctx.aid, start_date, end_date)
         .unwrap();
 
@@ -126,7 +146,13 @@ pub fn money_weighted_return<T: HasContext + Valuable + ?Sized>(acct: &T, start_
     }
 }
 
-pub fn time_weighted_return<T: HasContext + HasVariableAccountContext + VariableValuable + ?Sized>(acct: &T, period_start: NaiveDate, period_end: NaiveDate) -> f32 {
+pub fn time_weighted_return<
+    T: HasContext + HasVariableAccountContext + VariableValuable + ?Sized,
+>(
+    acct: &T,
+    period_start: NaiveDate,
+    period_end: NaiveDate,
+) -> f32 {
     let mut cf: f32 = 0.0;
     let mut hps: Vec<f32> = Vec::new();
     let mut hp: f32;
@@ -229,10 +255,10 @@ pub fn report_growth<T: GrowthCalculable + AccountData>(acct: &T) -> Option<f32>
         .unwrap()
         .to_string();
     let growth_metric = match choice.as_str() {
-        "Compound Annual Growth Rate" => { GrowthMetric::CAGR }
-        "Money Weighted Rate of Return"=> { GrowthMetric::MWRR },
-        "Simple Rate of Return"=> { GrowthMetric::SimpleReturn },
-        "Time Weighted Rate of Return"=> { GrowthMetric::TWRR },
+        "Compound Annual Growth Rate" => GrowthMetric::CAGR,
+        "Money Weighted Rate of Return" => GrowthMetric::MWRR,
+        "Simple Rate of Return" => GrowthMetric::SimpleReturn,
+        "Time Weighted Rate of Return" => GrowthMetric::TWRR,
         "None" => {
             return None;
         }
@@ -240,8 +266,7 @@ pub fn report_growth<T: GrowthCalculable + AccountData>(acct: &T) -> Option<f32>
             panic!("Unrecognized input!");
         }
     };
-    let (period_start, period_end, _) =
-        query_user_for_analysis_period(acct.get_open_date());
+    let (period_start, period_end, _) = query_user_for_analysis_period(acct.get_open_date());
     let rate = acct.calculate_growth(growth_metric, period_start, period_end);
     return Some(rate);
 }

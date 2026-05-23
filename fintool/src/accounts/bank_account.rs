@@ -14,9 +14,10 @@
   You should have received a copy of the GNU General Public License
   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 -----------------------------------------------------------------------*/
-use chrono::Local;
 use chrono::format::Fixed;
+use chrono::Local;
 use chrono::{Days, NaiveDate, NaiveTime};
+use core::f32;
 use csv::ReaderBuilder;
 use inquire::Confirm;
 use inquire::Select;
@@ -49,24 +50,25 @@ use rustyline::Highlighter;
 use rustyline::Hinter;
 use rustyline::Validator;
 use shared_lib::{FlatLedgerEntry, LedgerEntry, StockInfo};
-use core::f32;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::path::Path;
 use std::{option, rc};
 
-use crate::accounts::base::fixed_account::{FixedAccountFileIO, FixedGrowth, FixedValuable};
-use crate::accounts::base::{AccountContext, AccountFileIO, Valuable};
 use crate::accounts::base::budget::Budget;
-use crate::accounts::base::{HasContext, LedgerOps};
-use crate::accounts::base::interest_bearing_fixed_account::{InterestBearingFixedAccount, InterestBearingLedger};
+use crate::accounts::base::fixed_account::{FixedAccountFileIO, FixedGrowth, FixedValuable};
+use crate::accounts::base::interest_bearing_fixed_account::{
+    InterestBearingFixedAccount, InterestBearingLedger,
+};
 use crate::accounts::base::liquid_account::LiquidAccount;
+use crate::accounts::base::{AccountContext, AccountFileIO, Valuable};
+use crate::accounts::base::{HasContext, LedgerOps};
+use crate::accounts::growth::{report_growth, GrowthCalculable};
+#[cfg(feature = "ratatui_support")]
+use crate::accounts::render::*;
 use crate::accounts::FilePathHelper;
 #[cfg(feature = "ratatui_support")]
 use crate::accounts::{AnalysisPeriod, KEY_SIMPLE_RATE_OF_RETURN, KEY_TOTAL_VALUE};
-use crate::accounts::growth::{GrowthCalculable, report_growth};
-#[cfg(feature = "ratatui_support")]
-use crate::accounts::render::*;
 #[cfg(feature = "ratatui_support")]
 use crate::app::app::{App, DisplayValue, LineChart};
 #[cfg(feature = "ratatui_support")]
@@ -97,7 +99,7 @@ use super::AccountOperations;
 use super::AccountUI;
 
 pub struct BankAccount {
-    ctx : AccountContext,
+    ctx: AccountContext,
 }
 
 impl HasContext for BankAccount {
@@ -133,7 +135,12 @@ impl Valuable for BankAccount {
 impl FixedValuable for BankAccount {}
 
 impl GrowthCalculable for BankAccount {
-    fn calculate_growth(&self, metric: super::growth::GrowthMetric, start_date : NaiveDate, end_date : NaiveDate) -> f32 {
+    fn calculate_growth(
+        &self,
+        metric: super::growth::GrowthMetric,
+        start_date: NaiveDate,
+        end_date: NaiveDate,
+    ) -> f32 {
         self.fixed_growth(metric, start_date, end_date)
     }
 }
@@ -156,18 +163,19 @@ impl FixedAccountFileIO for BankAccount {}
 impl BankAccount {
     pub fn new(uid: u32, id: u32, db: &DbConn) -> Self {
         let mut acct: BankAccount = Self {
-            ctx : AccountContext { 
-                aid: id, 
-                uid : uid,
-                db: db.clone(), 
-                open_date: Local::now().date_naive() 
+            ctx: AccountContext {
+                aid: id,
+                uid: uid,
+                db: db.clone(),
+                open_date: Local::now().date_naive(),
             },
         };
 
         let mut ledger = acct.get_ledger();
         if !ledger.is_empty() {
             ledger.sort_by(|l1, l2| (&l1.info.date).cmp(&l2.info.date));
-            acct.ctx.open_date = NaiveDate::parse_from_str(&ledger[0].info.date, "%Y-%m-%d").unwrap();
+            acct.ctx.open_date =
+                NaiveDate::parse_from_str(&ledger[0].info.date, "%Y-%m-%d").unwrap();
         }
 
         acct
@@ -221,7 +229,8 @@ impl AccountCreation for BankAccount {
 impl AccountOperations for BankAccount {
     fn record(&mut self) {
         let ctx = self.ctx();
-        const RECORD_OPTIONS: [&'static str; 6] = ["Accrual", "Budget", "Deposit", "Fee", "Withdrawal", "None"];
+        const RECORD_OPTIONS: [&'static str; 6] =
+            ["Accrual", "Budget", "Deposit", "Fee", "Withdrawal", "None"];
         loop {
             let action = Select::new(
                 "\nWhat transaction would you like to record?",
@@ -231,7 +240,7 @@ impl AccountOperations for BankAccount {
             .unwrap()
             .to_string();
             match action.as_str() {
-                "Accrual" => { 
+                "Accrual" => {
                     self.accrual(None, false);
                 }
                 "Fee" => {
@@ -341,7 +350,8 @@ impl AccountOperations for BankAccount {
                             }
                             "Remove" => {
                                 // check if category is referenced by any current ledger
-                                let is_referenced = ctx.db
+                                let is_referenced = ctx
+                                    .db
                                     .check_if_ledger_references_category(
                                         ctx.uid,
                                         ctx.aid,
@@ -455,7 +465,8 @@ impl AccountOperations for BankAccount {
                             }
                             "Remove" => {
                                 // check if participant is referenced by any current ledger
-                                let is_referenced = ctx.db
+                                let is_referenced = ctx
+                                    .db
                                     .check_if_ledger_references_participant(
                                         ctx.uid,
                                         ctx.aid,
@@ -603,12 +614,15 @@ impl AccountOperations for BankAccount {
             }
         }
     }
-
 }
 
 impl BankAccount {
     fn get_growth(&self, start_period: NaiveDate, end_period: NaiveDate) -> f32 {
-        return self.calculate_growth(super::growth::GrowthMetric::SimpleReturn, start_period, end_period)
+        return self.calculate_growth(
+            super::growth::GrowthMetric::SimpleReturn,
+            start_period,
+            end_period,
+        );
     }
 }
 
@@ -634,7 +648,11 @@ impl AccountUI for BankAccount {
         );
         kv.insert(
             KEY_SIMPLE_RATE_OF_RETURN.into(),
-            DisplayValue::Float(self.calculate_growth(super::growth::GrowthMetric::SimpleReturn, start, app.analysis_end)),
+            DisplayValue::Float(self.calculate_growth(
+                super::growth::GrowthMetric::SimpleReturn,
+                start,
+                app.analysis_end,
+            )),
         );
 
         app.page_cache_f32 = Some(kv);

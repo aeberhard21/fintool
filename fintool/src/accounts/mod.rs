@@ -21,25 +21,27 @@ pub mod credit_card_account;
 pub mod growth;
 pub mod health_savings_account;
 pub mod investment_account_manager;
+#[cfg(feature = "ratatui_support")]
+pub mod render;
 pub mod retirement_401k_plan;
 pub mod roth_ira;
 pub mod wallet;
-#[cfg(feature = "ratatui_support")]
-pub mod render;
 
+use crate::accounts::base::{DisplayablePositionStatistics, HasContext, LedgerOps, Valuable};
 #[cfg(feature = "ratatui_support")]
 use crate::app::app::{App, DisplayValue};
 #[cfg(feature = "ratatui_support")]
-use crate::app::screen::{ledger_table_constraint_len_calculator, positions_table_constraint_len_calculator};
+use crate::app::screen::{
+    ledger_table_constraint_len_calculator, positions_table_constraint_len_calculator,
+};
 use crate::database::DbConn;
 use crate::types::accounts::AccountRecord;
-use crate::types::accounts::AccountType;
 use crate::types::accounts::AccountTransaction;
+use crate::types::accounts::AccountType;
 use crate::types::ledger::{DisplayableLedgerRecord, LedgerInfo, LedgerRecord};
 use crate::types::participants::ParticipantType;
-use crate::accounts::base::{DisplayablePositionStatistics, HasContext, LedgerOps, Valuable};
-use strum::{Display, EnumIter, EnumString, FromRepr};
 use shared_lib::TransferType;
+use strum::{Display, EnumIter, EnumString, FromRepr};
 
 use chrono::NaiveDate;
 #[cfg(feature = "ratatui_support")]
@@ -60,6 +62,7 @@ use ratatui::{
 use std::any::Any;
 
 use crate::accounts::bank_account::BankAccount;
+use crate::accounts::base::liquid_account::LiquidAccount;
 #[cfg(feature = "ratatui_support")]
 use crate::accounts::investment_account_manager::InvestmentAccountManager;
 #[cfg(feature = "ratatui_support")]
@@ -67,7 +70,6 @@ use crate::accounts::retirement_401k_plan::Retirement401kPlan;
 #[cfg(feature = "ratatui_support")]
 use crate::accounts::roth_ira::RothIraAccount;
 use crate::accounts::wallet::Wallet;
-use crate::accounts::base::liquid_account::LiquidAccount;
 
 use rustyline::completion::FilenameCompleter;
 use rustyline::highlight::MatchingBracketHighlighter;
@@ -150,7 +152,7 @@ pub trait AccountCreation {
     fn create(uid: u32, name: String, _db: &DbConn) -> AccountRecord;
 }
 
-pub trait AccountOperations : HasContext {
+pub trait AccountOperations: HasContext {
     fn import(&mut self);
     fn record(&mut self);
     fn modify(&mut self);
@@ -174,7 +176,8 @@ pub trait AccountOperations : HasContext {
                     ctx.aid,
                     "Withdrawal".to_ascii_uppercase(),
                 );
-                transacting_account_name = ctx.db
+                transacting_account_name = ctx
+                    .db
                     .get_account_name(ctx.uid, transacting_account)
                     .unwrap();
                 pid = ctx.db.check_and_add_participant(
@@ -196,12 +199,11 @@ pub trait AccountOperations : HasContext {
                 // if the transacting account had an amount withdrawn, then self must be the "to" account
                 from_account = transacting_account;
                 to_account = ctx.aid;
-                cid = ctx.db.check_and_add_category(
-                    ctx.uid,
-                    ctx.aid,
-                    "Deposit".to_ascii_uppercase(),
-                );
-                transacting_account_name = ctx.db
+                cid =
+                    ctx.db
+                        .check_and_add_category(ctx.uid, ctx.aid, "Deposit".to_ascii_uppercase());
+                transacting_account_name = ctx
+                    .db
                     .get_account_name(ctx.uid, transacting_account)
                     .unwrap();
                 pid = ctx.db.check_and_add_participant(
@@ -266,12 +268,15 @@ pub trait AccountOperations : HasContext {
     }
 }
 
-pub trait AccountData : HasContext + Valuable + LedgerOps {
+pub trait AccountData: HasContext + Valuable + LedgerOps {
     fn get_id(&self) -> u32 {
         self.ctx().aid
     }
     fn get_name(&self) -> String {
-        self.ctx().db.get_account_name(self.ctx().uid, self.ctx().aid).unwrap()
+        self.ctx()
+            .db
+            .get_account_name(self.ctx().uid, self.ctx().aid)
+            .unwrap()
     }
     fn get_value(&self) -> f32 {
         return self.account_value().unwrap_or(f32::NAN);
@@ -283,7 +288,7 @@ pub trait AccountData : HasContext + Valuable + LedgerOps {
         let ctx = self.ctx();
         return ctx.open_date;
     }
-} 
+}
 
 #[cfg(feature = "ratatui_support")]
 pub trait AccountUI: AccountData {
@@ -304,9 +309,7 @@ pub trait Account: AccountData + AccountOperations + Any + HasContext {
         let ctx = self.ctx();
         let mut acct = ctx.db.get_account(ctx.uid, ctx.aid).unwrap();
         acct.info.has_budget = true;
-        let _ = ctx.db
-            .update_account(ctx.uid, ctx.aid, &acct.info)
-            .unwrap();
+        let _ = ctx.db.update_account(ctx.uid, ctx.aid, &acct.info).unwrap();
     }
 }
 
@@ -323,14 +326,12 @@ pub trait Account: AccountData + AccountOperations + AccountUI + Any + HasContex
         let ctx = self.ctx();
         let mut acct = ctx.db.get_account(ctx.uid, ctx.aid).unwrap();
         acct.info.has_budget = true;
-        let _ = ctx.db
-            .update_account(ctx.uid, ctx.aid, &acct.info)
-            .unwrap();
+        let _ = ctx.db.update_account(ctx.uid, ctx.aid, &acct.info).unwrap();
     }
-    fn as_liquid_account(&self) -> Option<&dyn LiquidAccount> { 
+    fn as_liquid_account(&self) -> Option<&dyn LiquidAccount> {
         return None;
     }
-    fn renders_tables(&self) -> Vec<String> { 
+    fn renders_tables(&self) -> Vec<String> {
         return vec!["Transactions".to_string()];
     }
 }
@@ -355,4 +356,3 @@ pub fn render_table_tabs(
         .divider(" | ");
     frame.render_widget(atype_tabs, area);
 }
-

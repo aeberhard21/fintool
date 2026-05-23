@@ -51,38 +51,45 @@ use shared_lib::{FlatLedgerEntry, LedgerEntry};
 use std::collections::HashMap;
 use std::path::Path;
 
-use crate::accounts::AnalysisPeriod;
-#[cfg(feature = "ratatui_support")]
-use crate::accounts::KEY_TOTAL_VALUE;
+use crate::accounts::base::fixed_account::FixedAccount;
+use crate::accounts::base::interest_bearing_fixed_account::InterestBearingFixedAccount;
+use crate::accounts::base::interest_bearing_fixed_account::InterestBearingLedger;
+use crate::accounts::base::variable_account::get_positions;
+use crate::accounts::base::variable_account::VariableAccountFileIO;
+use crate::accounts::base::variable_account::VariableGrowth;
+use crate::accounts::base::variable_account::VariableLedger;
+use crate::accounts::base::variable_account::VariableValuable;
+use crate::accounts::base::variable_account::{
+    allocate_sale_stock, allocate_stock_split, confirm_public_ticker, get_position_stats,
+    get_value_of_positions_on_day, initialize_buffer, manually_record_stock_close_price,
+};
 use crate::accounts::base::AccountContext;
 use crate::accounts::base::AccountFileIO;
 use crate::accounts::base::HasContext;
 use crate::accounts::base::HasVariableAccountContext;
 use crate::accounts::base::LedgerOps;
 use crate::accounts::base::Valuable;
-use crate::accounts::base::VariableAccountContext;
-use crate::accounts::base::fixed_account::FixedAccount;
-use crate::accounts::base::interest_bearing_fixed_account::InterestBearingFixedAccount;
-use crate::accounts::base::interest_bearing_fixed_account::InterestBearingLedger;
-use crate::accounts::base::variable_account::VariableGrowth;
-use crate::accounts::base::variable_account::VariableLedger;
-use crate::accounts::base::variable_account::VariableValuable;
-use crate::accounts::base::variable_account::VariableAccountFileIO;
 use crate::accounts::base::ValueLimited;
-use crate::accounts::FilePathHelper;
+use crate::accounts::base::VariableAccountContext;
+use crate::accounts::growth::report_growth;
 use crate::accounts::growth::GrowthCalculable;
 use crate::accounts::growth::GrowthMetric;
 #[cfg(feature = "ratatui_support")]
-use crate::accounts::{KEY_COMPOUNDED_ANNUAL_RATE_OF_RETURN, KEY_MONEY_WEIGHTED_RATE_OF_RETURN, KEY_TIME_WEIGHTED_RATE_OF_RETURN, KEY_REMAINING_CONTRIBUTION, KEY_CONTRIBUTION_LIMIT};
-use crate::accounts::growth::report_growth;
-use crate::accounts::base::variable_account::get_positions;
-use crate::accounts::base::variable_account::{allocate_stock_split, allocate_sale_stock,confirm_public_ticker,get_position_stats,get_value_of_positions_on_day, initialize_buffer, manually_record_stock_close_price};
-#[cfg(feature = "ratatui_support")]
 use crate::accounts::render::*;
+use crate::accounts::AnalysisPeriod;
+use crate::accounts::FilePathHelper;
 #[cfg(feature = "ratatui_support")]
-use crate::app::screen::CurrentlySelecting;
+use crate::accounts::KEY_TOTAL_VALUE;
+#[cfg(feature = "ratatui_support")]
+use crate::accounts::{
+    KEY_COMPOUNDED_ANNUAL_RATE_OF_RETURN, KEY_CONTRIBUTION_LIMIT,
+    KEY_MONEY_WEIGHTED_RATE_OF_RETURN, KEY_REMAINING_CONTRIBUTION,
+    KEY_TIME_WEIGHTED_RATE_OF_RETURN,
+};
 #[cfg(feature = "ratatui_support")]
 use crate::app::app::{App, DisplayValue, LineChart};
+#[cfg(feature = "ratatui_support")]
+use crate::app::screen::CurrentlySelecting;
 use crate::database::DbConn;
 use crate::tui::get_analysis_period_dates;
 use crate::tui::query_user_for_analysis_period;
@@ -104,6 +111,8 @@ use rustyline::Editor;
 use shared_lib::TransferType;
 
 use super::base::variable_account::VariableAccount;
+#[cfg(feature = "ratatui_support")]
+use super::render_table_tabs;
 use super::Account;
 use super::AccountCreation;
 use super::AccountData;
@@ -112,12 +121,10 @@ use super::AccountOperations;
 use super::AccountUI;
 #[cfg(feature = "ratatui_support")]
 use crate::ui::{centered_rect, float_range};
-#[cfg(feature = "ratatui_support")]
-use super::render_table_tabs;
 
 pub struct RothIraAccount {
-    ctx : AccountContext,
-    vctx : VariableAccountContext,
+    ctx: AccountContext,
+    vctx: VariableAccountContext,
 }
 
 impl HasContext for RothIraAccount {
@@ -160,14 +167,19 @@ impl Valuable for RothIraAccount {
     }
 
     fn get_account_value_on_day(&self, day: &NaiveDate) -> Option<f32> {
-        self.variable_value_on_day(day)   
+        self.variable_value_on_day(day)
     }
 }
 
 impl VariableValuable for RothIraAccount {}
 
-impl GrowthCalculable for RothIraAccount { 
-    fn calculate_growth(&self, metric: GrowthMetric, start_date : NaiveDate, end_date : NaiveDate) -> f32 {
+impl GrowthCalculable for RothIraAccount {
+    fn calculate_growth(
+        &self,
+        metric: GrowthMetric,
+        start_date: NaiveDate,
+        end_date: NaiveDate,
+    ) -> f32 {
         self.variable_growth(metric, start_date, end_date)
     }
 }
@@ -176,14 +188,19 @@ impl VariableGrowth for RothIraAccount {}
 
 impl ValueLimited for RothIraAccount {
     fn account_limit(&self) -> f32 {
-        let acct = self.ctx.db.get_roth_ira(self.ctx.uid, self.ctx.aid).unwrap();
+        let acct = self
+            .ctx
+            .db
+            .get_roth_ira(self.ctx.uid, self.ctx.aid)
+            .unwrap();
         return acct.info.contribution_limit;
     }
     fn remaining(&self) -> f32 {
         let contribution_limit = self.account_limit();
-        let (start, end) =
-            get_analysis_period_dates(self.get_open_date(), &AnalysisPeriod::YTD);
-        let contributions_ytd = self.ctx.db
+        let (start, end) = get_analysis_period_dates(self.get_open_date(), &AnalysisPeriod::YTD);
+        let contributions_ytd = self
+            .ctx
+            .db
             .get_ledger_entries_within_timestamps(self.ctx.uid, self.ctx.aid, start, end)
             .unwrap();
         let aggregate: f32 = contributions_ytd
@@ -265,13 +282,13 @@ impl RothIraAccount {
         };
 
         let mut acct = Self {
-            ctx : AccountContext { 
-                uid : uid, 
-                aid : id,
-                db : db.clone(), 
-                open_date : open_date,
+            ctx: AccountContext {
+                uid: uid,
+                aid: id,
+                db: db.clone(),
+                open_date: open_date,
             },
-            vctx : VariableAccountContext { buffer: None }
+            vctx: VariableAccountContext { buffer: None },
         };
 
         let data = initialize_buffer(&acct.ctx, &acct.vctx);
@@ -303,7 +320,7 @@ impl AccountOperations for RothIraAccount {
             .unwrap()
             .to_string();
             match action.as_str() {
-                "Accrual" => { 
+                "Accrual" => {
                     self.accrual(None, false);
                 }
                 "Fee" => {
@@ -345,7 +362,7 @@ impl AccountOperations for RothIraAccount {
     }
 
     fn import(&mut self) {
-         <Self as AccountFileIO>::import(self);
+        <Self as AccountFileIO>::import(self);
         // initialize buffer after import
         let data = initialize_buffer(&self.ctx, &self.vctx);
         self.vctx.buffer = data;
@@ -396,7 +413,11 @@ impl AccountOperations for RothIraAccount {
                 },
                 "Categories" => {
                     loop {
-                        let records = self.ctx.db.get_categories(self.ctx.uid, self.ctx.aid).unwrap();
+                        let records = self
+                            .ctx
+                            .db
+                            .get_categories(self.ctx.uid, self.ctx.aid)
+                            .unwrap();
                         let mut choices: Vec<String> = records
                             .iter()
                             .map(|x| x.category.name.clone())
@@ -430,7 +451,9 @@ impl AccountOperations for RothIraAccount {
                             }
                             "Remove" => {
                                 // check if category is referenced by any current ledger
-                                let is_referenced = self.ctx.db
+                                let is_referenced = self
+                                    .ctx
+                                    .db
                                     .check_if_ledger_references_category(
                                         self.ctx.uid,
                                         self.ctx.aid,
@@ -445,7 +468,8 @@ impl AccountOperations for RothIraAccount {
                                             "{} | {} | {} | {} ",
                                             record.info.date,
                                             chosen_category.clone(),
-                                            self.ctx.db
+                                            self.ctx
+                                                .db
                                                 .get_participant(
                                                     self.ctx.uid,
                                                     self.ctx.aid,
@@ -500,8 +524,11 @@ impl AccountOperations for RothIraAccount {
                                 panic!("Unrecognized input: {}", selected_ptype);
                             }
                         };
-                        let participants =
-                            self.ctx.db.get_participants(self.ctx.uid, self.ctx.aid, ptype).unwrap();
+                        let participants = self
+                            .ctx
+                            .db
+                            .get_participants(self.ctx.uid, self.ctx.aid, ptype)
+                            .unwrap();
                         let mut people = participants
                             .iter()
                             .map(|x| x.participant.name.clone())
@@ -531,7 +558,8 @@ impl AccountOperations for RothIraAccount {
                                     .prompt()
                                     .unwrap()
                                     .to_string();
-                                self.ctx.db
+                                self.ctx
+                                    .db
                                     .update_participant_name(
                                         self.ctx.uid,
                                         self.ctx.aid,
@@ -543,7 +571,9 @@ impl AccountOperations for RothIraAccount {
                             }
                             "Remove" => {
                                 // check if participant is referenced by any current ledger
-                                let is_referenced = self.ctx.db
+                                let is_referenced = self
+                                    .ctx
+                                    .db
                                     .check_if_ledger_references_participant(
                                         self.ctx.uid,
                                         self.ctx.aid,
@@ -558,7 +588,8 @@ impl AccountOperations for RothIraAccount {
                                         let v = format!(
                                             "{} | {} | {} | {} ",
                                             record.info.date,
-                                            self.ctx.db
+                                            self.ctx
+                                                .db
                                                 .get_category_name(
                                                     self.ctx.uid,
                                                     self.ctx.aid,
@@ -578,7 +609,8 @@ impl AccountOperations for RothIraAccount {
                                 if delete {
                                     match ptype {
                                         ParticipantType::Payee => {
-                                            self.ctx.db
+                                            self.ctx
+                                                .db
                                                 .remove_participant(
                                                     self.ctx.uid,
                                                     self.ctx.aid,
@@ -588,7 +620,8 @@ impl AccountOperations for RothIraAccount {
                                                 .unwrap();
                                         }
                                         ParticipantType::Payer => {
-                                            self.ctx.db
+                                            self.ctx
+                                                .db
                                                 .remove_participant(
                                                     self.ctx.uid,
                                                     self.ctx.aid,
@@ -598,7 +631,8 @@ impl AccountOperations for RothIraAccount {
                                                 .unwrap();
                                         }
                                         _ => {
-                                            self.ctx.db
+                                            self.ctx
+                                                .db
                                                 .remove_participant(
                                                     self.ctx.uid,
                                                     self.ctx.aid,
@@ -606,7 +640,8 @@ impl AccountOperations for RothIraAccount {
                                                     chosen_person.clone(),
                                                 )
                                                 .unwrap();
-                                            self.ctx.db
+                                            self.ctx
+                                                .db
                                                 .remove_participant(
                                                     self.ctx.uid,
                                                     self.ctx.aid,
@@ -654,12 +689,7 @@ impl AccountOperations for RothIraAccount {
     }
 
     fn report(&self) {
-        const REPORT_OPTIONS: [&'static str; 4] = [
-            "Positions",
-            "Growth",
-            "Total Value",
-            "None",
-        ];
+        const REPORT_OPTIONS: [&'static str; 4] = ["Positions", "Growth", "Total Value", "None"];
         let choice = Select::new("What would you like to report: ", REPORT_OPTIONS.to_vec())
             .prompt()
             .unwrap()
@@ -744,7 +774,7 @@ impl AccountUI for RothIraAccount {
 
         app.page_cache_f32 = Some(kv);
         app.ledger_entries = Some(self.get_displayable_ledger());
-        app.linechart_cache = get_time_period_investment_linechart(self,app);
+        app.linechart_cache = get_time_period_investment_linechart(self, app);
         app.barchart_cache = None;
         app.positions_entries = get_position_stats(&self.ctx, &self.vctx);
     }
@@ -802,15 +832,33 @@ impl AccountUI for RothIraAccount {
 
         // color according to current selection
         if let Some(current_selection) = app.currently_selected {
-            match current_selection { 
-                CurrentlySelecting::Account => { 
-                    render_table_tabs(frame, table_tab_area, self.renders_tables(), app.selected_table_tab, Color::Red);
+            match current_selection {
+                CurrentlySelecting::Account => {
+                    render_table_tabs(
+                        frame,
+                        table_tab_area,
+                        self.renders_tables(),
+                        app.selected_table_tab,
+                        Color::Red,
+                    );
                 }
-                CurrentlySelecting::Table => { 
-                    render_table_tabs(frame, table_tab_area, self.renders_tables(), app.selected_table_tab, Color::Green);
+                CurrentlySelecting::Table => {
+                    render_table_tabs(
+                        frame,
+                        table_tab_area,
+                        self.renders_tables(),
+                        app.selected_table_tab,
+                        Color::Green,
+                    );
                 }
                 _ => {
-                    render_table_tabs(frame, table_tab_area, self.renders_tables(), app.selected_table_tab, Color::Reset);
+                    render_table_tabs(
+                        frame,
+                        table_tab_area,
+                        self.renders_tables(),
+                        app.selected_table_tab,
+                        Color::Reset,
+                    );
                 }
             }
         }
@@ -819,10 +867,10 @@ impl AccountUI for RothIraAccount {
             0 => {
                 render_ledger_table(frame, ledger_area, app);
             }
-            _ => { 
+            _ => {
                 render_positions_table(frame, ledger_area, app);
             }
-        }        
+        }
         render_time_period_investment_linechart(frame, graph_area, app);
         render_current_value(frame, value_area, app);
         render_remaining_contribution(frame, contribution_area, app);
@@ -847,7 +895,9 @@ impl Account for RothIraAccount {
     fn set_budget(&self) {
         let mut acct = self.ctx.db.get_account(self.ctx.uid, self.ctx.aid).unwrap();
         acct.info.has_budget = true;
-        let _ = self.ctx.db
+        let _ = self
+            .ctx
+            .db
             .update_account(self.ctx.uid, self.ctx.aid, &acct.info)
             .unwrap();
     }

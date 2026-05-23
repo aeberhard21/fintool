@@ -55,22 +55,25 @@ use std::iter::zip;
 use std::path::Path;
 use std::rc;
 
-use crate::accounts::base::AccountFileIO;
-use crate::accounts::base::fixed_account::FixedAccountFileIO;
-use crate::accounts::{KEY_BARCHART_BUDGET, KEY_BARCHART_EXPENDITURES, KEY_REMAINING_CONTRIBUTION, KEY_CREDIT_LINE, KEY_REMAINING_CREDIT, KEY_DAYS_UNTIL_DUE, KEY_STATEMENT_DUE_DATE};
-use crate::accounts::base::ValueLimited;
+use crate::accounts::base::budget::Budget;
 use crate::accounts::base::charge_account::ChargeAccountLedger;
 use crate::accounts::base::charge_account::ChargeAccountValuable;
 use crate::accounts::base::charge_account::ChargedAccountExpiry;
+use crate::accounts::base::fixed_account::FixedAccountFileIO;
 use crate::accounts::base::fixed_account::{FixedAccount, FixedGrowth, FixedValuable};
 use crate::accounts::base::interest_bearing_fixed_account::InterestBearingLedger;
+use crate::accounts::base::AccountFileIO;
+use crate::accounts::base::ValueLimited;
 use crate::accounts::base::{AccountContext, Valuable};
-use crate::accounts::base::budget::Budget;
 use crate::accounts::base::{HasContext, LedgerOps};
-use crate::accounts::FilePathHelper;
 use crate::accounts::growth::GrowthCalculable;
 #[cfg(feature = "ratatui_support")]
 use crate::accounts::render::*;
+use crate::accounts::FilePathHelper;
+use crate::accounts::{
+    KEY_BARCHART_BUDGET, KEY_BARCHART_EXPENDITURES, KEY_CREDIT_LINE, KEY_DAYS_UNTIL_DUE,
+    KEY_REMAINING_CONTRIBUTION, KEY_REMAINING_CREDIT, KEY_STATEMENT_DUE_DATE,
+};
 #[cfg(feature = "ratatui_support")]
 use crate::app::app::{App, BarChartData, DisplayValue};
 #[cfg(feature = "ratatui_support")]
@@ -97,13 +100,13 @@ use super::AccountData;
 use super::AccountOperations;
 #[cfg(feature = "ratatui_support")]
 use super::AccountUI;
-use super::{KEY_TOTAL_VALUE};
+use super::KEY_TOTAL_VALUE;
 
 #[cfg(feature = "ratatui_support")]
 use crate::ui::{centered_rect, float_range};
 
 pub struct CreditCardAccount {
-    ctx : AccountContext
+    ctx: AccountContext,
 }
 
 impl HasContext for CreditCardAccount {
@@ -115,7 +118,7 @@ impl HasContext for CreditCardAccount {
     }
 }
 
-impl ChargeAccountLedger for CreditCardAccount{}
+impl ChargeAccountLedger for CreditCardAccount {}
 
 impl LedgerOps for CreditCardAccount {
     fn modify(&mut self, selected_record: LedgerRecord) -> Option<LedgerRecord> {
@@ -166,18 +169,19 @@ impl FixedAccountFileIO for CreditCardAccount {}
 impl CreditCardAccount {
     pub fn new(uid: u32, id: u32, db: &DbConn) -> Self {
         let mut acct: CreditCardAccount = Self {
-            ctx : AccountContext { 
-                aid: id, 
-                uid : uid,
-                db: db.clone(), 
-                open_date: Local::now().date_naive() 
+            ctx: AccountContext {
+                aid: id,
+                uid: uid,
+                db: db.clone(),
+                open_date: Local::now().date_naive(),
             },
         };
 
         let mut ledger = acct.get_ledger();
         if !ledger.is_empty() {
             ledger.sort_by(|l1, l2| (&l1.info.date).cmp(&l2.info.date));
-            acct.ctx.open_date = NaiveDate::parse_from_str(&ledger[0].info.date, "%Y-%m-%d").unwrap();
+            acct.ctx.open_date =
+                NaiveDate::parse_from_str(&ledger[0].info.date, "%Y-%m-%d").unwrap();
         }
 
         acct
@@ -186,7 +190,11 @@ impl CreditCardAccount {
     fn get_statement_due_date(&self) -> NaiveDate {
         use chrono::Datelike;
 
-        let credit_card = self.ctx.db.get_credit_card(self.ctx.uid, self.ctx.aid).unwrap();
+        let credit_card = self
+            .ctx
+            .db
+            .get_credit_card(self.ctx.uid, self.ctx.aid)
+            .unwrap();
         let due_date = credit_card.info.statement_due_date;
         let local = Local::now().date_naive();
         let day = local.day();
@@ -263,7 +271,8 @@ impl AccountCreation for CreditCardAccount {
 
 impl AccountOperations for CreditCardAccount {
     fn record(&mut self) {
-        const RECORD_OPTIONS: [&'static str; 6] = ["Accrual", "Budget", "Charge", "Fee", "Payment", "None"];
+        const RECORD_OPTIONS: [&'static str; 6] =
+            ["Accrual", "Budget", "Charge", "Fee", "Payment", "None"];
         loop {
             let action = Select::new(
                 "\nWhat transaction would you like to record?",
@@ -273,7 +282,7 @@ impl AccountOperations for CreditCardAccount {
             .unwrap()
             .to_string();
             match action.as_str() {
-                "Accrual" => { 
+                "Accrual" => {
                     self.accrual(None, false);
                 }
                 "Fee" => {
@@ -371,19 +380,28 @@ impl AccountOperations for CreditCardAccount {
                     }
                 },
                 "Credit Line" => {
-                    let credit_card = self.ctx.db.get_credit_card(self.ctx.uid, self.ctx.aid).unwrap();
+                    let credit_card = self
+                        .ctx
+                        .db
+                        .get_credit_card(self.ctx.uid, self.ctx.aid)
+                        .unwrap();
                     let updated_credit_line = CustomType::<f32>::new("Enter updated credit line:")
                         .with_default(credit_card.info.credit_line)
                         .with_placeholder("1000.00")
                         .with_error_message("Enter a valid credit line!")
                         .prompt()
                         .unwrap();
-                    self.ctx.db
+                    self.ctx
+                        .db
                         .update_credit_line(self.ctx.uid, self.ctx.aid, updated_credit_line)
                         .unwrap();
                 }
                 "Statement Due Date" => {
-                    let credit_card = self.ctx.db.get_credit_card(self.ctx.uid, self.ctx.aid).unwrap();
+                    let credit_card = self
+                        .ctx
+                        .db
+                        .get_credit_card(self.ctx.uid, self.ctx.aid)
+                        .unwrap();
                     let updated_statement_due_date =
                         CustomType::<u32>::new("Enter updated statement due date:")
                             .with_default(credit_card.info.statement_due_date)
@@ -391,13 +409,22 @@ impl AccountOperations for CreditCardAccount {
                             .with_error_message("Enter a statement due date!")
                             .prompt()
                             .unwrap();
-                    self.ctx.db
-                        .update_statement_due_date(self.ctx.uid, self.ctx.aid, updated_statement_due_date)
+                    self.ctx
+                        .db
+                        .update_statement_due_date(
+                            self.ctx.uid,
+                            self.ctx.aid,
+                            updated_statement_due_date,
+                        )
                         .unwrap();
                 }
                 "Categories" => {
                     loop {
-                        let records = self.ctx.db.get_categories(self.ctx.uid, self.ctx.aid).unwrap();
+                        let records = self
+                            .ctx
+                            .db
+                            .get_categories(self.ctx.uid, self.ctx.aid)
+                            .unwrap();
                         let mut choices: Vec<String> = records
                             .iter()
                             .map(|x| x.category.name.clone())
@@ -431,7 +458,9 @@ impl AccountOperations for CreditCardAccount {
                             }
                             "Remove" => {
                                 // check if category is referenced by any current ledger
-                                let is_referenced = self.ctx.db
+                                let is_referenced = self
+                                    .ctx
+                                    .db
                                     .check_if_ledger_references_category(
                                         self.ctx.uid,
                                         self.ctx.aid,
@@ -446,7 +475,8 @@ impl AccountOperations for CreditCardAccount {
                                             "{} | {} | {} | {} ",
                                             record.info.date,
                                             chosen_category.clone(),
-                                            self.ctx.db
+                                            self.ctx
+                                                .db
                                                 .get_participant(
                                                     self.ctx.uid,
                                                     self.ctx.aid,
@@ -501,8 +531,11 @@ impl AccountOperations for CreditCardAccount {
                                 panic!("Unrecognized input: {}", selected_ptype);
                             }
                         };
-                        let participants =
-                            self.ctx.db.get_participants(self.ctx.uid, self.ctx.aid, ptype).unwrap();
+                        let participants = self
+                            .ctx
+                            .db
+                            .get_participants(self.ctx.uid, self.ctx.aid, ptype)
+                            .unwrap();
                         let mut people = participants
                             .iter()
                             .map(|x| x.participant.name.clone())
@@ -532,7 +565,8 @@ impl AccountOperations for CreditCardAccount {
                                     .prompt()
                                     .unwrap()
                                     .to_string();
-                                self.ctx.db
+                                self.ctx
+                                    .db
                                     .update_participant_name(
                                         self.ctx.uid,
                                         self.ctx.aid,
@@ -544,7 +578,9 @@ impl AccountOperations for CreditCardAccount {
                             }
                             "Remove" => {
                                 // check if participant is referenced by any current ledger
-                                let is_referenced = self.ctx.db
+                                let is_referenced = self
+                                    .ctx
+                                    .db
                                     .check_if_ledger_references_participant(
                                         self.ctx.uid,
                                         self.ctx.aid,
@@ -559,7 +595,8 @@ impl AccountOperations for CreditCardAccount {
                                         let v = format!(
                                             "{} | {} | {} | {} ",
                                             record.info.date,
-                                            self.ctx.db
+                                            self.ctx
+                                                .db
                                                 .get_category_name(
                                                     self.ctx.uid,
                                                     self.ctx.aid,
@@ -579,7 +616,8 @@ impl AccountOperations for CreditCardAccount {
                                 if delete {
                                     match ptype {
                                         ParticipantType::Payee => {
-                                            self.ctx.db
+                                            self.ctx
+                                                .db
                                                 .remove_participant(
                                                     self.ctx.uid,
                                                     self.ctx.aid,
@@ -589,7 +627,8 @@ impl AccountOperations for CreditCardAccount {
                                                 .unwrap();
                                         }
                                         ParticipantType::Payer => {
-                                            self.ctx.db
+                                            self.ctx
+                                                .db
                                                 .remove_participant(
                                                     self.ctx.uid,
                                                     self.ctx.aid,
@@ -599,7 +638,8 @@ impl AccountOperations for CreditCardAccount {
                                                 .unwrap();
                                         }
                                         _ => {
-                                            self.ctx.db
+                                            self.ctx
+                                                .db
                                                 .remove_participant(
                                                     self.ctx.uid,
                                                     self.ctx.aid,
@@ -607,7 +647,8 @@ impl AccountOperations for CreditCardAccount {
                                                     chosen_person.clone(),
                                                 )
                                                 .unwrap();
-                                            self.ctx.db
+                                            self.ctx
+                                                .db
                                                 .remove_participant(
                                                     self.ctx.uid,
                                                     self.ctx.aid,
@@ -676,10 +717,7 @@ impl AccountOperations for CreditCardAccount {
                 println!("\tCredit Line: {}", self.account_limit());
             }
             "Remaining Credit" => {
-                println!(
-                    "\tRemaining credit: {}",
-                    self.remaining()
-                );
+                println!("\tRemaining credit: {}", self.remaining());
             }
             "Spend Analyzer" => {
                 let (start, end, _) = query_user_for_analysis_period(self.get_open_date());

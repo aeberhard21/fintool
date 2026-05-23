@@ -19,9 +19,9 @@ use std::collections::HashMap;
 use chrono::{Datelike, Local, NaiveDate};
 use ratatui::widgets::{Chart, ScrollbarState, TableState};
 
-use crate::accounts::AnalysisPeriod;
 use crate::accounts::base::DisplayablePositionStatistics;
-use crate::app::screen::{PALETTES};
+use crate::accounts::AnalysisPeriod;
+use crate::app::screen::PALETTES;
 use crate::database::DbConn;
 use crate::tui::decode_and_init_account_type;
 use crate::types::accounts::AccountType;
@@ -78,7 +78,7 @@ pub struct App {
     pub ledger_table_state: TableState,
     pub ledger_table_colors: LedgerColors,
     pub ledger_entries: Option<Vec<DisplayableLedgerRecord>>,
-    pub positions_entries : Option<Vec<DisplayablePositionStatistics>>,
+    pub positions_entries: Option<Vec<DisplayablePositionStatistics>>,
     pub analysis_period: AnalysisPeriod,
     pub analysis_start: NaiveDate,
     pub analysis_end: NaiveDate,
@@ -175,13 +175,11 @@ impl App {
         self.selected_account_tab = self.selected_account_tab.saturating_sub(1).max(0)
     }
 
-    pub fn advance_table_view(&mut self) { 
-        self.selected_table_tab = self.selected_table_tab
-            .saturating_add(1)
-            .min(1);
+    pub fn advance_table_view(&mut self) {
+        self.selected_table_tab = self.selected_table_tab.saturating_add(1).min(1);
     }
 
-    pub fn retreat_table_view(&mut self) { 
+    pub fn retreat_table_view(&mut self) {
         self.selected_table_tab = self.selected_table_tab.saturating_sub(1).max(0)
     }
 

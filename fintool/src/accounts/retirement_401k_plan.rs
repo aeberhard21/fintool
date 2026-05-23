@@ -51,39 +51,46 @@ use shared_lib::{FlatLedgerEntry, LedgerEntry};
 use std::collections::HashMap;
 use std::path::Path;
 
-use crate::accounts::AnalysisPeriod;
-use crate::accounts::base::AccountFileIO;
+use crate::accounts::base::fixed_account::FixedAccount;
+use crate::accounts::base::interest_bearing_fixed_account::InterestBearingFixedAccount;
+use crate::accounts::base::interest_bearing_fixed_account::InterestBearingLedger;
+use crate::accounts::base::variable_account::get_positions;
 use crate::accounts::base::variable_account::VariableAccountFileIO;
-use crate::accounts::investment_account_manager::InvestmentAccountManager;
-#[cfg(feature = "ratatui_support")]
-use crate::accounts::render::get_time_period_investment_linechart;
-#[cfg(feature = "ratatui_support")]
-use crate::accounts::{KEY_COMPOUNDED_ANNUAL_RATE_OF_RETURN, KEY_MONEY_WEIGHTED_RATE_OF_RETURN, KEY_TIME_WEIGHTED_RATE_OF_RETURN, KEY_REMAINING_CONTRIBUTION, KEY_CONTRIBUTION_LIMIT};
+use crate::accounts::base::variable_account::VariableGrowth;
+use crate::accounts::base::variable_account::VariableLedger;
+use crate::accounts::base::variable_account::VariableValuable;
+use crate::accounts::base::variable_account::{
+    allocate_sale_stock, allocate_stock_split, confirm_public_ticker, get_position_stats,
+    get_value_of_positions_on_day, initialize_buffer, manually_record_stock_close_price,
+};
 use crate::accounts::base::AccountContext;
+use crate::accounts::base::AccountFileIO;
 use crate::accounts::base::HasContext;
 use crate::accounts::base::HasVariableAccountContext;
 use crate::accounts::base::LedgerOps;
 use crate::accounts::base::Valuable;
-use crate::accounts::base::VariableAccountContext;
-use crate::accounts::base::fixed_account::FixedAccount;
-use crate::accounts::base::interest_bearing_fixed_account::InterestBearingFixedAccount;
-use crate::accounts::base::interest_bearing_fixed_account::InterestBearingLedger;
-use crate::accounts::base::variable_account::VariableGrowth;
-use crate::accounts::base::variable_account::VariableLedger;
-use crate::accounts::base::variable_account::VariableValuable;
-use crate::accounts::base::variable_account::get_positions;
-use crate::accounts::base::variable_account::{allocate_stock_split, allocate_sale_stock,confirm_public_ticker,get_position_stats,get_value_of_positions_on_day, initialize_buffer, manually_record_stock_close_price};
 use crate::accounts::base::ValueLimited;
-use crate::accounts::FilePathHelper;
+use crate::accounts::base::VariableAccountContext;
+use crate::accounts::growth::report_growth;
 use crate::accounts::growth::GrowthCalculable;
 use crate::accounts::growth::GrowthMetric;
-use crate::accounts::growth::report_growth;
+use crate::accounts::investment_account_manager::InvestmentAccountManager;
+#[cfg(feature = "ratatui_support")]
+use crate::accounts::render::get_time_period_investment_linechart;
 #[cfg(feature = "ratatui_support")]
 use crate::accounts::render::*;
+use crate::accounts::AnalysisPeriod;
+use crate::accounts::FilePathHelper;
 #[cfg(feature = "ratatui_support")]
-use crate::app::screen::CurrentlySelecting;
+use crate::accounts::{
+    KEY_COMPOUNDED_ANNUAL_RATE_OF_RETURN, KEY_CONTRIBUTION_LIMIT,
+    KEY_MONEY_WEIGHTED_RATE_OF_RETURN, KEY_REMAINING_CONTRIBUTION,
+    KEY_TIME_WEIGHTED_RATE_OF_RETURN,
+};
 #[cfg(feature = "ratatui_support")]
 use crate::app::app::{App, DisplayValue, LineChart};
+#[cfg(feature = "ratatui_support")]
+use crate::app::screen::CurrentlySelecting;
 use crate::database::DbConn;
 use crate::tui::get_analysis_period_dates;
 use crate::tui::query_user_for_analysis_period;
@@ -105,6 +112,8 @@ use rustyline::Editor;
 use shared_lib::TransferType;
 
 use super::base::variable_account::VariableAccount;
+#[cfg(feature = "ratatui_support")]
+use super::render_table_tabs;
 use super::Account;
 use super::AccountCreation;
 use super::AccountData;
@@ -113,13 +122,11 @@ use super::AccountOperations;
 use super::AccountUI;
 use super::KEY_TOTAL_VALUE;
 #[cfg(feature = "ratatui_support")]
-use super::render_table_tabs;
-#[cfg(feature = "ratatui_support")]
 use crate::ui::{centered_rect, float_range};
 
 pub struct Retirement401kPlan {
-    ctx : AccountContext, 
-    vctx : VariableAccountContext
+    ctx: AccountContext,
+    vctx: VariableAccountContext,
 }
 
 impl HasContext for Retirement401kPlan {
@@ -162,14 +169,19 @@ impl Valuable for Retirement401kPlan {
     }
 
     fn get_account_value_on_day(&self, day: &NaiveDate) -> Option<f32> {
-        self.variable_value_on_day(day)   
+        self.variable_value_on_day(day)
     }
 }
 
 impl VariableValuable for Retirement401kPlan {}
 
-impl GrowthCalculable for Retirement401kPlan { 
-    fn calculate_growth(&self, metric: GrowthMetric, start_date : NaiveDate, end_date : NaiveDate) -> f32 {
+impl GrowthCalculable for Retirement401kPlan {
+    fn calculate_growth(
+        &self,
+        metric: GrowthMetric,
+        start_date: NaiveDate,
+        end_date: NaiveDate,
+    ) -> f32 {
         self.variable_growth(metric, start_date, end_date)
     }
 }
@@ -183,9 +195,10 @@ impl ValueLimited for Retirement401kPlan {
     }
     fn remaining(&self) -> f32 {
         let contribution_limit = self.account_limit();
-        let (start, end) =
-            get_analysis_period_dates(self.get_open_date(), &AnalysisPeriod::YTD);
-        let contributions_ytd = self.ctx.db
+        let (start, end) = get_analysis_period_dates(self.get_open_date(), &AnalysisPeriod::YTD);
+        let contributions_ytd = self
+            .ctx
+            .db
             .get_ledger_entries_within_timestamps(self.ctx.uid, self.ctx.aid, start, end)
             .unwrap();
         let aggregate: f32 = contributions_ytd
@@ -258,13 +271,13 @@ impl Retirement401kPlan {
         };
 
         let mut acct = Self {
-            ctx : AccountContext { 
-                uid : uid, 
-                aid : id,
-                db : db.clone(), 
-                open_date : open_date,
+            ctx: AccountContext {
+                uid: uid,
+                aid: id,
+                db: db.clone(),
+                open_date: open_date,
             },
-            vctx : VariableAccountContext { buffer: None }
+            vctx: VariableAccountContext { buffer: None },
         };
         let data = initialize_buffer(&acct.ctx, &acct.vctx);
         acct.vctx.buffer = data;
@@ -295,7 +308,7 @@ impl AccountOperations for Retirement401kPlan {
             .unwrap()
             .to_string();
             match action.as_str() {
-                "Accrual" => { 
+                "Accrual" => {
                     self.accrual(None, false);
                 }
                 "Fee" => {
@@ -388,7 +401,11 @@ impl AccountOperations for Retirement401kPlan {
                 },
                 "Categories" => {
                     loop {
-                        let records = self.ctx.db.get_categories(self.ctx.uid, self.ctx.aid).unwrap();
+                        let records = self
+                            .ctx
+                            .db
+                            .get_categories(self.ctx.uid, self.ctx.aid)
+                            .unwrap();
                         let mut choices: Vec<String> = records
                             .iter()
                             .map(|x| x.category.name.clone())
@@ -422,7 +439,9 @@ impl AccountOperations for Retirement401kPlan {
                             }
                             "Remove" => {
                                 // check if category is referenced by any current ledger
-                                let is_referenced = self.ctx.db
+                                let is_referenced = self
+                                    .ctx
+                                    .db
                                     .check_if_ledger_references_category(
                                         self.ctx.uid,
                                         self.ctx.aid,
@@ -437,7 +456,8 @@ impl AccountOperations for Retirement401kPlan {
                                             "{} | {} | {} | {} ",
                                             record.info.date,
                                             chosen_category.clone(),
-                                            self.ctx.db
+                                            self.ctx
+                                                .db
                                                 .get_participant(
                                                     self.ctx.uid,
                                                     self.ctx.aid,
@@ -492,8 +512,11 @@ impl AccountOperations for Retirement401kPlan {
                                 panic!("Unrecognized input: {}", selected_ptype);
                             }
                         };
-                        let participants =
-                            self.ctx.db.get_participants(self.ctx.uid, self.ctx.aid, ptype).unwrap();
+                        let participants = self
+                            .ctx
+                            .db
+                            .get_participants(self.ctx.uid, self.ctx.aid, ptype)
+                            .unwrap();
                         let mut people = participants
                             .iter()
                             .map(|x| x.participant.name.clone())
@@ -523,7 +546,8 @@ impl AccountOperations for Retirement401kPlan {
                                     .prompt()
                                     .unwrap()
                                     .to_string();
-                                self.ctx.db
+                                self.ctx
+                                    .db
                                     .update_participant_name(
                                         self.ctx.uid,
                                         self.ctx.aid,
@@ -535,7 +559,9 @@ impl AccountOperations for Retirement401kPlan {
                             }
                             "Remove" => {
                                 // check if participant is referenced by any current ledger
-                                let is_referenced = self.ctx.db
+                                let is_referenced = self
+                                    .ctx
+                                    .db
                                     .check_if_ledger_references_participant(
                                         self.ctx.uid,
                                         self.ctx.aid,
@@ -550,7 +576,8 @@ impl AccountOperations for Retirement401kPlan {
                                         let v = format!(
                                             "{} | {} | {} | {} ",
                                             record.info.date,
-                                            self.ctx.db
+                                            self.ctx
+                                                .db
                                                 .get_category_name(
                                                     self.ctx.uid,
                                                     self.ctx.aid,
@@ -570,7 +597,8 @@ impl AccountOperations for Retirement401kPlan {
                                 if delete {
                                     match ptype {
                                         ParticipantType::Payee => {
-                                            self.ctx.db
+                                            self.ctx
+                                                .db
                                                 .remove_participant(
                                                     self.ctx.uid,
                                                     self.ctx.aid,
@@ -580,7 +608,8 @@ impl AccountOperations for Retirement401kPlan {
                                                 .unwrap();
                                         }
                                         ParticipantType::Payer => {
-                                            self.ctx.db
+                                            self.ctx
+                                                .db
                                                 .remove_participant(
                                                     self.ctx.uid,
                                                     self.ctx.aid,
@@ -590,7 +619,8 @@ impl AccountOperations for Retirement401kPlan {
                                                 .unwrap();
                                         }
                                         _ => {
-                                            self.ctx.db
+                                            self.ctx
+                                                .db
                                                 .remove_participant(
                                                     self.ctx.uid,
                                                     self.ctx.aid,
@@ -598,7 +628,8 @@ impl AccountOperations for Retirement401kPlan {
                                                     chosen_person.clone(),
                                                 )
                                                 .unwrap();
-                                            self.ctx.db
+                                            self.ctx
+                                                .db
                                                 .remove_participant(
                                                     self.ctx.uid,
                                                     self.ctx.aid,
@@ -646,12 +677,7 @@ impl AccountOperations for Retirement401kPlan {
     }
 
     fn report(&self) {
-        const REPORT_OPTIONS: [&'static str; 4] = [
-            "Positions",
-            "Total Value",
-            "Growth",
-            "None",
-        ];
+        const REPORT_OPTIONS: [&'static str; 4] = ["Positions", "Total Value", "Growth", "None"];
         let choice = Select::new("What would you like to report: ", REPORT_OPTIONS.to_vec())
             .prompt()
             .unwrap()
@@ -694,7 +720,6 @@ impl AccountOperations for Retirement401kPlan {
             }
         }
     }
-
 }
 
 impl AccountData for Retirement401kPlan {}
@@ -720,9 +745,7 @@ impl AccountUI for Retirement401kPlan {
         );
         kv.insert(
             KEY_COMPOUNDED_ANNUAL_RATE_OF_RETURN.into(),
-            DisplayValue::Float(
-                self.calculate_growth(GrowthMetric::CAGR, start, app.analysis_end),
-            ),
+            DisplayValue::Float(self.calculate_growth(GrowthMetric::CAGR, start, app.analysis_end)),
         );
         kv.insert(
             KEY_MONEY_WEIGHTED_RATE_OF_RETURN.into(),
@@ -797,15 +820,33 @@ impl AccountUI for Retirement401kPlan {
 
         // color according to current selection
         if let Some(current_selection) = app.currently_selected {
-            match current_selection { 
-                CurrentlySelecting::Account => { 
-                    render_table_tabs(frame, table_tab_area, self.renders_tables(), app.selected_table_tab, Color::Red);
+            match current_selection {
+                CurrentlySelecting::Account => {
+                    render_table_tabs(
+                        frame,
+                        table_tab_area,
+                        self.renders_tables(),
+                        app.selected_table_tab,
+                        Color::Red,
+                    );
                 }
-                CurrentlySelecting::Table => { 
-                    render_table_tabs(frame, table_tab_area, self.renders_tables(), app.selected_table_tab, Color::Green);
+                CurrentlySelecting::Table => {
+                    render_table_tabs(
+                        frame,
+                        table_tab_area,
+                        self.renders_tables(),
+                        app.selected_table_tab,
+                        Color::Green,
+                    );
                 }
                 _ => {
-                    render_table_tabs(frame, table_tab_area, self.renders_tables(), app.selected_table_tab, Color::Reset);
+                    render_table_tabs(
+                        frame,
+                        table_tab_area,
+                        self.renders_tables(),
+                        app.selected_table_tab,
+                        Color::Reset,
+                    );
                 }
             }
         }
@@ -814,10 +855,10 @@ impl AccountUI for Retirement401kPlan {
             0 => {
                 render_ledger_table(frame, ledger_area, app);
             }
-            _ => { 
+            _ => {
                 render_positions_table(frame, ledger_area, app);
             }
-        }   
+        }
         render_time_period_investment_linechart(frame, graph_area, app);
         render_current_value(frame, value_area, app);
         render_remaining_contribution(frame, contribution_area, app);
@@ -842,7 +883,9 @@ impl Account for Retirement401kPlan {
     fn set_budget(&self) {
         let mut acct = self.ctx.db.get_account(self.ctx.uid, self.ctx.aid).unwrap();
         acct.info.has_budget = true;
-        let _ = self.ctx.db
+        let _ = self
+            .ctx
+            .db
             .update_account(self.ctx.uid, self.ctx.aid, &acct.info)
             .unwrap();
     }

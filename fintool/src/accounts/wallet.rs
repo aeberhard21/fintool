@@ -14,10 +14,11 @@
   You should have received a copy of the GNU General Public License
   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 -----------------------------------------------------------------------*/
+use chrono::format::Fixed;
 use chrono::Date;
 use chrono::Local;
 use chrono::NaiveDate;
-use chrono::format::Fixed;
+use core::f32;
 use csv::ReaderBuilder;
 use inquire::Confirm;
 use inquire::Select;
@@ -49,27 +50,26 @@ use rustyline::Highlighter;
 use rustyline::Hinter;
 use rustyline::Validator;
 use shared_lib::{FlatLedgerEntry, LedgerEntry};
-use core::f32;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::iter::zip;
 use std::path::Path;
 use std::rc;
 
-use crate::accounts::base::AccountFileIO;
+use crate::accounts::base::budget::Budget;
 use crate::accounts::base::fixed_account::FixedAccountFileIO;
-use crate::accounts::growth::report_growth;
-use crate::accounts::{KEY_BARCHART_BUDGET, KEY_BARCHART_EXPENDITURES};
 use crate::accounts::base::fixed_account::FixedLedger;
 use crate::accounts::base::fixed_account::{FixedGrowth, FixedValuable};
+use crate::accounts::base::AccountFileIO;
 use crate::accounts::base::{AccountContext, Valuable};
-use crate::accounts::FilePathHelper;
-use crate::accounts::base::budget::Budget;
 use crate::accounts::base::{HasContext, LedgerOps};
+use crate::accounts::growth::report_growth;
 use crate::accounts::growth::GrowthCalculable;
-use crate::accounts::KEY_TOTAL_VALUE;
 #[cfg(feature = "ratatui_support")]
 use crate::accounts::render::*;
+use crate::accounts::FilePathHelper;
+use crate::accounts::KEY_TOTAL_VALUE;
+use crate::accounts::{KEY_BARCHART_BUDGET, KEY_BARCHART_EXPENDITURES};
 #[cfg(feature = "ratatui_support")]
 use crate::app::app::{App, BarChartData, DisplayValue};
 #[cfg(feature = "ratatui_support")]
@@ -100,7 +100,7 @@ use crate::types::ledger::Expenditure;
 use crate::ui::{centered_rect, float_range};
 
 pub struct Wallet {
-    ctx : AccountContext
+    ctx: AccountContext,
 }
 
 impl HasContext for Wallet {
@@ -134,7 +134,12 @@ impl Valuable for Wallet {
 impl FixedValuable for Wallet {}
 
 impl GrowthCalculable for Wallet {
-    fn calculate_growth(&self, metric: super::growth::GrowthMetric, start_date : NaiveDate, end_date : NaiveDate) -> f32 {
+    fn calculate_growth(
+        &self,
+        metric: super::growth::GrowthMetric,
+        start_date: NaiveDate,
+        end_date: NaiveDate,
+    ) -> f32 {
         self.fixed_growth(metric, start_date, end_date)
     }
 }
@@ -157,18 +162,19 @@ impl FixedAccountFileIO for Wallet {}
 impl Wallet {
     pub fn new(uid: u32, id: u32, db: &DbConn) -> Self {
         let mut acct: Wallet = Self {
-            ctx : AccountContext { 
-                aid: id, 
-                uid : uid,
-                db: db.clone(), 
-                open_date: Local::now().date_naive() 
+            ctx: AccountContext {
+                aid: id,
+                uid: uid,
+                db: db.clone(),
+                open_date: Local::now().date_naive(),
             },
         };
 
         let mut ledger = acct.get_ledger();
         if !ledger.is_empty() {
             ledger.sort_by(|l1, l2| (&l1.info.date).cmp(&l2.info.date));
-            acct.ctx.open_date = NaiveDate::parse_from_str(&ledger[0].info.date, "%Y-%m-%d").unwrap();
+            acct.ctx.open_date =
+                NaiveDate::parse_from_str(&ledger[0].info.date, "%Y-%m-%d").unwrap();
         }
 
         acct
@@ -222,7 +228,8 @@ impl AccountCreation for Wallet {
 
 impl AccountOperations for Wallet {
     fn record(&mut self) {
-        const RECORD_OPTIONS: [&'static str; 5] = ["Accrual", "Deposit", "Fee", "Withdrawal", "None"];
+        const RECORD_OPTIONS: [&'static str; 5] =
+            ["Accrual", "Deposit", "Fee", "Withdrawal", "None"];
         loop {
             let action = Select::new(
                 "\nWhat transaction would you like to record?",
@@ -287,7 +294,11 @@ impl AccountOperations for Wallet {
                 },
                 "Categories" => {
                     loop {
-                        let records = self.ctx.db.get_categories(self.ctx.uid, self.ctx.aid).unwrap();
+                        let records = self
+                            .ctx
+                            .db
+                            .get_categories(self.ctx.uid, self.ctx.aid)
+                            .unwrap();
                         let mut choices: Vec<String> = records
                             .iter()
                             .map(|x| x.category.name.clone())
@@ -321,7 +332,9 @@ impl AccountOperations for Wallet {
                             }
                             "Remove" => {
                                 // check if category is referenced by any current ledger
-                                let is_referenced = self.ctx.db
+                                let is_referenced = self
+                                    .ctx
+                                    .db
                                     .check_if_ledger_references_category(
                                         self.ctx.uid,
                                         self.ctx.aid,
@@ -336,7 +349,8 @@ impl AccountOperations for Wallet {
                                             "{} | {} | {} | {} ",
                                             record.info.date,
                                             chosen_category.clone(),
-                                            self.ctx.db
+                                            self.ctx
+                                                .db
                                                 .get_participant(
                                                     self.ctx.uid,
                                                     self.ctx.aid,
@@ -391,8 +405,11 @@ impl AccountOperations for Wallet {
                                 panic!("Unrecognized input: {}", selected_ptype);
                             }
                         };
-                        let participants =
-                            self.ctx.db.get_participants(self.ctx.uid, self.ctx.aid, ptype).unwrap();
+                        let participants = self
+                            .ctx
+                            .db
+                            .get_participants(self.ctx.uid, self.ctx.aid, ptype)
+                            .unwrap();
                         let mut people = participants
                             .iter()
                             .map(|x| x.participant.name.clone())
@@ -422,7 +439,8 @@ impl AccountOperations for Wallet {
                                     .prompt()
                                     .unwrap()
                                     .to_string();
-                                self.ctx.db
+                                self.ctx
+                                    .db
                                     .update_participant_name(
                                         self.ctx.uid,
                                         self.ctx.aid,
@@ -434,7 +452,9 @@ impl AccountOperations for Wallet {
                             }
                             "Remove" => {
                                 // check if participant is referenced by any current ledger
-                                let is_referenced = self.ctx.db
+                                let is_referenced = self
+                                    .ctx
+                                    .db
                                     .check_if_ledger_references_participant(
                                         self.ctx.uid,
                                         self.ctx.aid,
@@ -449,7 +469,8 @@ impl AccountOperations for Wallet {
                                         let v = format!(
                                             "{} | {} | {} | {} ",
                                             record.info.date,
-                                            self.ctx.db
+                                            self.ctx
+                                                .db
                                                 .get_category_name(
                                                     self.ctx.uid,
                                                     self.ctx.aid,
@@ -469,7 +490,8 @@ impl AccountOperations for Wallet {
                                 if delete {
                                     match ptype {
                                         ParticipantType::Payee => {
-                                            self.ctx.db
+                                            self.ctx
+                                                .db
                                                 .remove_participant(
                                                     self.ctx.uid,
                                                     self.ctx.aid,
@@ -479,7 +501,8 @@ impl AccountOperations for Wallet {
                                                 .unwrap();
                                         }
                                         ParticipantType::Payer => {
-                                            self.ctx.db
+                                            self.ctx
+                                                .db
                                                 .remove_participant(
                                                     self.ctx.uid,
                                                     self.ctx.aid,
@@ -489,7 +512,8 @@ impl AccountOperations for Wallet {
                                                 .unwrap();
                                         }
                                         _ => {
-                                            self.ctx.db
+                                            self.ctx
+                                                .db
                                                 .remove_participant(
                                                     self.ctx.uid,
                                                     self.ctx.aid,
@@ -497,7 +521,8 @@ impl AccountOperations for Wallet {
                                                     chosen_person.clone(),
                                                 )
                                                 .unwrap();
-                                            self.ctx.db
+                                            self.ctx
+                                                .db
                                                 .remove_participant(
                                                     self.ctx.uid,
                                                     self.ctx.aid,
@@ -599,7 +624,7 @@ impl AccountUI for Wallet {
         app.page_cache_f32 = Some(kv);
         app.ledger_entries = Some(self.get_displayable_ledger());
         app.linechart_cache = None;
-        app.barchart_cache = get_budget_barchart_data(self,app);
+        app.barchart_cache = get_budget_barchart_data(self, app);
     }
 
     fn render(&self, frame: &mut Frame, area: Rect, app: &mut App) {

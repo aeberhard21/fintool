@@ -51,31 +51,38 @@ use shared_lib::{FlatLedgerEntry, LedgerEntry};
 use std::collections::HashMap;
 use std::path::Path;
 
-use crate::accounts::base::AccountFileIO;
+use crate::accounts::base::fixed_account::FixedAccount;
+use crate::accounts::base::interest_bearing_fixed_account::InterestBearingFixedAccount;
+use crate::accounts::base::interest_bearing_fixed_account::InterestBearingLedger;
+use crate::accounts::base::variable_account::get_positions;
 use crate::accounts::base::variable_account::VariableAccountFileIO;
-use crate::accounts::{KEY_COMPOUNDED_ANNUAL_RATE_OF_RETURN, KEY_MONEY_WEIGHTED_RATE_OF_RETURN, KEY_TIME_WEIGHTED_RATE_OF_RETURN, KEY_REMAINING_CONTRIBUTION, KEY_CONTRIBUTION_LIMIT};
-use crate::accounts::AnalysisPeriod;
+use crate::accounts::base::variable_account::VariableGrowth;
+use crate::accounts::base::variable_account::VariableLedger;
+use crate::accounts::base::variable_account::VariableValuable;
+use crate::accounts::base::variable_account::{
+    allocate_sale_stock, allocate_stock_split, confirm_public_ticker, get_position_stats,
+    get_value_of_positions_on_day, initialize_buffer, manually_record_stock_close_price,
+};
 use crate::accounts::base::AccountContext;
+use crate::accounts::base::AccountFileIO;
 use crate::accounts::base::HasContext;
 use crate::accounts::base::HasVariableAccountContext;
 use crate::accounts::base::LedgerOps;
 use crate::accounts::base::Valuable;
-use crate::accounts::base::VariableAccountContext;
-use crate::accounts::base::fixed_account::FixedAccount;
-use crate::accounts::base::interest_bearing_fixed_account::InterestBearingFixedAccount;
-use crate::accounts::base::interest_bearing_fixed_account::InterestBearingLedger;
-use crate::accounts::base::variable_account::VariableGrowth;
-use crate::accounts::base::variable_account::VariableLedger;
-use crate::accounts::base::variable_account::VariableValuable;
-use crate::accounts::base::variable_account::get_positions;
-use crate::accounts::base::variable_account::{allocate_stock_split, allocate_sale_stock,confirm_public_ticker,get_position_stats,get_value_of_positions_on_day, initialize_buffer, manually_record_stock_close_price};
 use crate::accounts::base::ValueLimited;
-use crate::accounts::FilePathHelper;
+use crate::accounts::base::VariableAccountContext;
+use crate::accounts::growth::report_growth;
 use crate::accounts::growth::GrowthCalculable;
 use crate::accounts::growth::GrowthMetric;
-use crate::accounts::growth::report_growth;
 #[cfg(feature = "ratatui_support")]
 use crate::accounts::render::*;
+use crate::accounts::AnalysisPeriod;
+use crate::accounts::FilePathHelper;
+use crate::accounts::{
+    KEY_COMPOUNDED_ANNUAL_RATE_OF_RETURN, KEY_CONTRIBUTION_LIMIT,
+    KEY_MONEY_WEIGHTED_RATE_OF_RETURN, KEY_REMAINING_CONTRIBUTION,
+    KEY_TIME_WEIGHTED_RATE_OF_RETURN,
+};
 #[cfg(feature = "ratatui_support")]
 use crate::app::app::{App, DisplayValue, LineChart};
 #[cfg(feature = "ratatui_support")]
@@ -101,6 +108,8 @@ use rustyline::Editor;
 use shared_lib::TransferType;
 
 use super::base::variable_account::VariableAccount;
+#[cfg(feature = "ratatui_support")]
+use super::render_table_tabs;
 use super::Account;
 use super::AccountCreation;
 use super::AccountData;
@@ -109,13 +118,11 @@ use super::AccountOperations;
 use super::AccountUI;
 use super::KEY_TOTAL_VALUE;
 #[cfg(feature = "ratatui_support")]
-use super::render_table_tabs;
-#[cfg(feature = "ratatui_support")]
 use crate::ui::{centered_rect, float_range};
 
 pub struct HealthSavingsAccount {
-    ctx : AccountContext,
-    vctx : VariableAccountContext
+    ctx: AccountContext,
+    vctx: VariableAccountContext,
 }
 
 impl HasContext for HealthSavingsAccount {
@@ -158,14 +165,19 @@ impl Valuable for HealthSavingsAccount {
     }
 
     fn get_account_value_on_day(&self, day: &NaiveDate) -> Option<f32> {
-        self.variable_value_on_day(day)   
+        self.variable_value_on_day(day)
     }
 }
 
 impl VariableValuable for HealthSavingsAccount {}
 
-impl GrowthCalculable for HealthSavingsAccount { 
-    fn calculate_growth(&self, metric: GrowthMetric, start_date : NaiveDate, end_date : NaiveDate) -> f32 {
+impl GrowthCalculable for HealthSavingsAccount {
+    fn calculate_growth(
+        &self,
+        metric: GrowthMetric,
+        start_date: NaiveDate,
+        end_date: NaiveDate,
+    ) -> f32 {
         self.variable_growth(metric, start_date, end_date)
     }
 }
@@ -179,9 +191,10 @@ impl ValueLimited for HealthSavingsAccount {
     }
     fn remaining(&self) -> f32 {
         let contribution_limit = self.account_limit();
-        let (start, end) =
-            get_analysis_period_dates(self.get_open_date(), &AnalysisPeriod::YTD);
-        let contributions_ytd = self.ctx.db
+        let (start, end) = get_analysis_period_dates(self.get_open_date(), &AnalysisPeriod::YTD);
+        let contributions_ytd = self
+            .ctx
+            .db
             .get_ledger_entries_within_timestamps(self.ctx.uid, self.ctx.aid, start, end)
             .unwrap();
         let aggregate: f32 = contributions_ytd
@@ -263,13 +276,13 @@ impl HealthSavingsAccount {
         };
 
         let mut acct = Self {
-            ctx : AccountContext { 
-                uid : uid, 
-                aid : id,
-                db : db.clone(), 
-                open_date : open_date,
+            ctx: AccountContext {
+                uid: uid,
+                aid: id,
+                db: db.clone(),
+                open_date: open_date,
             },
-            vctx : VariableAccountContext { buffer: None }
+            vctx: VariableAccountContext { buffer: None },
         };
 
         let data = initialize_buffer(&acct.ctx, &acct.vctx);
@@ -301,7 +314,7 @@ impl AccountOperations for HealthSavingsAccount {
             .unwrap()
             .to_string();
             match action.as_str() {
-                "Accrual" => { 
+                "Accrual" => {
                     self.accrual(None, false);
                 }
                 "Fee" => {
@@ -393,7 +406,11 @@ impl AccountOperations for HealthSavingsAccount {
                 }
                 "Categories" => {
                     loop {
-                        let records = self.ctx.db.get_categories(self.ctx.uid, self.ctx.aid).unwrap();
+                        let records = self
+                            .ctx
+                            .db
+                            .get_categories(self.ctx.uid, self.ctx.aid)
+                            .unwrap();
                         let mut choices: Vec<String> = records
                             .iter()
                             .map(|x| x.category.name.clone())
@@ -427,7 +444,9 @@ impl AccountOperations for HealthSavingsAccount {
                             }
                             "Remove" => {
                                 // check if category is referenced by any current ledger
-                                let is_referenced = self.ctx.db
+                                let is_referenced = self
+                                    .ctx
+                                    .db
                                     .check_if_ledger_references_category(
                                         self.ctx.uid,
                                         self.ctx.aid,
@@ -442,7 +461,8 @@ impl AccountOperations for HealthSavingsAccount {
                                             "{} | {} | {} | {} ",
                                             record.info.date,
                                             chosen_category.clone(),
-                                            self.ctx.db
+                                            self.ctx
+                                                .db
                                                 .get_participant(
                                                     self.ctx.uid,
                                                     self.ctx.aid,
@@ -497,8 +517,11 @@ impl AccountOperations for HealthSavingsAccount {
                                 panic!("Unrecognized input: {}", selected_ptype);
                             }
                         };
-                        let participants =
-                            self.ctx.db.get_participants(self.ctx.uid, self.ctx.aid, ptype).unwrap();
+                        let participants = self
+                            .ctx
+                            .db
+                            .get_participants(self.ctx.uid, self.ctx.aid, ptype)
+                            .unwrap();
                         let mut people = participants
                             .iter()
                             .map(|x| x.participant.name.clone())
@@ -528,7 +551,8 @@ impl AccountOperations for HealthSavingsAccount {
                                     .prompt()
                                     .unwrap()
                                     .to_string();
-                                self.ctx.db
+                                self.ctx
+                                    .db
                                     .update_participant_name(
                                         self.ctx.uid,
                                         self.ctx.aid,
@@ -540,7 +564,9 @@ impl AccountOperations for HealthSavingsAccount {
                             }
                             "Remove" => {
                                 // check if participant is referenced by any current ledger
-                                let is_referenced = self.ctx.db
+                                let is_referenced = self
+                                    .ctx
+                                    .db
                                     .check_if_ledger_references_participant(
                                         self.ctx.uid,
                                         self.ctx.aid,
@@ -555,7 +581,8 @@ impl AccountOperations for HealthSavingsAccount {
                                         let v = format!(
                                             "{} | {} | {} | {} ",
                                             record.info.date,
-                                            self.ctx.db
+                                            self.ctx
+                                                .db
                                                 .get_category_name(
                                                     self.ctx.uid,
                                                     self.ctx.aid,
@@ -575,7 +602,8 @@ impl AccountOperations for HealthSavingsAccount {
                                 if delete {
                                     match ptype {
                                         ParticipantType::Payee => {
-                                            self.ctx.db
+                                            self.ctx
+                                                .db
                                                 .remove_participant(
                                                     self.ctx.uid,
                                                     self.ctx.aid,
@@ -585,7 +613,8 @@ impl AccountOperations for HealthSavingsAccount {
                                                 .unwrap();
                                         }
                                         ParticipantType::Payer => {
-                                            self.ctx.db
+                                            self.ctx
+                                                .db
                                                 .remove_participant(
                                                     self.ctx.uid,
                                                     self.ctx.aid,
@@ -595,7 +624,8 @@ impl AccountOperations for HealthSavingsAccount {
                                                 .unwrap();
                                         }
                                         _ => {
-                                            self.ctx.db
+                                            self.ctx
+                                                .db
                                                 .remove_participant(
                                                     self.ctx.uid,
                                                     self.ctx.aid,
@@ -603,7 +633,8 @@ impl AccountOperations for HealthSavingsAccount {
                                                     chosen_person.clone(),
                                                 )
                                                 .unwrap();
-                                            self.ctx.db
+                                            self.ctx
+                                                .db
                                                 .remove_participant(
                                                     self.ctx.uid,
                                                     self.ctx.aid,
@@ -651,12 +682,7 @@ impl AccountOperations for HealthSavingsAccount {
     }
 
     fn report(&self) {
-        const REPORT_OPTIONS: [&'static str; 4] = [
-            "Positions",
-            "Total Value",
-            "Growth",
-            "None",
-        ];
+        const REPORT_OPTIONS: [&'static str; 4] = ["Positions", "Total Value", "Growth", "None"];
         let choice = Select::new("What would you like to report: ", REPORT_OPTIONS.to_vec())
             .prompt()
             .unwrap()
@@ -699,7 +725,6 @@ impl AccountOperations for HealthSavingsAccount {
             }
         }
     }
-
 }
 
 impl AccountData for HealthSavingsAccount {}
@@ -742,7 +767,7 @@ impl AccountUI for HealthSavingsAccount {
 
         app.page_cache_f32 = Some(kv);
         app.ledger_entries = Some(self.get_displayable_ledger());
-        app.linechart_cache = get_time_period_investment_linechart(self,app);
+        app.linechart_cache = get_time_period_investment_linechart(self, app);
         app.barchart_cache = None;
         app.positions_entries = get_position_stats(self.ctx(), self.variable_ctx());
     }
@@ -800,15 +825,33 @@ impl AccountUI for HealthSavingsAccount {
 
         // color according to current selection
         if let Some(current_selection) = app.currently_selected {
-            match current_selection { 
-                CurrentlySelecting::Account => { 
-                    render_table_tabs(frame, table_tab_area, self.renders_tables(), app.selected_table_tab, Color::Red);
+            match current_selection {
+                CurrentlySelecting::Account => {
+                    render_table_tabs(
+                        frame,
+                        table_tab_area,
+                        self.renders_tables(),
+                        app.selected_table_tab,
+                        Color::Red,
+                    );
                 }
-                CurrentlySelecting::Table => { 
-                    render_table_tabs(frame, table_tab_area, self.renders_tables(), app.selected_table_tab, Color::Green);
+                CurrentlySelecting::Table => {
+                    render_table_tabs(
+                        frame,
+                        table_tab_area,
+                        self.renders_tables(),
+                        app.selected_table_tab,
+                        Color::Green,
+                    );
                 }
                 _ => {
-                    render_table_tabs(frame, table_tab_area, self.renders_tables(), app.selected_table_tab, Color::Reset);
+                    render_table_tabs(
+                        frame,
+                        table_tab_area,
+                        self.renders_tables(),
+                        app.selected_table_tab,
+                        Color::Reset,
+                    );
                 }
             }
         }
@@ -817,10 +860,10 @@ impl AccountUI for HealthSavingsAccount {
             0 => {
                 render_ledger_table(frame, ledger_area, app);
             }
-            _ => { 
+            _ => {
                 render_positions_table(frame, ledger_area, app);
             }
-        }   
+        }
         render_time_period_investment_linechart(frame, graph_area, app);
         render_current_value(frame, value_area, app);
         render_remaining_contribution(frame, contribution_area, app);
@@ -845,7 +888,9 @@ impl Account for HealthSavingsAccount {
     fn set_budget(&self) {
         let mut acct = self.ctx.db.get_account(self.ctx.uid, self.ctx.aid).unwrap();
         acct.info.has_budget = true;
-        let _ = self.ctx.db
+        let _ = self
+            .ctx
+            .db
             .update_account(self.ctx.uid, self.ctx.aid, &acct.info)
             .unwrap();
     }

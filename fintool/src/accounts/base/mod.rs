@@ -14,27 +14,29 @@
   You should have received a copy of the GNU General Public License
   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 -----------------------------------------------------------------------*/
+use crate::accounts::Account;
 #[cfg(feature = "ratatui_support")]
 use crate::app::app::{App, DisplayValue};
 #[cfg(feature = "ratatui_support")]
-use crate::app::screen::{ledger_table_constraint_len_calculator, positions_table_constraint_len_calculator};
+use crate::app::screen::{
+    ledger_table_constraint_len_calculator, positions_table_constraint_len_calculator,
+};
 use crate::database::DbConn;
-use crate::types::participants::{ParticipantAutoCompleter, ParticipantType};
+use crate::tui::{decode_and_init_account_type, prompt_and_create_new_account};
 use crate::types::accounts::AccountRecord;
 use crate::types::accounts::AccountType;
 use crate::types::ledger::{DisplayableLedgerRecord, LedgerInfo, LedgerRecord};
-use crate::tui::{decode_and_init_account_type, prompt_and_create_new_account};
+use crate::types::participants::{ParticipantAutoCompleter, ParticipantType};
 #[cfg(feature = "ratatui_support")]
 use crate::ui::centered_rect;
-use chrono::{Datelike, Local, Month, NaiveDate, NaiveDateTime, naive};
+use chrono::{naive, Datelike, Local, Month, NaiveDate, NaiveDateTime};
+use core::f32;
 use inquire::*;
 use rusqlite::config::DbConfig;
 use shared_lib::{LedgerEntry, TransferType};
-use core::f32;
 use std::any::Any;
 use std::collections::HashMap;
 use yahoo_finance_api::Quote;
-use crate::accounts::Account;
 
 pub mod budget;
 pub mod charge_account;
@@ -47,22 +49,18 @@ pub struct AccountContext {
     pub aid: u32,
     pub uid: u32,
     pub db: DbConn,
-    pub open_date : NaiveDate,
+    pub open_date: NaiveDate,
 }
 
-pub trait HasContext { 
+pub trait HasContext {
     fn ctx(&self) -> &AccountContext;
     fn ctx_mut(&mut self) -> &mut AccountContext;
 }
 
-pub trait LedgerOps : HasContext {
+pub trait LedgerOps: HasContext {
     fn modify(&mut self, selected_record: LedgerRecord) -> Option<LedgerRecord>;
 
-    fn link_transaction(
-        &self,
-        initial_opt: Option<String>,
-    ) -> Option<(Box<dyn Account>, String)> {
-
+    fn link_transaction(&self, initial_opt: Option<String>) -> Option<(Box<dyn Account>, String)> {
         let ctx = Self::ctx(&self);
 
         let default_to_use;
@@ -146,14 +144,17 @@ pub trait LedgerOps : HasContext {
         let ctx = self.ctx();
         return ctx.db.get_displayable_ledger(ctx.uid, ctx.aid).unwrap();
     }
-    
+
     fn get_external_transactions_between_timestamps(
         &self,
         start_date: NaiveDate,
         end_date: NaiveDate,
     ) -> Option<Vec<LedgerRecord>> {
         let ctx: &AccountContext = Self::ctx(&self);
-        let ledger = ctx.db.get_external_transactions_between_timestamps(ctx.uid, ctx.aid, start_date, end_date).unwrap();
+        let ledger = ctx
+            .db
+            .get_external_transactions_between_timestamps(ctx.uid, ctx.aid, start_date, end_date)
+            .unwrap();
         ledger
     }
 
@@ -162,8 +163,11 @@ pub trait LedgerOps : HasContext {
         start_date: NaiveDate,
         end_date: NaiveDate,
     ) -> Vec<LedgerRecord> {
-        let ctx: &AccountContext = Self::ctx(&self);    
-        let ledger = ctx.db.get_ledger_entries_within_timestamps(ctx.uid, ctx.aid,start_date, end_date).unwrap();
+        let ctx: &AccountContext = Self::ctx(&self);
+        let ledger = ctx
+            .db
+            .get_ledger_entries_within_timestamps(ctx.uid, ctx.aid, start_date, end_date)
+            .unwrap();
         ledger
     }
 
@@ -215,16 +219,16 @@ pub trait LedgerOps : HasContext {
     }
 }
 
-pub struct VariableAccountContext { 
+pub struct VariableAccountContext {
     pub buffer: Option<Vec<StockData>>,
 }
 
-pub trait HasVariableAccountContext { 
+pub trait HasVariableAccountContext {
     fn variable_ctx(&self) -> &VariableAccountContext;
     fn variable_ctx_mut(&mut self) -> &mut VariableAccountContext;
 }
 
-pub trait Valuable : HasContext {
+pub trait Valuable: HasContext {
     fn account_value(&self) -> Option<f32>;
     fn get_account_value_on_day(&self, day: &NaiveDate) -> Option<f32>;
 }
@@ -234,16 +238,17 @@ pub trait ValueLimited: HasContext {
     fn remaining(&self) -> f32;
     fn value_reset_date(&self) -> NaiveDate {
         let today = Local::now().date_naive();
-        let reset = NaiveDate::from_ymd_opt(today.year(), Month::December.number_from_month(), 31).expect("Unable to formulate date!");
+        let reset = NaiveDate::from_ymd_opt(today.year(), Month::December.number_from_month(), 31)
+            .expect("Unable to formulate date!");
         reset
     }
     fn days_until_limit_reset(&self) -> u32 {
         let local = Local::now().date_naive();
-        return (local-self.value_reset_date()).num_days() as u32;
+        return (local - self.value_reset_date()).num_days() as u32;
     }
 }
 
-pub trait AccountFileIO : HasContext + LedgerOps {
+pub trait AccountFileIO: HasContext + LedgerOps {
     fn import(&self);
     fn export(&self);
 }
@@ -262,40 +267,40 @@ pub struct SharesOwned {
 }
 
 #[derive(Debug, Clone)]
-pub struct DisplayablePositionStatistics { 
-    pub ticker : String,
-    pub quantity : String, 
-    pub value : String, 
-    pub price : String,
-    pub total_cost_basis : String, 
-    pub unit_cost : String, 
-    pub unrealized_gl : String,
-    pub unrealized_gl_per : String,
+pub struct DisplayablePositionStatistics {
+    pub ticker: String,
+    pub quantity: String,
+    pub value: String,
+    pub price: String,
+    pub total_cost_basis: String,
+    pub unit_cost: String,
+    pub unrealized_gl: String,
+    pub unrealized_gl_per: String,
 }
 
 impl DisplayablePositionStatistics {
-    pub fn get_ticker_str() -> String { 
+    pub fn get_ticker_str() -> String {
         "Ticker".to_string()
     }
-    pub fn get_quantity_str() -> String { 
+    pub fn get_quantity_str() -> String {
         "Quantity (UoM)".to_string()
     }
-    pub fn get_value_str() -> String { 
+    pub fn get_value_str() -> String {
         "Value ($)".to_string()
-    }    
-    pub fn get_price_str() -> String { 
+    }
+    pub fn get_price_str() -> String {
         "Price ($)".to_string()
-    }    
-    pub fn get_total_cost_basis_str() -> String { 
+    }
+    pub fn get_total_cost_basis_str() -> String {
         "Total Cost Basis ($)".to_string()
     }
-    pub fn get_unit_cost_str() -> String { 
+    pub fn get_unit_cost_str() -> String {
         "Unit Cost ($)".to_string()
     }
-    pub fn get_unrealized_gl_str() -> String { 
+    pub fn get_unrealized_gl_str() -> String {
         "Unrealized G/L ($)".to_string()
     }
-    pub fn get_unrealized_gl_per_str() -> String { 
+    pub fn get_unrealized_gl_per_str() -> String {
         "Unrealized G/L (%)".to_string()
-    }   
+    }
 }

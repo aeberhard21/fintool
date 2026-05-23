@@ -32,9 +32,17 @@ use yahoo_finance_api::Quote;
 use yahoo_finance_api::YahooError;
 
 use crate::accounts::base::fixed_account::{fixed_account_value, fixed_account_value_on_day};
-use crate::accounts::base::{AccountContext, AccountFileIO, DisplayablePositionStatistics, HasContext, HasVariableAccountContext, LedgerOps, SharesOwned, StockData, Valuable, VariableAccountContext};
-use crate::accounts::growth::{GrowthCalculable, GrowthMetric, compound_annual_growth_rate, money_weighted_return, simple_rate_of_return, time_weighted_return};
-use crate::accounts::base::interest_bearing_fixed_account::{InterestBearingFixedAccount, InterestBearingLedger};
+use crate::accounts::base::interest_bearing_fixed_account::{
+    InterestBearingFixedAccount, InterestBearingLedger,
+};
+use crate::accounts::base::{
+    AccountContext, AccountFileIO, DisplayablePositionStatistics, HasContext,
+    HasVariableAccountContext, LedgerOps, SharesOwned, StockData, Valuable, VariableAccountContext,
+};
+use crate::accounts::growth::{
+    compound_annual_growth_rate, money_weighted_return, simple_rate_of_return,
+    time_weighted_return, GrowthCalculable, GrowthMetric,
+};
 use crate::database::DbConn;
 use crate::types::investments::{
     SaleAllocationInfo, SaleAllocationRecord, StockInfo, StockRecord, StockSplitAllocationInfo,
@@ -78,8 +86,9 @@ pub struct FilePathHelper {
     pub colored_prompt: String,
 }
 
-pub trait VariableAccount : HasContext + HasVariableAccountContext + InterestBearingFixedAccount {
-
+pub trait VariableAccount:
+    HasContext + HasVariableAccountContext + InterestBearingFixedAccount
+{
     fn purchase_stock(
         &mut self,
         initial_opt: Option<StockRecord>,
@@ -157,14 +166,12 @@ pub trait VariableAccount : HasContext + HasVariableAccountContext + InterestBea
         let public_ticker = confirm_public_ticker(ticker.clone());
         let manual_entry = if !public_ticker {
             // check if already a member that is being tracked.
-            let pid_opt = ctx.db.get_participant_id(
-                ctx.uid,
-                ctx.aid,
-                ticker.clone(),
-                ParticipantType::Payee,
-            );
+            let pid_opt =
+                ctx.db
+                    .get_participant_id(ctx.uid, ctx.aid, ticker.clone(), ParticipantType::Payee);
             if let Some(pid) = pid_opt {
-                let stock_is_tracked = ctx.db
+                let stock_is_tracked = ctx
+                    .db
                     .check_and_get_stock_price_record_matching_from_participant_id(
                         ctx.uid, ctx.aid, pid,
                     )
@@ -252,7 +259,8 @@ pub trait VariableAccount : HasContext + HasVariableAccountContext + InterestBea
                 .unwrap()
         };
 
-        let cid = ctx.db
+        let cid = ctx
+            .db
             .check_and_add_category(ctx.uid, ctx.aid, "buy".to_ascii_uppercase());
 
         purchase = LedgerInfo {
@@ -477,7 +485,8 @@ pub trait VariableAccount : HasContext + HasVariableAccountContext + InterestBea
             ledger_id: ledger_id,
         };
 
-        let sale_id = ctx.db
+        let sale_id = ctx
+            .db
             .add_stock_sale(ctx.uid, ctx.aid, sale_record.clone())
             .unwrap();
 
@@ -497,7 +506,6 @@ pub trait VariableAccount : HasContext + HasVariableAccountContext + InterestBea
         allocate_sale_stock(ctx, sale_info, sell_method);
         let data = initialize_buffer(ctx, vctx);
         self.variable_ctx_mut().buffer = data;
-
 
         return Some(LedgerRecord {
             id: ledger_id,
@@ -613,7 +621,8 @@ pub trait VariableAccount : HasContext + HasVariableAccountContext + InterestBea
         // if split is for a manually entered stock,
         // then all previous stock price records
         // need to be updated
-        let price_records = ctx.db
+        let price_records = ctx
+            .db
             .check_and_get_stock_price_record_matching_from_participant_id(ctx.uid, ctx.aid, pid)
             .unwrap();
         if !price_records.is_empty() {
@@ -652,7 +661,8 @@ pub trait VariableAccount : HasContext + HasVariableAccountContext + InterestBea
                 .unwrap()
         };
 
-        let stock_split_id = ctx.db
+        let stock_split_id = ctx
+            .db
             .add_stock_split(ctx.uid, ctx.aid, split.clone(), lid)
             .unwrap();
 
@@ -676,9 +686,10 @@ pub trait VariableAccount : HasContext + HasVariableAccountContext + InterestBea
     }
 }
 
-pub fn allocate_sale_stock(ctx : &AccountContext, record: StockRecord, method: String) {
+pub fn allocate_sale_stock(ctx: &AccountContext, record: StockRecord, method: String) {
     let stocks: Vec<StockRecord>;
-    let ticker = ctx.db
+    let ticker = ctx
+        .db
         .get_participant(
             ctx.uid,
             ctx.aid,
@@ -690,12 +701,14 @@ pub fn allocate_sale_stock(ctx : &AccountContext, record: StockRecord, method: S
         .unwrap();
     match method.as_str() {
         "LIFO" => {
-            stocks = ctx.db
+            stocks = ctx
+                .db
                 .get_stock_history_ascending(ctx.uid, ctx.aid, ticker)
                 .unwrap();
         }
         "FIFO" => {
-            stocks = ctx.db
+            stocks = ctx
+                .db
                 .get_stock_history_descending(ctx.uid, ctx.aid, ticker)
                 .unwrap();
         }
@@ -733,8 +746,7 @@ pub fn allocate_sale_stock(ctx : &AccountContext, record: StockRecord, method: S
                 num_shares_allocated,
             )
             .unwrap();
-        num_shares_remaining_to_allocate =
-            num_shares_remaining_to_allocate - num_shares_allocated;
+        num_shares_remaining_to_allocate = num_shares_remaining_to_allocate - num_shares_allocated;
 
         // if there are no shares to allocate, we are done here and all sales
         // are accounted for
@@ -744,13 +756,15 @@ pub fn allocate_sale_stock(ctx : &AccountContext, record: StockRecord, method: S
     }
 }
 
-fn deallocate_sale_stock(ctx : &AccountContext, vctx : &VariableAccountContext, sale_id: u32) {
-    let stock_allocation_records = ctx.db
+fn deallocate_sale_stock(ctx: &AccountContext, vctx: &VariableAccountContext, sale_id: u32) {
+    let stock_allocation_records = ctx
+        .db
         .get_stock_sale_allocation_for_sale_id(ctx.uid, ctx.aid, sale_id)
         .unwrap();
     for record in stock_allocation_records {
         // add shares back to ledger
-        let _ = ctx.db
+        let _ = ctx
+            .db
             .add_to_stock_remaining(
                 ctx.uid,
                 ctx.aid,
@@ -763,7 +777,11 @@ fn deallocate_sale_stock(ctx : &AccountContext, vctx : &VariableAccountContext, 
     }
 }
 
-pub fn allocate_stock_split(ctx : &AccountContext, vctx : &VariableAccountContext, record: StockSplitRecord) {
+pub fn allocate_stock_split(
+    ctx: &AccountContext,
+    vctx: &VariableAccountContext,
+    record: StockSplitRecord,
+) {
     if record.txn_opt.is_none() {
         panic!(
             "Expected ledger data matching stock split id: {}",
@@ -772,7 +790,8 @@ pub fn allocate_stock_split(ctx : &AccountContext, vctx : &VariableAccountContex
     }
     let split_txn = record.txn_opt.unwrap();
 
-    let ticker = ctx.db
+    let ticker = ctx
+        .db
         .get_participant(ctx.uid, ctx.aid, split_txn.participant)
         .unwrap();
     let stock_purchase_records = ctx.db.get_stocks(ctx.uid, ctx.aid, ticker).unwrap();
@@ -816,7 +835,8 @@ pub fn allocate_stock_split(ctx : &AccountContext, vctx : &VariableAccountContex
             .unwrap();
 
         // if stock was part of sale, we need to increase number of stocks sold by factor
-        let sale_allocations_opt = ctx.db
+        let sale_allocations_opt = ctx
+            .db
             .check_and_get_stock_sale_allocation_record_matching_from_purchase_id(
                 ctx.uid, ctx.aid, stock.id,
             )
@@ -827,7 +847,8 @@ pub fn allocate_stock_split(ctx : &AccountContext, vctx : &VariableAccountContex
         }
         let sale_allocations = sale_allocations_opt.unwrap();
         for sale_allocation in sale_allocations {
-            let sale_txn_opt = ctx.db
+            let sale_txn_opt = ctx
+                .db
                 .check_and_get_stock_sale_record_matching_from_sale_id(
                     ctx.uid,
                     ctx.aid,
@@ -875,8 +896,13 @@ pub fn allocate_stock_split(ctx : &AccountContext, vctx : &VariableAccountContex
     }
 }
 
-fn deallocate_stock_split(ctx : &AccountContext, vctx : &VariableAccountContext, record: StockSplitRecord) {
-    let mut stock_split_alloc_records = ctx.db
+fn deallocate_stock_split(
+    ctx: &AccountContext,
+    vctx: &VariableAccountContext,
+    record: StockSplitRecord,
+) {
+    let mut stock_split_alloc_records = ctx
+        .db
         .get_stock_split_allocation_for_stock_split_id(ctx.uid, ctx.aid, record.id)
         .unwrap();
     // remove the highest ids first
@@ -894,7 +920,8 @@ fn deallocate_stock_split(ctx : &AccountContext, vctx : &VariableAccountContext,
 
     for alloc_record in stock_split_alloc_records {
         // add shares back to ledger
-        let stock_purchase = ctx.db
+        let stock_purchase = ctx
+            .db
             .check_and_get_stock_purchase_record_matching_from_purchase_id(
                 ctx.uid,
                 ctx.aid,
@@ -926,7 +953,8 @@ fn deallocate_stock_split(ctx : &AccountContext, vctx : &VariableAccountContext,
         );
 
         // check if there have been any sales affected by this stock that would be affected by this split
-        let sale_allocations_opt = ctx.db
+        let sale_allocations_opt = ctx
+            .db
             .check_and_get_stock_sale_allocation_record_matching_from_purchase_id(
                 ctx.uid,
                 ctx.aid,
@@ -936,7 +964,8 @@ fn deallocate_stock_split(ctx : &AccountContext, vctx : &VariableAccountContext,
         if sale_allocations_opt.is_some() {
             let sale_allocations = sale_allocations_opt.unwrap();
             for sale_allocation in sale_allocations {
-                let stock_sale_opt = ctx.db
+                let stock_sale_opt = ctx
+                    .db
                     .check_and_get_stock_sale_record_matching_from_sale_id(
                         ctx.uid,
                         ctx.aid,
@@ -1002,12 +1031,13 @@ pub fn confirm_public_ticker(ticker: String) -> bool {
     }
 }
 
-pub fn get_positions(ctx : &AccountContext) -> Option<Vec<(String, f32)>> {
+pub fn get_positions(ctx: &AccountContext) -> Option<Vec<(String, f32)>> {
     return ctx.db.get_positions(ctx.uid, ctx.aid).unwrap();
 }
 
-pub fn get_costbasis(ctx : &AccountContext, vctx : &VariableAccountContext, ticker: String) -> f32 {
-    let x = ctx.db
+pub fn get_costbasis(ctx: &AccountContext, vctx: &VariableAccountContext, ticker: String) -> f32 {
+    let x = ctx
+        .db
         .get_total_cost_basis(ctx.aid, ctx.uid, ticker)
         .unwrap();
     if x.is_none() {
@@ -1017,8 +1047,11 @@ pub fn get_costbasis(ctx : &AccountContext, vctx : &VariableAccountContext, tick
     }
 }
 
-pub fn get_position_stats(ctx : &AccountContext, vctx : &VariableAccountContext) -> Option<Vec<DisplayablePositionStatistics>> {
-    #[derive(Debug,Clone)]
+pub fn get_position_stats(
+    ctx: &AccountContext,
+    vctx: &VariableAccountContext,
+) -> Option<Vec<DisplayablePositionStatistics>> {
+    #[derive(Debug, Clone)]
     struct Position {
         ticker: String,
         shares: f32,
@@ -1027,15 +1060,17 @@ pub fn get_position_stats(ctx : &AccountContext, vctx : &VariableAccountContext)
     if let Some(positions) = get_positions(ctx) {
         let positions = positions
             .iter()
-            .map(|x| Position {ticker : x.0.clone(), shares : x.1})
+            .map(|x| Position {
+                ticker: x.0.clone(),
+                shares: x.1,
+            })
             .collect::<Vec<Position>>();
-        let filtered_positions = 
-            positions
-                .iter()
-                .filter(|x| x.shares != 0.0)
-                .into_iter()
-                .map(|x| x.clone())
-                .collect::<Vec<Position>>();
+        let filtered_positions = positions
+            .iter()
+            .filter(|x| x.shares != 0.0)
+            .into_iter()
+            .map(|x| x.clone())
+            .collect::<Vec<Position>>();
 
         use std::fs::OpenOptions;
         use std::io::Write;
@@ -1045,51 +1080,60 @@ pub fn get_position_stats(ctx : &AccountContext, vctx : &VariableAccountContext)
         //     .open("debug.log")
         //     .unwrap();
 
-        let mut statistics : Vec<DisplayablePositionStatistics> = Vec::new();
+        let mut statistics: Vec<DisplayablePositionStatistics> = Vec::new();
         for position in filtered_positions {
             let x = format!("{},{},{}", ctx.uid, ctx.aid, position.ticker.to_string());
             // writeln!(file,"{x}").expect("failed to write");
             // file.flush().ok();
-            let cost_basis = ctx.db.get_total_cost_basis(ctx.uid, ctx.aid, position.ticker.clone()).unwrap().unwrap();
-            let quote_opt = get_latest_quote(ctx,vctx,  position.ticker.clone());
+            let cost_basis = ctx
+                .db
+                .get_total_cost_basis(ctx.uid, ctx.aid, position.ticker.clone())
+                .unwrap()
+                .unwrap();
+            let quote_opt = get_latest_quote(ctx, vctx, position.ticker.clone());
             let stats = if let Some(quote) = quote_opt {
                 let unit_price = quote.close as f32;
                 let current_value = unit_price * position.shares.clone();
                 let effective_unit_cost = cost_basis / position.shares.clone();
                 let unrealized_gl = current_value - cost_basis;
-                let unrealized_gl_percent = (current_value - cost_basis)/(cost_basis) * 100.;
-                
-                DisplayablePositionStatistics { 
-                    ticker: position.ticker, 
-                    quantity: format!("{:.2}",position.shares), 
-                    value: format!("{:.2}", current_value), 
-                    price: format!("{:.2}", unit_price), 
-                    total_cost_basis: format!("{:.2}", cost_basis), 
-                    unit_cost: format!("{:.2}", effective_unit_cost), 
-                    unrealized_gl: format!("{:.2}", unrealized_gl), 
-                    unrealized_gl_per: format!("{:.2}", unrealized_gl_percent) 
+                let unrealized_gl_percent = (current_value - cost_basis) / (cost_basis) * 100.;
+
+                DisplayablePositionStatistics {
+                    ticker: position.ticker,
+                    quantity: format!("{:.2}", position.shares),
+                    value: format!("{:.2}", current_value),
+                    price: format!("{:.2}", unit_price),
+                    total_cost_basis: format!("{:.2}", cost_basis),
+                    unit_cost: format!("{:.2}", effective_unit_cost),
+                    unrealized_gl: format!("{:.2}", unrealized_gl),
+                    unrealized_gl_per: format!("{:.2}", unrealized_gl_percent),
                 }
             } else {
-                DisplayablePositionStatistics { 
-                    ticker: position.ticker, 
-                    quantity: format!("{:.2}",position.shares), 
-                    value: format!("{}", "Not known!"), 
-                    price: format!("{}", "Not found!"), 
-                    total_cost_basis: format!("{:.2}", cost_basis), 
-                    unit_cost: format!("{}", "Not known!"), 
-                    unrealized_gl: format!("{}", "Not known!"), 
-                    unrealized_gl_per: format!("{}", "Not known!") }
+                DisplayablePositionStatistics {
+                    ticker: position.ticker,
+                    quantity: format!("{:.2}", position.shares),
+                    value: format!("{}", "Not known!"),
+                    price: format!("{}", "Not found!"),
+                    total_cost_basis: format!("{:.2}", cost_basis),
+                    unit_cost: format!("{}", "Not known!"),
+                    unrealized_gl: format!("{}", "Not known!"),
+                    unrealized_gl_per: format!("{}", "Not known!"),
+                }
             };
 
             statistics.push(stats)
         }
         Some(statistics)
-    } else { 
+    } else {
         None
     }
 }
 
-pub fn get_value_of_positions_on_day(ctx : &AccountContext, vctx : &VariableAccountContext, day: &NaiveDate) -> f32 {
+pub fn get_value_of_positions_on_day(
+    ctx: &AccountContext,
+    vctx: &VariableAccountContext,
+    day: &NaiveDate,
+) -> f32 {
     let mut value: f32 = 0.0;
     if let Some(buffer) = vctx.buffer.as_ref() {
         for e in buffer {
@@ -1132,7 +1176,7 @@ pub fn get_value_of_positions_on_day(ctx : &AccountContext, vctx : &VariableAcco
     return value;
 }
 
-pub fn manually_record_stock_close_price(ctx : &AccountContext) {
+pub fn manually_record_stock_close_price(ctx: &AccountContext) {
     let ticker = Text::new("What ticker are you recording for?")
         .with_autocomplete(ParticipantAutoCompleter {
             uid: ctx.uid,
@@ -1198,31 +1242,39 @@ fn convert_stock_price_record_to_quotes(
     return quotes;
 }
 
-fn get_latest_quote(ctx : &AccountContext, vctx : &VariableAccountContext, ticker : String) -> Option<Quote> {
-    if let Some(buffer) = vctx.buffer.as_ref() { 
+fn get_latest_quote(
+    ctx: &AccountContext,
+    vctx: &VariableAccountContext,
+    ticker: String,
+) -> Option<Quote> {
+    if let Some(buffer) = vctx.buffer.as_ref() {
         let rcrd = buffer.iter().find(|x| x.ticker == ticker);
-        if let Some(record) = rcrd { 
+        if let Some(record) = rcrd {
             return record.quotes.last().cloned();
-        } else { 
+        } else {
             return None;
         }
     }
     None
 }
 
-fn variable_account_value(ctx : &AccountContext, vctx : &VariableAccountContext) -> Option<f32> {
+fn variable_account_value(ctx: &AccountContext, vctx: &VariableAccountContext) -> Option<f32> {
     let today = Local::now().date_naive();
     let fixed = ctx
         .db
         .get_cumulative_total_of_ledger_on_date(ctx.uid, ctx.aid, today)
         .unwrap();
-    if fixed.is_none() { 
+    if fixed.is_none() {
         return None;
     }
-    return Some(fixed.unwrap() + get_value_of_positions_on_day(ctx, vctx,&today));
+    return Some(fixed.unwrap() + get_value_of_positions_on_day(ctx, vctx, &today));
 }
 
-fn variable_account_value_on_day(ctx : &AccountContext, vctx : &VariableAccountContext, day: &NaiveDate) -> Option<f32> {
+fn variable_account_value_on_day(
+    ctx: &AccountContext,
+    vctx: &VariableAccountContext,
+    day: &NaiveDate,
+) -> Option<f32> {
     let mut value: f32 = 0.0;
     if let Some(buffer) = vctx.buffer.as_ref() {
         for e in buffer {
@@ -1253,9 +1305,7 @@ fn variable_account_value_on_day(ctx : &AccountContext, vctx : &VariableAccountC
                     ndate < *day
                 })
                 .last()
-                .expect(
-                    format!("No quote matching date {}", most_recently_owned.date).as_str(),
-                );
+                .expect(format!("No quote matching date {}", most_recently_owned.date).as_str());
             let partial_value = (quote.close * most_recently_owned.shares as f64) as f32;
             value = value + partial_value
         }
@@ -1276,7 +1326,7 @@ pub trait VariableValuable: Valuable + HasVariableAccountContext {
     fn variable_value(&self) -> Option<f32> {
         variable_account_value(self.ctx(), self.variable_ctx())
     }
-    fn variable_value_on_day(&self, day:&  NaiveDate  ) -> Option<f32> {
+    fn variable_value_on_day(&self, day: &NaiveDate) -> Option<f32> {
         variable_account_value_on_day(self.ctx(), self.variable_ctx(), day)
     }
     fn fixed_value(&self) -> Option<f32> {
@@ -1285,30 +1335,27 @@ pub trait VariableValuable: Valuable + HasVariableAccountContext {
     fn fixed_value_on_day(&self, day: &NaiveDate) -> Option<f32> {
         fixed_account_value_on_day(self.ctx(), day)
     }
-    fn positions_value_on_day(&self, day: &NaiveDate) -> f32 { 
+    fn positions_value_on_day(&self, day: &NaiveDate) -> f32 {
         get_value_of_positions_on_day(self.ctx(), self.variable_ctx(), day)
     }
 }
 pub trait VariableGrowth: GrowthCalculable + VariableValuable + HasVariableAccountContext {
-    fn variable_growth(&self, metric: GrowthMetric, start_date: NaiveDate, end_date : NaiveDate) -> f32 {
+    fn variable_growth(
+        &self,
+        metric: GrowthMetric,
+        start_date: NaiveDate,
+        end_date: NaiveDate,
+    ) -> f32 {
         match metric {
-            GrowthMetric::CAGR => {
-                compound_annual_growth_rate(self, start_date, end_date)
-            }
-            GrowthMetric::MWRR => {
-                money_weighted_return(self, start_date, end_date)
-            }
-            GrowthMetric::SimpleReturn => {
-                simple_rate_of_return(self, start_date, end_date)
-            }
-            GrowthMetric::TWRR => {
-                time_weighted_return(self, start_date, end_date)
-            }
+            GrowthMetric::CAGR => compound_annual_growth_rate(self, start_date, end_date),
+            GrowthMetric::MWRR => money_weighted_return(self, start_date, end_date),
+            GrowthMetric::SimpleReturn => simple_rate_of_return(self, start_date, end_date),
+            GrowthMetric::TWRR => time_weighted_return(self, start_date, end_date),
         }
     }
 }
 
-pub trait VariableLedger: LedgerOps + HasContext + VariableAccount + InterestBearingLedger { 
+pub trait VariableLedger: LedgerOps + HasContext + VariableAccount + InterestBearingLedger {
     fn modify_variable(&mut self, record: LedgerRecord) -> Option<LedgerRecord> {
         let ctx = self.ctx();
         let vctx = self.variable_ctx();
@@ -1420,8 +1467,10 @@ pub trait VariableLedger: LedgerOps + HasContext + VariableAccount + InterestBea
     }
 }
 
-pub fn initialize_buffer(ctx : &AccountContext, vctx : &VariableAccountContext) -> Option<Vec<StockData>> {
-
+pub fn initialize_buffer(
+    ctx: &AccountContext,
+    vctx: &VariableAccountContext,
+) -> Option<Vec<StockData>> {
     // this is a quick hack to update the buffer after a stock has been purchased, sold or split
     let earliest_date = ctx.open_date;
     let latest_date = Local::now().date_naive();
@@ -1458,7 +1507,8 @@ pub fn initialize_buffer(ctx : &AccountContext, vctx : &VariableAccountContext) 
             let quotes = quotes
                 .or_else(|| {
                     Some({
-                        let pid = ctx.db
+                        let pid = ctx
+                            .db
                             .get_participant_id(
                                 ctx.uid,
                                 ctx.aid,
@@ -1466,14 +1516,14 @@ pub fn initialize_buffer(ctx : &AccountContext, vctx : &VariableAccountContext) 
                                 ParticipantType::Payee,
                             )
                             .unwrap();
-                        let manual_prices = ctx.db
+                        let manual_prices = ctx
+                            .db
                             .check_and_get_stock_price_record_matching_from_participant_id(
                                 ctx.uid, ctx.aid, pid,
                             )
                             .unwrap();
                         if manual_prices.is_empty() {
-                            get_stock_history(ticker.clone(), earliest_date, latest_date)
-                                .unwrap()
+                            get_stock_history(ticker.clone(), earliest_date, latest_date).unwrap()
                         } else {
                             convert_stock_price_record_to_quotes(&manual_prices)
                         }
@@ -1492,8 +1542,7 @@ pub fn initialize_buffer(ctx : &AccountContext, vctx : &VariableAccountContext) 
     }
 }
 
-pub trait VariableAccountFileIO : AccountFileIO + HasVariableAccountContext {
-
+pub trait VariableAccountFileIO: AccountFileIO + HasVariableAccountContext {
     fn import_variable_account(&self) {
         let ctx = self.ctx();
         let vctx = self.variable_ctx();
@@ -1606,19 +1655,22 @@ pub trait VariableAccountFileIO : AccountFileIO + HasVariableAccountContext {
                             description: entry.description,
                         };
 
-                        lid = ctx.db
+                        lid = ctx
+                            .db
                             .add_ledger_entry(ctx.uid, ctx.aid, txn.clone())
                             .unwrap();
 
                         // get total shares for ticker and divide by split
-                        let stocks_owned = ctx.db
+                        let stocks_owned = ctx
+                            .db
                             .get_stocks(ctx.uid, ctx.aid, entry.participant.clone())
                             .unwrap();
                         let all_shares: f32 = stocks_owned.iter().map(|x| x.info.remaining).sum();
                         // lpl takes the split and adds the difference to your account
                         // i.e., if the split is 3:1, it will take your 1 part and add 2 parts
                         let split_factor = (s.shares + all_shares) / all_shares;
-                        let stock_split_id = ctx.db
+                        let stock_split_id = ctx
+                            .db
                             .add_stock_split(ctx.uid, ctx.aid, split_factor.clone(), lid)
                             .unwrap();
 
@@ -1712,7 +1764,8 @@ pub trait VariableAccountFileIO : AccountFileIO + HasVariableAccountContext {
                         description: entry.description,
                     };
 
-                    lid = ctx.db
+                    lid = ctx
+                        .db
                         .add_ledger_entry(ctx.uid, ctx.aid, txn.clone())
                         .unwrap();
 
@@ -1722,7 +1775,8 @@ pub trait VariableAccountFileIO : AccountFileIO + HasVariableAccountContext {
                         remaining: s.remaining,
                         ledger_id: lid,
                     };
-                    let sale_id = ctx.db
+                    let sale_id = ctx
+                        .db
                         .add_stock_sale(ctx.uid, ctx.aid, my_s.clone())
                         .unwrap();
                     allocate_sale_stock(
@@ -1791,7 +1845,8 @@ pub trait VariableAccountFileIO : AccountFileIO + HasVariableAccountContext {
                 let stock_record_opt = match record.info.transfer_type {
                     TransferType::ZeroSumChange => {
                         // this is a stock split
-                        let stock_split_opt = ctx.db
+                        let stock_split_opt = ctx
+                            .db
                             .check_and_get_stock_split_record_matching_from_ledger_id(
                                 ctx.uid, ctx.aid, record.id,
                             )
@@ -1810,7 +1865,8 @@ pub trait VariableAccountFileIO : AccountFileIO + HasVariableAccountContext {
                     }
                     TransferType::DepositFromInternalAccount => {
                         // this could either be a sale or a dividend, if dividend than expect to return none
-                        let stock_sale_opt = ctx.db
+                        let stock_sale_opt = ctx
+                            .db
                             .check_and_get_stock_sale_record_matching_from_ledger_id(
                                 ctx.uid, ctx.aid, record.id,
                             )
@@ -1829,7 +1885,8 @@ pub trait VariableAccountFileIO : AccountFileIO + HasVariableAccountContext {
                     }
                     TransferType::WithdrawalToInternalAccount => {
                         // this is purchase
-                        let purchase_opt = ctx.db
+                        let purchase_opt = ctx
+                            .db
                             .check_and_get_stock_purchase_record_matching_from_ledger_id(
                                 ctx.uid, ctx.aid, ctx.aid,
                             )
@@ -1854,10 +1911,12 @@ pub trait VariableAccountFileIO : AccountFileIO + HasVariableAccountContext {
                     date: record.info.date,
                     amount: record.info.amount,
                     transfer_type: record.info.transfer_type,
-                    participant: ctx.db
+                    participant: ctx
+                        .db
                         .get_participant(ctx.uid, ctx.aid, record.info.participant)
                         .unwrap(),
-                    category: ctx.db
+                    category: ctx
+                        .db
                         .get_category_name(ctx.uid, ctx.aid, record.info.category_id)
                         .unwrap(),
                     description: record.info.description,
@@ -1869,4 +1928,3 @@ pub trait VariableAccountFileIO : AccountFileIO + HasVariableAccountContext {
         }
     }
 }
-

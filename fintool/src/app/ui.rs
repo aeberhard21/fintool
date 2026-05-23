@@ -36,8 +36,8 @@ use time::Month;
 use super::app::App;
 use super::screen::{CurrentScreen, TabMenu};
 use crate::{
+    accounts::base::liquid_account,
     accounts::{Account, AnalysisPeriod},
-    accounts::base::{liquid_account},
     app::screen::CurrentlySelecting,
     tui::{
         self, get_analysis_period_dates,
@@ -273,7 +273,9 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
                             Color::Red,
                         );
                     }
-                    CurrentlySelecting::AccountTabs | CurrentlySelecting::Account | CurrentlySelecting::Table => {
+                    CurrentlySelecting::AccountTabs
+                    | CurrentlySelecting::Account
+                    | CurrentlySelecting::Table => {
                         AccountType::render(
                             frame,
                             account_chunks[0],
@@ -957,9 +959,9 @@ fn render_cash_flow_chart(app: &App, frame: &mut Frame, area: Rect) {
     let mut liquid_accounts = Vec::new();
 
     for account in &app.accounts {
-        if let Some(liquid) = account.as_ref().as_liquid_account() { 
+        if let Some(liquid) = account.as_ref().as_liquid_account() {
             liquid_accounts.push(liquid);
-        } else { 
+        } else {
             continue;
         }
     }

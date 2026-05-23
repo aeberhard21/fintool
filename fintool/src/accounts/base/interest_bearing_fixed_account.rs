@@ -33,10 +33,8 @@ use super::{Account, AccountContext, HasContext, LedgerOps};
 use crate::accounts::base::fixed_account::FixedAccount;
 use crate::accounts::base::{Valuable, ValueLimited};
 
-pub trait InterestBearingFixedAccount : HasContext + LedgerOps + FixedAccount {
-
-    fn fee(&self, initial_opt: Option<LedgerRecord>, overwrite: bool) -> LedgerRecord { 
-
+pub trait InterestBearingFixedAccount: HasContext + LedgerOps + FixedAccount {
+    fn fee(&self, initial_opt: Option<LedgerRecord>, overwrite: bool) -> LedgerRecord {
         let ctx = Self::ctx(&self);
 
         let default_to_use: bool;
@@ -132,7 +130,8 @@ pub trait InterestBearingFixedAccount : HasContext + LedgerOps + FixedAccount {
                 .to_string()
         };
 
-        cid = ctx.db
+        cid = ctx
+            .db
             .check_and_add_category(ctx.uid, ctx.aid, selected_category);
 
         let description_prompt = "Enter description:";
@@ -237,7 +236,8 @@ pub trait InterestBearingFixedAccount : HasContext + LedgerOps + FixedAccount {
                     .prompt()
                     .unwrap();
             if !maintain_labels {
-                let mapped_labels = ctx.db
+                let mapped_labels = ctx
+                    .db
                     .check_and_get_label_mapping_matching_ledger_id(ctx.uid, ctx.aid, id)
                     .unwrap();
                 if !mapped_labels.is_empty() {
@@ -282,7 +282,7 @@ pub trait InterestBearingFixedAccount : HasContext + LedgerOps + FixedAccount {
         };
     }
 
-    fn accrual(&self, initial_opt: Option<LedgerRecord>, overwrite: bool) -> LedgerRecord { 
+    fn accrual(&self, initial_opt: Option<LedgerRecord>, overwrite: bool) -> LedgerRecord {
         let ctx = Self::ctx(&self);
         let default_to_use: bool;
         let mut initial = LedgerRecord {
@@ -377,7 +377,8 @@ pub trait InterestBearingFixedAccount : HasContext + LedgerOps + FixedAccount {
                 .to_string()
         };
 
-        cid = ctx.db
+        cid = ctx
+            .db
             .check_and_add_category(ctx.uid, ctx.aid, selected_category);
 
         let description_prompt = "Enter description:";
@@ -482,7 +483,8 @@ pub trait InterestBearingFixedAccount : HasContext + LedgerOps + FixedAccount {
                     .prompt()
                     .unwrap();
             if !maintain_labels {
-                let mapped_labels = ctx.db
+                let mapped_labels = ctx
+                    .db
                     .check_and_get_label_mapping_matching_ledger_id(ctx.uid, ctx.aid, id)
                     .unwrap();
                 if !mapped_labels.is_empty() {
@@ -528,9 +530,8 @@ pub trait InterestBearingFixedAccount : HasContext + LedgerOps + FixedAccount {
     }
 }
 
-pub trait InterestBearingLedger : LedgerOps + HasContext + InterestBearingFixedAccount { 
-        fn modify_interest_bearing(&mut self, selected_record: LedgerRecord) -> Option<LedgerRecord> {
-
+pub trait InterestBearingLedger: LedgerOps + HasContext + InterestBearingFixedAccount {
+    fn modify_interest_bearing(&mut self, selected_record: LedgerRecord) -> Option<LedgerRecord> {
         let ctx = self.ctx();
 
         if selected_record.info.transfer_type == TransferType::ZeroSumChange {
@@ -549,7 +550,8 @@ pub trait InterestBearingLedger : LedgerOps + HasContext + InterestBearingFixedA
                 >;
                 let updated_record = match selected_record.info.transfer_type {
                     TransferType::DepositFromExternalAccount => {
-                        account_transaction_opt = ctx.db
+                        account_transaction_opt = ctx
+                            .db
                             .check_and_get_account_transaction_record_matching_to_ledger_id(
                                 ctx.uid,
                                 ctx.aid,
@@ -571,11 +573,12 @@ pub trait InterestBearingLedger : LedgerOps + HasContext + InterestBearingFixedA
                         }
                         self.deposit(Some(selected_record.clone()), true)
                     }
-                    TransferType::DepositFromInternalAccount => { 
+                    TransferType::DepositFromInternalAccount => {
                         self.accrual(Some(selected_record.clone()), true)
                     }
                     TransferType::WithdrawalToExternalAccount => {
-                        account_transaction_opt = ctx.db
+                        account_transaction_opt = ctx
+                            .db
                             .check_and_get_account_transaction_record_matching_from_ledger_id(
                                 ctx.uid,
                                 ctx.aid,
@@ -597,9 +600,7 @@ pub trait InterestBearingLedger : LedgerOps + HasContext + InterestBearingFixedA
                     TransferType::WithdrawalToInternalAccount => {
                         self.fee(Some(selected_record.clone()), true)
                     }
-                    _ => {
-                        selected_record
-                    }
+                    _ => selected_record,
                 };
                 return Some(updated_record);
             }
@@ -609,7 +610,8 @@ pub trait InterestBearingLedger : LedgerOps + HasContext + InterestBearingFixedA
                 >;
                 match selected_record.info.transfer_type {
                     TransferType::DepositFromExternalAccount => {
-                        account_transaction_opt = ctx.db
+                        account_transaction_opt = ctx
+                            .db
                             .check_and_get_account_transaction_record_matching_to_ledger_id(
                                 ctx.uid,
                                 ctx.aid,
@@ -631,7 +633,8 @@ pub trait InterestBearingLedger : LedgerOps + HasContext + InterestBearingFixedA
                         }
                     }
                     TransferType::WithdrawalToExternalAccount => {
-                        account_transaction_opt = ctx.db
+                        account_transaction_opt = ctx
+                            .db
                             .check_and_get_account_transaction_record_matching_from_ledger_id(
                                 ctx.uid,
                                 ctx.aid,
@@ -652,7 +655,7 @@ pub trait InterestBearingLedger : LedgerOps + HasContext + InterestBearingFixedA
                                 .unwrap();
                         }
                     }
-                    _ => {},
+                    _ => {}
                 }
                 ctx.db
                     .remove_ledger_item(ctx.uid, ctx.aid, selected_record.id.clone())
@@ -669,4 +672,3 @@ pub trait InterestBearingLedger : LedgerOps + HasContext + InterestBearingFixedA
         return Some(selected_record);
     }
 }
-

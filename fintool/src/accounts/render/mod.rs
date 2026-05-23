@@ -1,11 +1,20 @@
-use crate::accounts::{Account, AnalysisPeriod, DisplayablePositionStatistics, KEY_COMPOUNDED_ANNUAL_RATE_OF_RETURN, KEY_MONEY_WEIGHTED_RATE_OF_RETURN, KEY_SIMPLE_RATE_OF_RETURN, KEY_TIME_WEIGHTED_RATE_OF_RETURN};
 use crate::accounts::base::budget::Budget;
-use crate::app::app::{App, BarChartData, DisplayValue, LineChart};
-use crate::app::screen::{ledger_table_constraint_len_calculator, positions_table_constraint_len_calculator};
-use crate::accounts::{KEY_BARCHART_BUDGET, KEY_BARCHART_EXPENDITURES, KEY_TOTAL_VALUE, KEY_REMAINING_CONTRIBUTION, KEY_CONTRIBUTION_LIMIT, KEY_CREDIT_LINE, KEY_REMAINING_CREDIT, KEY_DAYS_UNTIL_DUE, KEY_STATEMENT_DUE_DATE, KEY_MATURITY_DATE, KEY_DAYS_TO_MATURITY};
 use crate::accounts::base::{HasContext, LedgerOps, Valuable};
+use crate::accounts::{
+    Account, AnalysisPeriod, DisplayablePositionStatistics, KEY_COMPOUNDED_ANNUAL_RATE_OF_RETURN,
+    KEY_MONEY_WEIGHTED_RATE_OF_RETURN, KEY_SIMPLE_RATE_OF_RETURN, KEY_TIME_WEIGHTED_RATE_OF_RETURN,
+};
+use crate::accounts::{
+    KEY_BARCHART_BUDGET, KEY_BARCHART_EXPENDITURES, KEY_CONTRIBUTION_LIMIT, KEY_CREDIT_LINE,
+    KEY_DAYS_TO_MATURITY, KEY_DAYS_UNTIL_DUE, KEY_MATURITY_DATE, KEY_REMAINING_CONTRIBUTION,
+    KEY_REMAINING_CREDIT, KEY_STATEMENT_DUE_DATE, KEY_TOTAL_VALUE,
+};
+use crate::app::app::{App, BarChartData, DisplayValue, LineChart};
+use crate::app::screen::{
+    ledger_table_constraint_len_calculator, positions_table_constraint_len_calculator,
+};
 use crate::types::ledger::{Expenditure, LedgerInfo, LedgerRecord};
-use crate::ui::{float_range};
+use crate::ui::float_range;
 use chrono::{Datelike, Days, Local, NaiveDate, NaiveDateTime, NaiveTime};
 use shared_lib::TransferType;
 use std::collections::HashMap;
@@ -19,12 +28,16 @@ use ratatui::{
     text::{Line, Span, Text as ratatuiText},
     widgets::{
         Axis, Bar, BarChart, BarGroup, Block, Borders, Cell, Chart, Clear, Dataset, GraphType,
-        HighlightSpacing, LegendPosition, List, ListItem, Padding, Paragraph, Row, Table, Tabs, Widget, Wrap,
+        HighlightSpacing, LegendPosition, List, ListItem, Padding, Paragraph, Row, Table, Tabs,
+        Widget, Wrap,
     },
     Frame,
 };
 
-pub fn get_account_value_linechart<T: HasContext + LedgerOps>(acct: &T, app: &mut App) -> Option<LineChart> {
+pub fn get_account_value_linechart<T: HasContext + LedgerOps>(
+    acct: &T,
+    app: &mut App,
+) -> Option<LineChart> {
     let ctx = acct.ctx();
     let (mut start, end) = (app.analysis_start, app.analysis_end);
     if start < ctx.open_date {
@@ -130,7 +143,10 @@ pub fn get_account_value_linechart<T: HasContext + LedgerOps>(acct: &T, app: &mu
     }
 }
 
-pub fn get_time_period_investment_linechart<T: HasContext + LedgerOps + Valuable>(acct: &T, app: &mut App) -> Option<LineChart> {
+pub fn get_time_period_investment_linechart<T: HasContext + LedgerOps + Valuable>(
+    acct: &T,
+    app: &mut App,
+) -> Option<LineChart> {
     let ctx = acct.ctx();
     let (mut start, end) = (app.analysis_start, app.analysis_end);
     if start < ctx.open_date {
@@ -148,8 +164,7 @@ pub fn get_time_period_investment_linechart<T: HasContext + LedgerOps + Valuable
             description: "".to_string(),
         },
     });
-    let external_transfers = acct
-        .get_external_transactions_between_timestamps(start, end);
+    let external_transfers = acct.get_external_transactions_between_timestamps(start, end);
 
     let mut tstamp_min = f64::MAX;
     let mut tstamp_max = f64::MIN;
@@ -160,7 +175,8 @@ pub fn get_time_period_investment_linechart<T: HasContext + LedgerOps + Valuable
     let time_period_investments_opt = if let Some(mut transactions) = external_transfers {
         if !transactions.is_empty() {
             // this has to return a value because it will be inclusive of first entry
-            let tpi_starting_amount = ctx.db
+            let tpi_starting_amount = ctx
+                .db
                 .get_cumulative_total_of_ledger_of_external_transactions_on_date(
                     ctx.uid, ctx.aid, start,
                 )
@@ -237,7 +253,7 @@ pub fn get_time_period_investment_linechart<T: HasContext + LedgerOps + Valuable
     if let Some(time_period_investments) = time_period_investments_opt {
         let mut date = start;
         let today = Local::now().date_naive();
-        let ytd_days_elapsed = (today-start).num_days() as u32;
+        let ytd_days_elapsed = (today - start).num_days() as u32;
         let mut total_account_values = Vec::new();
         while date < end {
             let value = acct.get_account_value_on_day(&date.clone());
@@ -297,7 +313,7 @@ pub fn get_time_period_investment_linechart<T: HasContext + LedgerOps + Valuable
                     AnalysisPeriod::FiveYears => date.checked_add_days(Days::new(50)).unwrap(),
                     AnalysisPeriod::TenYears => date.checked_add_days(Days::new(100)).unwrap(),
                     AnalysisPeriod::Custom | AnalysisPeriod::AllTime => {
-                        let diff = (end.num_days_from_ce()- start.num_days_from_ce()) as u32;
+                        let diff = (end.num_days_from_ce() - start.num_days_from_ce()) as u32;
                         let days_to_add: u32 = if diff <= 365 {
                             1
                         } else if diff <= (365 * 2) {
@@ -332,7 +348,10 @@ pub fn get_time_period_investment_linechart<T: HasContext + LedgerOps + Valuable
     }
 }
 
-pub fn get_budget_barchart_data<T: HasContext + LedgerOps + Account + Budget>(acct: &T, app: &mut App) -> Option<BarChartData> {
+pub fn get_budget_barchart_data<T: HasContext + LedgerOps + Account + Budget>(
+    acct: &T,
+    app: &mut App,
+) -> Option<BarChartData> {
     let ctx = acct.ctx();
     if let Some(mut expenditures) = ctx
         .db
@@ -357,7 +376,8 @@ pub fn get_budget_barchart_data<T: HasContext + LedgerOps + Account + Budget>(ac
                     .get_category_name(ctx.uid, ctx.aid, x.item.category_id)
                     .unwrap())
                 .cmp(
-                    (&ctx.db
+                    (&ctx
+                        .db
                         .get_category_name(ctx.uid, ctx.aid, y.item.category_id)
                         .unwrap()),
                 )
@@ -399,8 +419,7 @@ pub fn get_budget_barchart_data<T: HasContext + LedgerOps + Account + Budget>(ac
                 let expenditure_value = elem.1.amount;
 
                 labels.push(elem.1.category.clone());
-                budget_dataset
-                    .insert(elem.1.category.clone(), (budget_value, budget_value as u64));
+                budget_dataset.insert(elem.1.category.clone(), (budget_value, budget_value as u64));
                 expenditure_dataset.insert(
                     elem.1.category.clone(),
                     (expenditure_value, expenditure_value as u64),
@@ -735,7 +754,6 @@ pub fn render_ledger_table(frame: &mut Frame, area: Rect, app: &mut App) {
 }
 
 pub fn render_positions_table(frame: &mut Frame, area: Rect, app: &mut App) {
-
     let block_title = "Positions";
 
     let header_style = Style::default()
@@ -754,8 +772,8 @@ pub fn render_positions_table(frame: &mut Frame, area: Rect, app: &mut App) {
         DisplayablePositionStatistics::get_total_cost_basis_str(),
         DisplayablePositionStatistics::get_unit_cost_str(),
         DisplayablePositionStatistics::get_unrealized_gl_str(),
-        DisplayablePositionStatistics::get_unrealized_gl_per_str()
-    ]        
+        DisplayablePositionStatistics::get_unrealized_gl_per_str(),
+    ]
     .into_iter()
     .map(Cell::from)
     .collect::<Row>()
@@ -787,14 +805,20 @@ pub fn render_positions_table(frame: &mut Frame, area: Rect, app: &mut App) {
                     let index = content.0;
                     let value = content.1;
                     match index {
-                        0|1|3|5 => {
-                            Cell::from(ratatuiText::from(format!("\n{value}\n")).style(tailwind::WHITE))
-                        }
+                        0 | 1 | 3 | 5 => Cell::from(
+                            ratatuiText::from(format!("\n{value}\n")).style(tailwind::WHITE),
+                        ),
                         _ => {
-                            if value.parse::<f32>().unwrap() < 0.0 { 
-                                Cell::from(ratatuiText::from(format!("\n{value}\n")).style(tailwind::ROSE.c500))
-                            } else { 
-                                Cell::from(ratatuiText::from(format!("\n{value}\n")).style(tailwind::EMERALD.c500))
+                            if value.parse::<f32>().unwrap() < 0.0 {
+                                Cell::from(
+                                    ratatuiText::from(format!("\n{value}\n"))
+                                        .style(tailwind::ROSE.c500),
+                                )
+                            } else {
+                                Cell::from(
+                                    ratatuiText::from(format!("\n{value}\n"))
+                                        .style(tailwind::EMERALD.c500),
+                                )
                             }
                         }
                     }
@@ -993,7 +1017,7 @@ pub fn render_current_value(frame: &mut Frame, area: Rect, app: &mut App) {
     frame.render_widget(display, area);
 }
 
-pub fn render_simple_growth(frame: &mut Frame, area: Rect, app: &mut App){
+pub fn render_simple_growth(frame: &mut Frame, area: Rect, app: &mut App) {
     let value = app
         .page_cache_f32
         .as_ref()
@@ -1395,6 +1419,3 @@ pub fn render_days_to_maturity(frame: &mut Frame, area: Rect, app: &mut App) {
         .bg(tailwind::SLATE.c900);
     frame.render_widget(p, area);
 }
-
-
-

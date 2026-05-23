@@ -24,7 +24,9 @@ use ratatui::{
 use strum::{Display, EnumIter, EnumString, FromRepr, IntoEnumIterator};
 use unicode_width::UnicodeWidthStr;
 
-use crate::{accounts::base::DisplayablePositionStatistics, types::ledger::DisplayableLedgerRecord};
+use crate::{
+    accounts::base::DisplayablePositionStatistics, types::ledger::DisplayableLedgerRecord,
+};
 
 pub const PALETTES: [tailwind::Palette; 4] = [
     tailwind::BLUE,
@@ -270,9 +272,12 @@ pub fn positions_table_constraint_len_calculator(
         (quantity_len as u16).max(DisplayablePositionStatistics::get_quantity_str().len() as u16),
         (value_len as u16).max(DisplayablePositionStatistics::get_value_str().len() as u16),
         (price_len as u16).max(DisplayablePositionStatistics::get_price_str().len() as u16),
-        (total_cost_basis_len as u16).max(DisplayablePositionStatistics::get_total_cost_basis_str().len() as u16),
+        (total_cost_basis_len as u16)
+            .max(DisplayablePositionStatistics::get_total_cost_basis_str().len() as u16),
         (unit_cost_len as u16).max(DisplayablePositionStatistics::get_unit_cost_str().len() as u16),
-        (unrealized_gl_len as u16).max(DisplayablePositionStatistics::get_unrealized_gl_str().len() as u16),
-        (unrealized_gl_per_len as u16).max(DisplayablePositionStatistics::get_unrealized_gl_per_str().len() as u16),
+        (unrealized_gl_len as u16)
+            .max(DisplayablePositionStatistics::get_unrealized_gl_str().len() as u16),
+        (unrealized_gl_per_len as u16)
+            .max(DisplayablePositionStatistics::get_unrealized_gl_per_str().len() as u16),
     )
 }
