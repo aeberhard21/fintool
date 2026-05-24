@@ -64,15 +64,15 @@ use crate::accounts::base::liquid_account::LiquidAccount;
 use crate::accounts::base::{AccountContext, AccountFileIO, Valuable};
 use crate::accounts::base::{HasContext, LedgerOps};
 use crate::accounts::growth::{report_growth, GrowthCalculable};
-#[cfg(feature = "ratatui_support")]
-use crate::accounts::render::*;
 use crate::accounts::FilePathHelper;
+#[cfg(feature = "ratatui_support")]
+use crate::accounts::{render::*, render_table_tabs, KEY_BARCHART_BUDGET, KEY_CASHFLOW_CHART};
 #[cfg(feature = "ratatui_support")]
 use crate::accounts::{AnalysisPeriod, KEY_SIMPLE_RATE_OF_RETURN, KEY_TOTAL_VALUE};
 #[cfg(feature = "ratatui_support")]
 use crate::app::app::{App, DisplayValue, LineChart};
 #[cfg(feature = "ratatui_support")]
-use crate::app::screen::ledger_table_constraint_len_calculator;
+use crate::app::screen::{ledger_table_constraint_len_calculator, CurrentlySelecting};
 use crate::database::DbConn;
 use crate::tui::get_analysis_period_dates;
 use crate::tui::query_user_for_analysis_period;
@@ -659,7 +659,12 @@ impl AccountUI for BankAccount {
 
         app.ledger_entries = Some(self.get_displayable_ledger());
         app.linechart_cache = get_account_value_linechart(self, app);
-        app.barchart_cache = None;
+        app.barchart_cache.insert(
+            KEY_BARCHART_BUDGET.into(),
+            get_budget_barchart_data(self, app),
+        );
+        app.barchart_cache
+            .insert(KEY_CASHFLOW_CHART.into(), get_cash_flow_chart(self, app));
     }
 
     fn render(&self, frame: &mut Frame, area: Rect, app: &mut App) {
@@ -678,10 +683,61 @@ impl AccountUI for BankAccount {
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
             .split(graphs_reports[0]);
 
+        let table_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(3), Constraint::Min(3)])
+            .split(chunk[1]);
+        let table_tab_area = table_chunks[0];
+        let ledger_area = table_chunks[1];
+
+        // color according to current selection
+        if let Some(current_selection) = app.currently_selected {
+            match current_selection {
+                CurrentlySelecting::Account => {
+                    render_table_tabs(
+                        frame,
+                        table_tab_area,
+                        self.renders_tables(),
+                        app.selected_table_tab,
+                        Color::Red,
+                    );
+                }
+                CurrentlySelecting::Table => {
+                    render_table_tabs(
+                        frame,
+                        table_tab_area,
+                        self.renders_tables(),
+                        app.selected_table_tab,
+                        Color::Green,
+                    );
+                }
+                _ => {
+                    render_table_tabs(
+                        frame,
+                        table_tab_area,
+                        self.renders_tables(),
+                        app.selected_table_tab,
+                        Color::Reset,
+                    );
+                }
+            }
+        }
+
+        match app.selected_table_tab {
+            0 => {
+                render_ledger_table(frame, ledger_area, app);
+            }
+            1 => {
+                render_cash_flow_chart(frame, ledger_area, app);
+            }
+            _ => {
+                render_spend_chart(frame, ledger_area, app);
+            }
+        }
+
         render_current_value(frame, reports_chunks[0], app);
         render_simple_growth(frame, reports_chunks[1], app);
         render_account_value_linechart(frame, graphs_reports[1], app);
-        render_ledger_table(frame, chunk[1], app);
     }
 }
 
@@ -696,5 +752,17 @@ impl Account for BankAccount {
     #[cfg(feature = "ratatui_support")]
     fn as_liquid_account(&self) -> Option<&dyn LiquidAccount> {
         return Some(self);
+    }
+    #[cfg(feature = "ratatui_support")]
+    fn renders_tables(&self) -> Vec<String> {
+        if self.has_budget() {
+            return vec![
+                "Transactions".to_string(),
+                "Cash Flow".to_string(),
+                "Spend Chart".to_string(),
+            ];
+        } else {
+            return vec!["Transactions".to_string(), "Cash Flow".to_string()];
+        }
     }
 }

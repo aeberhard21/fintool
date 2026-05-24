@@ -70,6 +70,8 @@ use crate::accounts::growth::GrowthCalculable;
 #[cfg(feature = "ratatui_support")]
 use crate::accounts::render::*;
 use crate::accounts::FilePathHelper;
+#[cfg(feature = "ratatui_support")]
+use crate::accounts::KEY_CASHFLOW_CHART;
 use crate::accounts::{
     KEY_BARCHART_BUDGET, KEY_BARCHART_EXPENDITURES, KEY_CREDIT_LINE, KEY_DAYS_UNTIL_DUE,
     KEY_REMAINING_CONTRIBUTION, KEY_REMAINING_CREDIT, KEY_STATEMENT_DUE_DATE,
@@ -782,7 +784,11 @@ impl AccountUI for CreditCardAccount {
         app.page_cache_f32 = Some(kv);
         app.ledger_entries = Some(self.get_displayable_ledger());
         app.linechart_cache = None;
-        app.barchart_cache = get_budget_barchart_data(self, app);
+        app.barchart_cache.insert(
+            KEY_BARCHART_BUDGET.into(),
+            get_budget_barchart_data(self, app),
+        );
+        // app.barchart_cache.insert(KEY_CASHFLOW_CHART.into(), get_cash_flow_chart(self, app));
     }
 
     fn render(&self, frame: &mut Frame, area: Rect, app: &mut App) {

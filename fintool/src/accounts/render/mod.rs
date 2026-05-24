@@ -1,8 +1,10 @@
 use crate::accounts::base::budget::Budget;
+use crate::accounts::base::liquid_account::LiquidAccount;
 use crate::accounts::base::{HasContext, LedgerOps, Valuable};
 use crate::accounts::{
-    Account, AnalysisPeriod, DisplayablePositionStatistics, KEY_COMPOUNDED_ANNUAL_RATE_OF_RETURN,
-    KEY_MONEY_WEIGHTED_RATE_OF_RETURN, KEY_SIMPLE_RATE_OF_RETURN, KEY_TIME_WEIGHTED_RATE_OF_RETURN,
+    Account, AnalysisPeriod, DisplayablePositionStatistics, KEY_CASHFLOW_CHART,
+    KEY_COMPOUNDED_ANNUAL_RATE_OF_RETURN, KEY_INFLOW_DATA, KEY_MONEY_WEIGHTED_RATE_OF_RETURN,
+    KEY_OUTFLOW_DATA, KEY_SIMPLE_RATE_OF_RETURN, KEY_TIME_WEIGHTED_RATE_OF_RETURN,
 };
 use crate::accounts::{
     KEY_BARCHART_BUDGET, KEY_BARCHART_EXPENDITURES, KEY_CONTRIBUTION_LIMIT, KEY_CREDIT_LINE,
@@ -15,9 +17,10 @@ use crate::app::screen::{
 };
 use crate::types::ledger::{Expenditure, LedgerInfo, LedgerRecord};
 use crate::ui::float_range;
-use chrono::{Datelike, Days, Local, NaiveDate, NaiveDateTime, NaiveTime};
+use chrono::{Datelike, Days, Local, Month, Months, NaiveDate, NaiveDateTime, NaiveTime};
 use shared_lib::TransferType;
 use std::collections::HashMap;
+use std::hash::Hash;
 use std::iter::zip;
 
 use ratatui::{
@@ -350,7 +353,7 @@ pub fn get_time_period_investment_linechart<T: HasContext + LedgerOps + Valuable
 
 pub fn get_budget_barchart_data<T: HasContext + LedgerOps + Account + Budget>(
     acct: &T,
-    app: &mut App,
+    app: &App,
 ) -> Option<BarChartData> {
     let ctx = acct.ctx();
     if let Some(mut expenditures) = ctx
@@ -481,7 +484,7 @@ pub fn get_budget_barchart_data<T: HasContext + LedgerOps + Account + Budget>(
             }
 
             let mut bars: HashMap<String, HashMap<String, (f32, u64)>> = HashMap::new();
-            bars.insert("Expenditures".into(), expenditure_dataset);
+            bars.insert(KEY_BARCHART_EXPENDITURES.into(), expenditure_dataset);
 
             return Some(BarChartData {
                 labels: labels,
@@ -491,6 +494,89 @@ pub fn get_budget_barchart_data<T: HasContext + LedgerOps + Account + Budget>(
     } else {
         None
     }
+}
+
+pub fn get_cash_flow_chart<T: HasContext + LedgerOps + Account + LiquidAccount>(
+    acct: &T,
+    app: &App,
+) -> Option<BarChartData> {
+    let ctx = acct.ctx();
+    let (start_date, end_date) = (app.analysis_start, app.analysis_end);
+
+    let num_days_diff = (end_date - start_date).num_days();
+    let (p_cash_flow, n_cash_flow, groups) = if num_days_diff < 365 {
+        // if less than 1 years, only show the last 12 months of data
+
+        let mut pflow: Vec<f64> = vec![0.0; 12];
+        let mut nflow: Vec<f64> = vec![0.0; 12];
+        let mut months: Vec<String> = vec!["".to_string(); 12];
+
+        let today = Local::now().date_naive();
+        let mut start_of_month =
+            NaiveDate::from_ymd_opt(today.year_ce().1 as i32, today.month(), 1).unwrap();
+        let mut last_date = today;
+
+        for j in (0..=11).rev() {
+            pflow[j] = acct.get_positive_cash_flow(start_of_month, last_date) as f64;
+            nflow[j] = acct.get_negative_cash_flow(start_of_month, last_date) as f64;
+
+            last_date = start_of_month.checked_sub_days(Days::new(1)).unwrap();
+            start_of_month = start_of_month.checked_sub_months(Months::new(1)).unwrap();
+            months[j] = start_of_month.format("%b").to_string();
+        }
+        (pflow, nflow, months)
+    } else {
+        // if greater than 1 year, show number of years
+        let num_years = num_days_diff % 365;
+
+        let mut pflow: Vec<f64> = vec![0.0; num_years as usize];
+        let mut nflow: Vec<f64> = vec![0.0; num_years as usize];
+        let mut years: Vec<String> = vec!["".to_string(); num_years as usize];
+
+        let today = Local::now().date_naive();
+        let mut start_of_year = NaiveDate::from_ymd_opt(
+            today.year_ce().1 as i32,
+            Month::January.number_from_month(),
+            1,
+        )
+        .unwrap();
+        let mut last_date = today;
+
+        for j in (0..=num_years as usize).rev() {
+            pflow[j] = acct.get_positive_cash_flow(start_of_year, last_date) as f64;
+            nflow[j] = acct.get_negative_cash_flow(start_of_year, last_date) as f64;
+
+            last_date = start_of_year.checked_add_days(Days::new(364)).unwrap();
+            start_of_year = start_of_year.checked_add_days(Days::new(365)).unwrap();
+            years[j] = start_of_year.format("%Y").to_string();
+        }
+        (pflow, nflow, years)
+    };
+
+    let mut bars: HashMap<String, HashMap<String, (f32, u64)>> = HashMap::new();
+    let labels = groups.clone();
+    let mut p_flow_dataset: HashMap<String, (f32, u64)> = HashMap::new();
+    for elem in p_cash_flow.iter().enumerate() {
+        p_flow_dataset.insert(
+            groups.clone()[elem.clone().0].clone(),
+            (*elem.1 as f32, *elem.1 as u64),
+        );
+    }
+    let mut n_flow_dataset: HashMap<String, (f32, u64)> = HashMap::new();
+    for elem in n_cash_flow.iter().enumerate() {
+        n_flow_dataset.insert(
+            groups.clone()[elem.clone().0].clone(),
+            (*elem.1 as f32, *elem.1 as u64),
+        );
+    }
+
+    bars.insert(KEY_INFLOW_DATA.to_string(), p_flow_dataset);
+    bars.insert(KEY_OUTFLOW_DATA.to_string(), n_flow_dataset);
+    let dataset = BarChartData {
+        labels: labels,
+        groups: bars,
+    };
+    Some(dataset)
 }
 
 pub fn render_account_value_linechart(frame: &mut Frame, area: Rect, app: &mut App) {
@@ -895,13 +981,98 @@ pub fn render_positions_table(frame: &mut Frame, area: Rect, app: &mut App) {
     app.positions_entries = position_entries;
 }
 
-pub fn render_spend_chart(frame: &mut Frame, area: Rect, app: &mut App) {
-    let bar_chart = app.barchart_cache.take();
+pub fn render_cash_flow_chart(frame: &mut Frame, area: Rect, app: &mut App) {
+    let bar_chart = app
+        .barchart_cache
+        .get(KEY_CASHFLOW_CHART)
+        .expect("Unable to match barchart key!");
     if let Some(bar_chart) = bar_chart {
-        app.barchart_cache = Some(bar_chart.clone());
-
         let labels = bar_chart.labels.clone();
-        // let datasets = bar_chart.groups.keys().collect::<Vec<String>>();
+        let mut bar_groups: Vec<BarGroup<'_>> = Vec::new();
+        for label in labels {
+            let mut bars: Vec<Bar<'_>> = Vec::new();
+            if let Some(inflow) = bar_chart.groups.get(KEY_INFLOW_DATA) {
+                // budget found
+                let inflow_value = inflow
+                    .get(&label)
+                    .expect(format!("Inflow group for {} not found!", label).as_str())
+                    .clone();
+                let inflow_bar = Bar::default()
+                    .value(inflow_value.1)
+                    .text_value(format!("${:.2}", inflow_value.0))
+                    .style(Style::new().fg(tailwind::EMERALD.c500))
+                    .value_style(Style::new().fg(tailwind::EMERALD.c500).reversed());
+                bars.push(inflow_bar);
+            }
+            if let Some(outflow) = bar_chart.groups.get(KEY_OUTFLOW_DATA) {
+                let outflow_value = outflow
+                    .get(&label)
+                    .expect(format!("Outflow group for {} not found!", label).as_str())
+                    .clone();
+                let outflow_bar: Bar<'_> = Bar::default()
+                    .value(outflow_value.1)
+                    .text_value(format!("${:.2}", outflow_value.0))
+                    .style(Style::new().fg(tailwind::ROSE.c500))
+                    .value_style(Style::new().fg(tailwind::AMBER.c500).reversed());
+                bars.push(outflow_bar);
+            }
+            let group = BarGroup::default()
+                .bars(&bars)
+                .label(Line::from(label).centered());
+            bar_groups.push(group);
+        }
+
+        let mut chart = BarChart::default()
+            .style(Style::new().bg(tailwind::SLATE.c900))
+            .block(Block::bordered().title_top(Line::from("Cash Flow").centered()))
+            .bar_width(7)
+            // .group_gap(area.width / (bar_groups.len() as u16 + 25));
+            .group_gap(0);
+        for group in bar_groups {
+            chart = chart.data(group);
+        }
+
+        frame.render_widget(chart, area);
+
+        // app.barchart_cache = Some(bar_chart);
+    } else {
+        let value = ratatuiText::styled(
+            "No data to display!",
+            Style::default().fg(tailwind::ROSE.c400).bold(),
+        );
+
+        let display = Paragraph::new(value)
+            .centered()
+            .alignment(layout::Alignment::Center)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Spend Analyzer")
+                    .title_alignment(layout::Alignment::Center)
+                    .padding(Padding::new(
+                        0,
+                        0,
+                        (if area.height > 4 {
+                            area.height / 2 - 2
+                        } else {
+                            0
+                        }),
+                        0,
+                    )),
+            )
+            .bg(tailwind::SLATE.c900);
+
+        frame.render_widget(display, area);
+    }
+}
+
+pub fn render_spend_chart(frame: &mut Frame, area: Rect, app: &mut App) {
+    let bar_chart = app
+        .barchart_cache
+        .get(KEY_BARCHART_BUDGET)
+        .expect("Unable to match barchart key!");
+    if let Some(bar_chart) = bar_chart {
+        let labels = bar_chart.labels.clone();
         let mut bar_groups: Vec<BarGroup<'_>> = Vec::new();
         for label in labels {
             let mut bars: Vec<Bar<'_>> = Vec::new();

@@ -826,7 +826,7 @@ impl AccountUI for CertificateOfDepositAccount {
         app.page_cache_f32 = Some(kv);
         app.ledger_entries = Some(self.get_displayable_ledger());
         app.linechart_cache = get_account_value_linechart(self, app);
-        app.barchart_cache = None;
+        app.barchart_cache = HashMap::new();
     }
 
     fn render(&self, frame: &mut Frame, area: Rect, app: &mut App) {

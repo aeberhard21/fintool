@@ -88,7 +88,7 @@ pub struct App {
     pub display_license_warranty: bool,
     pub page_cache_f32: Option<HashMap<String, DisplayValue>>,
     pub linechart_cache: Option<LineChart>,
-    pub barchart_cache: Option<BarChartData>,
+    pub barchart_cache: HashMap<String, Option<BarChartData>>,
     pub selected_table_tab: usize,
 }
 
@@ -121,7 +121,7 @@ impl App {
             display_license_warranty: false,
             page_cache_f32: None,
             linechart_cache: None,
-            barchart_cache: None,
+            barchart_cache: HashMap::new(),
             selected_table_tab: 0,
         }
     }
@@ -266,7 +266,7 @@ impl App {
     fn reset_cache(&mut self) {
         self.page_cache_f32 = None;
         self.linechart_cache = None;
-        self.barchart_cache = None;
+        self.barchart_cache = HashMap::new();
     }
 }
 

@@ -768,7 +768,7 @@ impl AccountUI for HealthSavingsAccount {
         app.page_cache_f32 = Some(kv);
         app.ledger_entries = Some(self.get_displayable_ledger());
         app.linechart_cache = get_time_period_investment_linechart(self, app);
-        app.barchart_cache = None;
+        app.barchart_cache = HashMap::new();
         app.positions_entries = get_position_stats(self.ctx(), self.variable_ctx());
     }
 
